@@ -1,0 +1,311 @@
+.installation-access-notes {
+  width: 100%;
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid #dce5f1;
+  border-radius: 9px;
+  background: #fbfcfe;
+  color: #344054;
+}
+.installation-access-notes-heading,
+.installation-access-notes-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.installation-access-notes-heading {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.installation-access-notes-heading > div > svg {
+  flex-shrink: 0;
+  color: #527dab;
+}
+.installation-access-notes-heading h3 {
+  margin: 0;
+  color: #263f5e;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+.installation-access-notes-count {
+  min-width: 22px;
+  padding: 2px 7px;
+  border-radius: 12px;
+  background: #eaf0f8;
+  color: #557293;
+  font-size: 11px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.installation-access-notes-order {
+  color: #7c8ba0;
+  font-size: 11px;
+}
+.installation-access-notes-composer,
+.installation-access-note-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+.installation-access-notes-composer {
+  padding: 15px;
+  border: 1px solid #e0e7f0;
+  border-radius: 7px;
+  background: white;
+  margin-bottom: 6px;
+}
+.installation-access-notes label {
+  color: #53677f;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.installation-access-notes textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 94px;
+  max-height: 420px;
+  padding: 11px 12px;
+  border: 1px solid #cfd9e7;
+  border-radius: 5px;
+  background: white;
+  color: #293e57;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  resize: vertical;
+}
+.installation-access-notes textarea::placeholder {
+  color: #95a1b0;
+}
+.installation-access-notes textarea:focus {
+  border-color: #5685c3;
+  outline: 2px solid #dceafa;
+  outline-offset: 1px;
+  box-shadow: none;
+}
+.installation-access-notes textarea:disabled {
+  color: #8190a2;
+  background: #f6f8fb;
+  cursor: not-allowed;
+}
+.installation-access-note-form-footer,
+.installation-access-note-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.installation-access-note-form-footer {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.installation-access-note-counter {
+  color: #8492a4;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.installation-access-note-buttons {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+.installation-access-notes .button {
+  min-height: 34px;
+  padding: 7px 12px;
+  font-size: 12px;
+}
+.installation-access-notes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.installation-access-note-item {
+  min-width: 0;
+  padding: 18px 0;
+  border-bottom: 1px solid #e3e9f1;
+}
+.installation-access-note-item:last-child {
+  border-bottom: 0;
+  padding-bottom: 2px;
+}
+.installation-access-note-item article,
+.installation-access-note-text {
+  min-width: 0;
+}
+.installation-access-note-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-bottom: 9px;
+}
+.installation-access-note-meta time {
+  color: #7c8b9f;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+}
+.installation-access-note-meta time > span {
+  margin-right: 3px;
+  color: #95a1b0;
+}
+.installation-access-note-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.installation-access-note-action,
+.installation-access-note-expand,
+.installation-access-notes-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 4px 7px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #5b7698;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.installation-access-note-action:hover,
+.installation-access-note-expand:hover,
+.installation-access-notes-more:hover {
+  color: #245da0;
+  background: #edf3fa;
+}
+.installation-access-note-action.is-danger {
+  color: #a75a5a;
+}
+.installation-access-note-action.is-danger:hover {
+  background: #fff0f0;
+}
+.installation-access-notes button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.installation-access-notes button:focus-visible {
+  outline: 2px solid #5685c3;
+  outline-offset: 2px;
+}
+.installation-access-note-content {
+  margin: 0;
+  color: #354b65;
+  font-size: 14px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.installation-access-note-content.is-collapsed {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  line-clamp: 6;
+  overflow: hidden;
+}
+.installation-access-note-expand {
+  margin-top: 5px;
+  padding-left: 0;
+  color: #4776af;
+}
+.installation-access-note-protected,
+.installation-access-note-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: #7d8da3;
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.installation-access-note-protected svg,
+.installation-access-note-hint svg {
+  flex-shrink: 0;
+}
+.installation-access-notes > .installation-access-note-hint {
+  margin-bottom: 12px;
+}
+.installation-access-note-error {
+  flex-basis: 100%;
+  width: 100%;
+  margin: 0;
+  color: #b54747;
+  font-size: 12px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.installation-access-note-delete {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px 12px;
+  padding: 12px;
+  margin-top: 12px;
+  border: 1px solid #f0dcdc;
+  border-radius: 6px;
+  background: #fff9f9;
+}
+.installation-access-note-delete > p:not(.installation-access-note-error) {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #855858;
+}
+.installation-access-note-detached {
+  margin-top: 15px;
+}
+.installation-access-note-detached > p {
+  margin-bottom: 10px;
+}
+.installation-access-notes-empty {
+  margin: 0;
+  padding: 23px 5px 8px;
+  color: #8e9cad;
+  font-size: 12px;
+  line-height: 1.7;
+  text-align: center;
+}
+.installation-access-notes-more {
+  width: 100%;
+  min-height: 38px;
+  margin-top: 15px;
+  border: 1px solid #dfe7f1;
+  background: white;
+}
+.installation-access-notes-more > span {
+  color: #8b9ab0;
+  font-size: 11px;
+}
+@media (max-width: 600px) {
+  .installation-access-notes {
+    padding: 15px 12px;
+  }
+  .installation-access-notes-composer {
+    padding: 12px;
+  }
+  .installation-access-notes textarea {
+    font-size: 16px;
+    max-height: 360px;
+  }
+  .installation-access-note-actions {
+    margin-left: auto;
+  }
+  .installation-access-note-action {
+    min-height: 34px;
+  }
+}
