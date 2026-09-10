@@ -4,8 +4,6 @@
 
 A CRM that connects companies, contacts, sales, quotations, tasks and customer support. Built with React, TypeScript, Express and PostgreSQL.
 
-Real customer data, accounts, sessions, database credentials, encryption keys, attachments and backups are not included in this repository.
-
 ## Run locally
 
 Requires Node.js 22.12 or later.
