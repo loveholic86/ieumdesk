@@ -17,12 +17,17 @@ npm run dev
 A fresh installation defaults to `demo` mode with synthetic data. If you already have an `.env` file, update the settings you need instead of overwriting it.
 
 - Web UI: http://127.0.0.1:5173
+- Other computers or phones on the same LAN: `http://SERVER-LAN-IP:5173` (for example, `http://192.168.0.10:5173`)
 - API: http://127.0.0.1:3001
 - Create your own administrator account on first access. No default credentials are provided.
 - Subsequent registrations require approval. An administrator manages roles and account status.
 - Demo data and encryption keys are created in the Git-excluded `.local/` directory.
 
-The API listens on the local loopback interface only. Production HTTPS and domain configuration require separate setup; startup with `NODE_ENV=production` is currently blocked.
+`npm run dev` also exposes the web server on the LAN. Only loopback names and private IPv4 addresses assigned to the server computer (`10.*`, `172.16.*`–`172.31.*`, `192.168.*`) are accepted. Find the LAN IP in the computer's network settings and use the new address if it changes. If another device cannot connect, check that it is on the same network and that the server firewall permits TCP 5173. Guest Wi-Fi client isolation can also prevent access.
+
+The API still listens on `127.0.0.1:3001` and is reached through the web server's `/api` proxy, so other devices use only port 5173. Authentication, permissions and request-origin checks remain in place. LAN access uses HTTP and is intended for trusted networks. Public internet deployment requires separate HTTPS and domain configuration; startup with `NODE_ENV=production` is currently blocked.
+
+To return to access from this computer only, stop the running servers, then run `npm run dev:server` and `npm run dev:client -- --host 127.0.0.1` in separate terminals.
 
 ## Interface language
 

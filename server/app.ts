@@ -38,15 +38,7 @@ import { prepareBusinessDisclosure, type BusinessArea } from './business-disclos
 import { requireCrmRequestHeader } from './csrf-defense.ts';
 import { createRequestLimits, trackRequestWork } from './request-limits.ts';
 import { validLocalAuthority, validateRequestShape, validateJsonStructure } from './request-validation.ts';
-
-const developmentOrigins = new Set([
-  'http://127.0.0.1:5173',
-  'http://localhost:5173',
-  'http://127.0.0.1:4173',
-  'http://localhost:4173',
-  'http://127.0.0.1:3001',
-  'http://localhost:3001',
-]);
+import { validDevelopmentOrigin } from './network-access.ts';
 const recordKind = (value: string): RecordKind => {
   if (!['contacts', 'sales', 'quotations', 'installations'].includes(value))
     throw new ApiError(404, 'NOT_FOUND', '요청한 업무 항목을 찾을 수 없습니다.');
@@ -90,12 +82,12 @@ export function createApp(
   });
   app.use('/api', createRequestLimits());
   app.use(validateRequestShape);
-  // The API stays local until HTTPS and deployment-domain policy are configured.
+  // Vite forwards the browser's Host and Origin from this machine's loopback or LAN address.
   app.use((request, response, next) => {
     const origin = request.get('origin');
     if (
       !validLocalAuthority(request.headers.host || '') ||
-      (origin && !developmentOrigins.has(origin)) ||
+      (origin && !validDevelopmentOrigin(origin)) ||
       request.get('sec-fetch-site') === 'cross-site' ||
       // A browser request from another same-site port still needs an allowed Origin.
       (request.get('sec-fetch-site') === 'same-site' && !origin)

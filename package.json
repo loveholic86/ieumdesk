@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n api,web \"npm:dev:server\" \"npm:dev:client\"",
-    "dev:client": "vite --host 127.0.0.1",
+    "dev:client": "vite",
     "dev:server": "tsx watch server/index.ts",
     "build": "tsc --noEmit && vite build",
     "start": "tsx server/index.ts",

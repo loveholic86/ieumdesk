@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { ApiError } from './errors.ts';
+export { validLocalAuthority } from './network-access.ts';
 
 export const requestShapeLimits = {
   targetBytes: 8192,
@@ -23,22 +24,6 @@ const singularHeaders = new Set([
 const invalid = () => new ApiError(400, 'INVALID_REQUEST', '요청 형식을 확인해 주세요.');
 const complex = () =>
   new ApiError(413, 'REQUEST_TOO_COMPLEX', '요청 구조가 너무 큽니다. 입력 항목을 줄여 주세요.');
-
-/** Host is an HTTP authority, never a URL with credentials, path, fragments or escapes. */
-export function validLocalAuthority(value: string): boolean {
-  if (!value || /[\s/@?#\\%]/u.test(value)) return false;
-  try {
-    const url = new URL(`http://${value}`);
-    return (
-      ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) &&
-      url.pathname === '/' &&
-      !url.username &&
-      !url.password
-    );
-  } catch {
-    return false;
-  }
-}
 
 /** Reject ambiguous request syntax before JSON parsing, credentials, or store access. */
 export function validateRequestShape(request: Request, response: Response, next: NextFunction) {

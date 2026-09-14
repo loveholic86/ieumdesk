@@ -1,6 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomBytes } from 'node:crypto';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
+import { validLocalAuthority } from './network-access.ts';
 
 // Vite serves the HTML, so API-only Helmet headers cannot protect the application page.
 export const uiSecurityHeaders = {
@@ -36,15 +38,22 @@ export function uiContentSecurityPolicy(nonce?: string, websocketOrigin?: string
 
 export function uiSecurityPlugin(): Plugin {
   const requestNonce = new AsyncLocalStorage<string>();
+  const allowHost = (request: IncomingMessage, response: ServerResponse) => {
+    if (validLocalAuthority(request.headers.host || '')) return true;
+    response.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+    response.end('이 개발 서버는 실행한 PC의 로컬 주소와 로컬망 IP로만 접속할 수 있습니다.');
+    return false;
+  };
   return {
     name: 'ieumdesk-ui-security',
     configureServer(server) {
       server.middlewares.use((request, response, next) => {
+        if (!allowHost(request, response)) return;
         const nonce = randomBytes(24).toString('base64');
         let websocketOrigin: string | undefined;
         try {
           const url = new URL(`http://${request.headers.host || ''}`);
-          if (['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) {
+          if (validLocalAuthority(url.host)) {
             url.protocol = 'ws:';
             websocketOrigin = url.origin;
           }
@@ -56,7 +65,8 @@ export function uiSecurityPlugin(): Plugin {
       });
     },
     configurePreviewServer(server) {
-      server.middlewares.use((_request, response, next) => {
+      server.middlewares.use((request, response, next) => {
+        if (!allowHost(request, response)) return;
         response.setHeader('Content-Security-Policy', uiContentSecurityPolicy());
         next();
       });
