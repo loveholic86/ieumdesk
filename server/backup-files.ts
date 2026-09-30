@@ -1,3 +1,4 @@
+import { runtimePath } from './runtime-config.ts';
 import { constants } from 'node:fs';
 import { lstat, mkdir, open, readdir, rename, rm, unlink, type FileHandle } from 'node:fs/promises';
 import path from 'node:path';
@@ -120,7 +121,7 @@ export function validateBackupFiles(files: BackupFile[]) {
   }
 }
 /** Hold across a legacy migration including its final report-file publication. */
-export async function acquireBackupSourceLock(directory = path.resolve('.local')) {
+export async function acquireBackupSourceLock(directory = runtimePath()) {
   await safeDirectory(directory, true);
   const file = path.join(directory, '.backup-source.lock');
   let handle: FileHandle;
@@ -151,7 +152,7 @@ export async function acquireBackupSourceLock(directory = path.resolve('.local')
 }
 
 export class BackupFiles {
-  constructor(readonly directory = path.resolve('.local')) {}
+  constructor(readonly directory = runtimePath()) {}
   /** These global locks interoperate with attachment uploads/deletes. Never steal stale locks. */
   async lock() {
     const releaseSource = await acquireBackupSourceLock(this.directory);

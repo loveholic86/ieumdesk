@@ -1,3 +1,4 @@
+import { runtimePath } from './runtime-config.ts';
 import { trackRequestWork } from './request-limits.ts';
 import { Router, type Request, type RequestHandler } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
@@ -7,6 +8,8 @@ import pg from 'pg';
 import { z } from 'zod';
 import { databaseConfig } from './config.ts';
 import { ApiError } from './errors.ts';
+import { canViewProtectedInformation } from '../src/protection-policy.ts';
+import { canManageBusiness, hasBusinessRole } from '../src/permissions.ts';
 import {
   BACKUP_MAX_BYTES,
   privateFile,
@@ -168,11 +171,11 @@ export class SupportService {
     private options: Options = {},
   ) {
     this.legacy = options.legacy ?? new LegacyReader(store.mode);
-    this.directory = path.resolve(options.directory ?? '.local/support');
+    this.directory = path.resolve(options.directory ?? runtimePath('support'));
     this.attachments =
       options.attachments ??
       createInstallationAttachmentStore({
-        directory: path.resolve('.local/support-attachments'),
+        directory: runtimePath('support-attachments'),
         vault: options.vault,
       });
   }
@@ -379,7 +382,6 @@ export class SupportService {
     expectedRevision: number,
     actor: SupportActor,
     guard: SupportGuard,
-    adminOnly = false,
   ) {
     const actorId = actor.id;
     const assertCurrent = async () => {
@@ -389,10 +391,8 @@ export class SupportService {
           throw new ApiError(401, 'AUTHENTICATION_REQUIRED', '현재 계정을 확인해 주세요.');
         actor = live;
       }
-      if (!['admin', 'editor'].includes(actor.role))
+      if (!hasBusinessRole(actor.role))
         throw new ApiError(403, 'WRITE_PERMISSION_REQUIRED', '등록·수정 권한이 필요합니다.');
-      if ((next.deleted || adminOnly) && actor.role !== 'admin')
-        throw new ApiError(403, 'ADMIN_REQUIRED', '관리자 권한이 필요합니다.');
     };
     await assertCurrent();
     if (next.companyId && !next.deleted) await this.store.getCompany(next.companyId);
@@ -442,10 +442,8 @@ export class SupportService {
       const current = (
         await client.query('SELECT role,status FROM yeta_crm.auth_users WHERE id=$1 FOR UPDATE', [actor.id])
       ).rows[0];
-      if (!current || current.status !== 'active' || !['admin', 'editor'].includes(current.role))
+      if (!canManageBusiness(current))
         throw new ApiError(403, 'WRITE_PERMISSION_REQUIRED', '등록·수정 권한이 필요합니다.');
-      if ((next.deleted || adminOnly) && current.role !== 'admin')
-        throw new ApiError(403, 'ADMIN_REQUIRED', '관리자 권한이 필요합니다.');
       const saved = await client.query(
         expectedRevision === 0
           ? `INSERT INTO yeta_crm_private.support_items(id,kind,revision,envelope,company_id,archived_at,updated_by) VALUES($1,$2,$3,$4::jsonb,$5,$6,$7) ON CONFLICT(id) DO UPDATE SET revision=EXCLUDED.revision,envelope=EXCLUDED.envelope,company_id=EXCLUDED.company_id,archived_at=EXCLUDED.archived_at,updated_by=EXCLUDED.updated_by,updated_at=now() WHERE support_items.revision=$8 RETURNING id`
@@ -552,8 +550,8 @@ export class SupportService {
     const entry = previous[kind].find((row) => row.id === entryId);
     if (!entry) throw missing();
     const permitted = () => {
-      if (actor.role !== 'admin' && (!entry.authorId || entry.authorId !== actor.id))
-        throw new ApiError(403, 'DISCUSSION_PERMISSION_REQUIRED', '작성자 또는 관리자가 수정할 수 있습니다.');
+      if (!hasBusinessRole(actor.role))
+        throw new ApiError(403, 'DISCUSSION_PERMISSION_REQUIRED', '관리자 또는 담당자가 수정할 수 있습니다.');
     };
     permitted();
     const next = {
@@ -578,7 +576,6 @@ export class SupportService {
         permitted();
         return live;
       },
-      entry.authorId !== actor.id,
     );
   }
   async archive(id: string, body: unknown, deleted: boolean, actor: SupportActor, guard: SupportGuard) {
@@ -588,7 +585,7 @@ export class SupportService {
       .parse(body);
     const previous = await this.get(id, true);
     if (previous.revision !== input.revision) throw conflict();
-    return this.save({ ...previous, deleted }, input.revision, actor, guard, true);
+    return this.save({ ...previous, deleted }, input.revision, actor, guard);
   }
   async close() {
     await this.queue;
@@ -632,7 +629,6 @@ export function protectSupport(item: SupportDocument, enabled: boolean): Support
 export function createSupportRouter(
   service: SupportService,
   workspace: WorkspaceSettingsAccess,
-  requireAdmin: RequestHandler,
   requireEditor: RequestHandler,
   assertActive: (request: Request) => Promise<void>,
 ) {
@@ -644,25 +640,19 @@ export function createSupportRouter(
   const actor = (request: Request) => request.authUser!;
   const writeGuard = (request: Request) => async () => {
     await assertActive(request);
-    if (!['admin', 'editor'].includes(actor(request).role))
+    if (!canManageBusiness(actor(request)))
       throw new ApiError(403, 'WRITE_PERMISSION_REQUIRED', '등록·수정 권한이 필요합니다.');
-    return actor(request);
-  };
-  const adminGuard = (request: Request) => async () => {
-    await assertActive(request);
-    if (actor(request).role !== 'admin')
-      throw new ApiError(403, 'ADMIN_REQUIRED', '관리자 권한이 필요합니다.');
     return actor(request);
   };
   const authorized = (request: Request, doc: SupportDocument) => {
     if (
-      (doc.deleted && actor(request).role !== 'admin') ||
+      (doc.deleted && !canManageBusiness(actor(request))) ||
       (doc.kind === 'notices' && !doc.visible && actor(request).role === 'viewer')
     )
       throw missing();
   };
   const visible = async (request: Request, id: string) => {
-    const doc = await service.detail(id, actor(request).role === 'admin');
+    const doc = await service.detail(id, canManageBusiness(actor(request)));
     await assertActive(request);
     authorized(request, doc);
     return doc;
@@ -671,7 +661,7 @@ export function createSupportRouter(
     await assertActive(request);
     let enabled = (await workspace.get()).protectionEnabled;
     await assertActive(request);
-    enabled ||= actor(request).role !== 'admin';
+    enabled ||= !canViewProtectedInformation(actor(request));
     if (!enabled) {
       try {
         await workspace.audit({
@@ -690,7 +680,7 @@ export function createSupportRouter(
       enabled = (await workspace.get()).protectionEnabled;
     }
     await assertActive(request);
-    return enabled || actor(request).role !== 'admin';
+    return enabled || !canViewProtectedInformation(actor(request));
   };
   const prepare = async (request: Request, doc: SupportDocument) => {
     authorized(request, doc);
@@ -698,20 +688,18 @@ export function createSupportRouter(
     authorized(request, doc);
     const result = protectSupport(doc, enabled);
     for (const kind of ['answers', 'replies'] as const)
-      result[kind] = result[kind].map((row, index) => ({
+      result[kind] = result[kind].map((row) => ({
         ...row,
-        canEdit:
-          ['admin', 'editor'].includes(actor(request).role) &&
-          (actor(request).role === 'admin' || doc[kind][index].authorId === actor(request).id),
+        canEdit: canManageBusiness(actor(request)),
       }));
     return result;
   };
   const send = async (request: Request, response: import('express').Response, id: string) =>
     response.json(await prepare(request, await visible(request, id)));
   const downloadAllowed = async (request: Request) => {
-    await adminGuard(request)();
+    await writeGuard(request)();
     const enabled = (await workspace.get()).protectionEnabled;
-    await adminGuard(request)();
+    await writeGuard(request)();
     if (enabled)
       throw new ApiError(
         403,
@@ -728,12 +716,12 @@ export function createSupportRouter(
         includeArchived: z.enum(['true', 'false']).default('false'),
       })
       .parse(request.query);
-    if (query.includeArchived === 'true' && actor(request).role !== 'admin')
-      throw new ApiError(403, 'ADMIN_REQUIRED', '관리자 권한이 필요합니다.');
+    if (query.includeArchived === 'true' && !canManageBusiness(actor(request)))
+      throw new ApiError(403, 'WRITE_PERMISSION_REQUIRED', '등록·수정 권한이 필요합니다.');
     const source = await service.all();
     const policy = await disclosurePolicy(request);
-    if (query.includeArchived === 'true' && actor(request).role !== 'admin')
-      throw new ApiError(403, 'ADMIN_REQUIRED', '관리자 권한이 필요합니다.');
+    if (query.includeArchived === 'true' && !canManageBusiness(actor(request)))
+      throw new ApiError(403, 'WRITE_PERMISSION_REQUIRED', '등록·수정 권한이 필요합니다.');
     const items = source
       .map((item) => protectSupport(item, policy))
       .filter(
@@ -793,13 +781,13 @@ export function createSupportRouter(
     ['archive', true],
     ['restore', false],
   ] as const)
-    router.post(`/:id/${operation}`, requireAdmin, trackRequestWork(async (request, response) => {
+    router.post(`/:id/${operation}`, requireEditor, trackRequestWork(async (request, response) => {
       const doc = await service.archive(
         String(request.params.id),
         request.body,
         deleted,
         actor(request),
-        adminGuard(request),
+        writeGuard(request),
       );
       await send(request, response, doc.id);
     }));

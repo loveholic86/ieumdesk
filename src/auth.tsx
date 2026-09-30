@@ -1,7 +1,11 @@
 import { t } from './i18n';
 import { useLocale } from './use-locale';
+import { canManageBusiness } from './permissions';
 import { LanguageSelector } from './LanguageSelector';
+import { ThemeToggle } from './ThemeSelector';
 import { openProjectChannel, type ProjectChannel } from './project-channel';
+import { usePublicBranding } from './use-public-branding';
+import type { WorkspaceBranding } from './workspace-types';
 import {
   Fragment,
   createContext,
@@ -56,8 +60,8 @@ export const userStatusLabels: Record<UserStatus, string> = {
 };
 export const statusLabels = userStatusLabels;
 export const roleDescriptions: Record<UserRole, string> = {
-  admin: 'CRM 데이터와 사용자 권한을 관리합니다.',
-  editor: 'CRM 데이터를 조회하고 등록·수정합니다.',
+  admin: 'CRM 업무, 사용자·권한 및 환경설정을 관리합니다.',
+  editor: '사용자·권한 및 환경설정을 제외한 CRM 업무를 관리합니다.',
   viewer: 'CRM 데이터를 조회합니다.',
 };
 
@@ -86,7 +90,7 @@ export async function authRequest<T>(path: string, options?: RequestInit): Promi
   } catch {
     throw new Error('서버에 연결하지 못했습니다. 연결 상태를 확인하고 다시 시도해 주세요.');
   }
-  if (response.status === 401 && !['/auth/session', '/auth/login', '/auth/register'].includes(path))
+  if (response.status === 401 && !['/auth/session', '/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password'].includes(path))
     window.dispatchEvent(new Event('crm:unauthorized'));
   if (response.status === 403 && path.startsWith('/admin/'))
     window.dispatchEvent(new Event('crm:permissions-changed'));
@@ -108,7 +112,11 @@ export async function authRequest<T>(path: string, options?: RequestInit): Promi
       ? typeof body.setupRequired === 'boolean' && (body.user === null || validUser(body.user))
       : path === '/admin/users' && (!options?.method || options.method === 'GET')
         ? Array.isArray(body.items) && body.items.every(validUser)
-        : ['/auth/logout', '/auth/password'].includes(path)
+        : path === '/admin/password-reset-requests'
+          ? Array.isArray(body.items) && body.items.every(item => item && typeof item === 'object' && typeof item.userId === 'string' && Number.isFinite(Date.parse(item.requestedAt)))
+        : /^\/admin\/users\/[^/]+\/password-reset$/.test(path)
+          ? typeof body.resetPath === 'string' && /^\/#reset-password=[A-Za-z\d_-]{43}$/.test(body.resetPath) && typeof body.expiresAt === 'string' && Number.isFinite(Date.parse(body.expiresAt))
+        : ['/auth/logout', '/auth/password', '/auth/forgot-password', '/auth/reset-password'].includes(path)
           ? body.ok === true
           : validUser(body.user);
   if (!valid) throw new Error('계정 정보를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.');
@@ -117,6 +125,7 @@ export async function authRequest<T>(path: string, options?: RequestInit): Promi
 
 type ProfileUpdate = { name: string; email: string; currentPassword?: string };
 type AuthContextValue = {
+  branding: WorkspaceBranding;
   user: User | null;
   setupRequired: boolean;
   loading: boolean;
@@ -129,11 +138,13 @@ type AuthContextValue = {
   logout: () => Promise<void>;
   updateProfile: (profile: ProfileUpdate) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  resetPassword: (token: string, newPassword: string) => Promise<void>;
 };
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   useLocale();
+  const branding = usePublicBranding();
   const [user, setUser] = useState<User | null>(null);
   const [setupRequired, setSetupRequired] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -201,6 +212,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ++generation.current;
     const result = await authRequest<{ user: User }>(path, { method: 'POST', body: JSON.stringify(values) });
     ++generation.current;
+    window.history.replaceState(
+      window.history.state,
+      '',
+      window.location.pathname + window.location.search,
+    );
     setUser(result.user);
     setSetupRequired(false);
     setLoading(false);
@@ -238,22 +254,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setNotice('비밀번호를 변경했습니다. 새 비밀번호로 다시 로그인해 주세요.');
     sessionChannel.current?.postMessage({ type: 'session-changed' });
   };
+  const resetPassword = async (token: string, newPassword: string) => {
+    await authRequest('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, newPassword }) });
+    ++generation.current;
+    setUser(null);
+    setLoading(false);
+    setError('');
+    setNotice('비밀번호를 변경했습니다. 새 비밀번호로 다시 로그인해 주세요.');
+    sessionChannel.current?.postMessage({ type: 'session-changed' });
+  };
 
   return (
     <AuthContext.Provider
       value={{
+        branding,
         user,
         setupRequired,
         loading,
         error,
         notice,
-        canWrite: user?.status === 'active' && ['admin', 'editor'].includes(user.role),
+        canWrite: canManageBusiness(user),
         refresh,
         login: (email, password) => establish('/auth/login', { email, password }),
         register: (name, email, password) => establish('/auth/register', { name, email, password }),
         logout,
         updateProfile,
         changePassword,
+        resetPassword,
       }}
     >
       {children}
@@ -341,23 +368,28 @@ export function PasswordField({
 
 function AuthBrand() {
   useLocale();
+  const { branding: { brandName, workspaceName } } = useAuth();
   return (
-    <div className="auth-brand" aria-label="ieumdesk">
+    <div className="auth-brand" aria-label={brandName}>
       <span className="brand-mark" aria-hidden="true">
         <span />
         <span />
         <span />
       </span>
-      <span>ieumdesk</span>
+      <div className="auth-brand-copy">
+        <span title={brandName}>{brandName}</span>
+        <small title={workspaceName}>{workspaceName}</small>
+      </div>
     </div>
   );
 }
 
-function AuthFrame({ children }: { children: ReactNode }) {
+export function AuthFrame({ children }: { children: ReactNode }) {
   useLocale();
+  const { branding: { brandName } } = useAuth();
   return (
     <main className="auth-layout">
-      <section className="auth-story" aria-label={t('ieumdesk 소개')}>
+      <section className="auth-story" aria-label={t('{0} 소개', [brandName])}>
         <AuthBrand />
         <div className="auth-story-body">
           <span className="auth-story-kicker">YOUR CUSTOMER WORKSPACE</span>
@@ -402,12 +434,13 @@ function AuthFrame({ children }: { children: ReactNode }) {
           </div>
         </div>
         <div className="auth-story-footer">
-          <span>ieumdesk · CUSTOMER & WORK MANAGEMENT</span>
+          <span>{brandName} · CUSTOMER &amp; WORK MANAGEMENT</span>
           <span>WORK BETTER, TOGETHER</span>
         </div>
       </section>
       <section className="auth-main">
         <div className="auth-language">
+          <ThemeToggle />
           <LanguageSelector />
         </div>
         <div className="auth-mobile-brand">
@@ -423,10 +456,180 @@ function AuthFrame({ children }: { children: ReactNode }) {
   );
 }
 
+export function ForgotPasswordPage({ onBack }: { onBack: () => void }) {
+  useLocale();
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      await authRequest('/auth/forgot-password', {
+        method: 'POST',
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      setSent(true);
+      setEmail('');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '초기화 요청을 처리하지 못했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <AuthFrame>
+      <div className="auth-form-wrap">
+        <div className="auth-form-heading">
+          <span className="auth-eyebrow">ACCOUNT RECOVERY</span>
+          <h2>{t('비밀번호 초기화 요청')}</h2>
+          <p>
+            {t(
+              '가입 이메일을 입력하면 관리자에게 초기화 요청이 표시됩니다. 본인 확인 후 관리자가 전달하는 링크에서 새 비밀번호를 설정하세요.',
+            )}
+          </p>
+        </div>
+        <AuthNotice>{t(error)}</AuthNotice>
+        {sent ? (
+          <AuthNotice success>
+            {t(
+              '요청을 접수했습니다. 등록된 이용 가능 계정이면 관리자에게 요청이 표시됩니다. 관리자에게 연락해 본인 확인 후 재설정 링크를 받아 주세요.',
+            )}
+          </AuthNotice>
+        ) : (
+          <form className="auth-form" onSubmit={submit}>
+            <div className="auth-field">
+              <label htmlFor="reset-request-email">{t('가입 이메일')}</label>
+              <input
+                id="reset-request-email"
+                name="email"
+                type="email"
+                autoComplete="username"
+                maxLength={254}
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
+                disabled={busy}
+                placeholder="name@company.com"
+              />
+            </div>
+            <button className="button primary auth-submit" disabled={busy} type="submit">
+              {busy && <RefreshCw size={16} className="auth-spin" />}
+              {t(busy ? '요청 중' : '관리자에게 초기화 요청')}
+            </button>
+          </form>
+        )}
+        <button type="button" className="auth-reset-link" onClick={onBack} disabled={busy}>
+          {t('로그인으로 돌아가기')}
+        </button>
+      </div>
+    </AuthFrame>
+  );
+}
+
+export function PasswordResetPage({ token, onBack }: { token: string; onBack: () => void }) {
+  const locale = useLocale();
+  const {
+    resetPassword,
+    branding: { brandName },
+  } = useAuth();
+  const [password, setPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState('');
+  const validToken = /^[A-Za-z\d_-]{43}$/.test(token);
+  useEffect(() => {
+    document.title = `${brandName} · ${t('새 비밀번호 설정')}`;
+  }, [brandName, locale]);
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError('');
+    if (password.length < 12 || password.length > 128)
+      return setError('새 비밀번호는 12~128자로 입력해 주세요.');
+    if (password !== confirmation) return setError('새 비밀번호 확인이 일치하지 않습니다.');
+    setBusy(true);
+    try {
+      await resetPassword(token, password);
+      setDone(true);
+      setPassword('');
+      setConfirmation('');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '비밀번호를 변경하지 못했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <AuthFrame>
+      <div className="auth-form-wrap">
+        <div className="auth-form-heading">
+          <span className="auth-eyebrow">RESET YOUR PASSWORD</span>
+          <h2>{t(done ? '비밀번호를 재설정했습니다' : '새 비밀번호 설정')}</h2>
+          <p>
+            {t(
+              done
+                ? '새 비밀번호로 다시 로그인해 주세요.'
+                : '새 비밀번호를 저장하면 모든 기기에서 로그아웃됩니다. 가입 승인과 이용 권한은 그대로 유지됩니다.',
+            )}
+          </p>
+        </div>
+        <AuthNotice>
+          {t(validToken ? error : '재설정 링크가 유효하지 않습니다. 관리자에게 새 링크를 요청해 주세요.')}
+        </AuthNotice>
+        {!done && validToken && (
+          <form className="auth-form" onSubmit={submit}>
+            <PasswordField
+              id="reset-new-password"
+              name="newPassword"
+              label="새 비밀번호"
+              autoComplete="new-password"
+              minLength={12}
+              maxLength={128}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              hint="12~128자로 입력해 주세요. 공백도 비밀번호에 포함됩니다."
+              required
+              disabled={busy}
+            />
+            <PasswordField
+              id="reset-confirm-password"
+              name="confirmPassword"
+              label="새 비밀번호 확인"
+              autoComplete="new-password"
+              minLength={12}
+              maxLength={128}
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+              required
+              disabled={busy}
+            />
+            <button className="button primary auth-submit" type="submit" disabled={busy}>
+              {busy && <RefreshCw size={16} className="auth-spin" />}
+              {t(busy ? '변경 중' : '새 비밀번호 저장')}
+            </button>
+          </form>
+        )}
+        <button
+          type="button"
+          className={done ? 'button primary auth-submit' : 'auth-reset-link'}
+          onClick={onBack}
+          disabled={busy}
+        >
+          {t('로그인으로 돌아가기')}
+        </button>
+      </div>
+    </AuthFrame>
+  );
+}
+
 export function LoginPage() {
   const locale = useLocale();
-  const { setupRequired, login, register, notice, error: sessionError } = useAuth();
+  const { branding: { brandName }, setupRequired, login, register, notice, error: sessionError } = useAuth();
   const [signup, setSignup] = useState(setupRequired);
+  const [forgotPassword, setForgotPassword] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -436,8 +639,8 @@ export function LoginPage() {
   const title = signup ? (setupRequired ? '최초 관리자 계정 만들기' : '회원가입') : '다시 만나 반갑습니다';
 
   useEffect(() => {
-    document.title = `ieumdesk · ${t(signup ? '회원가입' : '로그인')}`;
-  }, [signup, locale]);
+    document.title = `${brandName} · ${t(forgotPassword ? '비밀번호 초기화' : signup ? '회원가입' : '로그인')}`;
+  }, [brandName, signup, forgotPassword, locale]);
 
   const toggleMode = () => {
     setSignup(!signup);
@@ -463,6 +666,8 @@ export function LoginPage() {
     }
   };
 
+  if (forgotPassword) return <ForgotPasswordPage onBack={() => setForgotPassword(false)} />;
+
   return (
     <AuthFrame>
       <div className="auth-form-wrap">
@@ -472,7 +677,7 @@ export function LoginPage() {
           <p>
             {signup
               ? setupRequired
-                ? t('ieumdesk을 시작할 첫 번째 계정입니다.')
+                ? t('{0}에서 사용할 첫 번째 계정입니다.', [brandName])
                 : t('팀과 함께 사용할 계정을 만들어 주세요.')
               : t('로그인하고 오늘의 고객 업무를 시작하세요.')}
           </p>
@@ -559,6 +764,7 @@ export function LoginPage() {
               disabled={busy}
             />
           )}
+          {!signup && <button type="button" className="auth-reset-link" disabled={busy} onClick={() => { setPassword(''); setError(''); setForgotPassword(true); }}>{t('비밀번호를 잊으셨나요?')}</button>}
           <button className="button primary auth-submit" type="submit" disabled={busy}>
             {busy ? (
               <>
@@ -645,6 +851,23 @@ export function PendingApprovalPage() {
 export function AuthGate({ children }: { children: ReactNode }) {
   useLocale();
   const { user, loading, error, refresh } = useAuth();
+  const readResetToken = (hash = window.location.hash) => {
+    const params = new URLSearchParams(hash.slice(1));
+    return params.has('reset-password') ? (params.getAll('reset-password').length === 1 ? params.get('reset-password')! : '') : null;
+  };
+  const [resetToken, setResetToken] = useState<string | null>(() => readResetToken());
+  useEffect(() => {
+    // Hash navigation also emits popstate. Handle it once and read the event URL,
+    // since the credential is immediately removed from the address bar below.
+    const receiveLink = (event: HashChangeEvent) => setResetToken(readResetToken(new URL(event.newURL).hash));
+    window.addEventListener('hashchange', receiveLink);
+    return () => { window.removeEventListener('hashchange', receiveLink); };
+  }, []);
+  useEffect(() => {
+    if (resetToken !== null && new URLSearchParams(window.location.hash.slice(1)).has('reset-password'))
+      window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
+  }, [resetToken]);
+  if (resetToken !== null) return <PasswordResetPage key={resetToken} token={resetToken} onBack={() => { setResetToken(null); void refresh(); }} />;
   if (loading)
     return (
       <div className="auth-loading" role="status">

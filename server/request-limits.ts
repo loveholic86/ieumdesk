@@ -1,6 +1,7 @@
 import { createServer, type RequestListener } from 'node:http';
 import { performance } from 'node:perf_hooks';
 import type { Request, RequestHandler, Response } from 'express';
+import { requestClientAddress } from './proxy-access.ts';
 
 export const DEFAULT_REQUEST_LIMITS = Object.freeze({
   windowMs: 60_000,
@@ -85,8 +86,8 @@ function deny(response: Response, busy: boolean, retryAfter: number) {
 
 /**
  * Mount on /api after security headers, before JSON parsing, auth or data I/O.
- * Limits belong to this process. Vite/proxies share their socket address; forwarded
- * headers must not create new identities. No waiting queue or background timer.
+ * Limits belong to this process. Forwarded addresses are used only after the
+ * production proxy guard validates them. No waiting queue or background timer.
  */
 export function createRequestLimits(options: RequestLimitOptions = {}): RequestHandler {
   const { now = () => performance.now(), ...configured } = options;
@@ -111,9 +112,7 @@ export function createRequestLimits(options: RequestLimitOptions = {}): RequestH
       deny(response, true, 1);
       return;
     }
-    // remoteAddress is supplied by the socket, unlike req.ip or X-Forwarded-For.
-    const remote = request.socket.remoteAddress?.toLowerCase();
-    const address = remote?.startsWith('::ffff:') ? remote.slice(7) : remote || 'unknown-socket';
+    const address = requestClientAddress(request);
     if (time >= nextSweep) sweep(time);
     let bucket = buckets.get(address);
     if (!bucket) {

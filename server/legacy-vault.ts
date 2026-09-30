@@ -1,3 +1,4 @@
+import { runtimePath } from './runtime-config.ts';
 import {
   createCipheriv,
   createDecipheriv,
@@ -275,7 +276,7 @@ export async function openLegacyVault(
   if (typeof process.getuid !== 'function' || typeof constants.O_NOFOLLOW !== 'number')
     throw failure('LEGACY_VAULT_PLATFORM_UNSUPPORTED');
   const keyFile = path.resolve(
-    options.keyFile ?? process.env.LEGACY_VAULT_KEY_FILE ?? '.local/keys/crm-legacy.key',
+    options.keyFile ?? process.env.LEGACY_VAULT_KEY_FILE ?? runtimePath('keys/crm-legacy.key'),
   );
   const previous = keyOperations.get(keyFile);
   let release!: () => void;

@@ -1,5 +1,6 @@
 import { t, getLocaleTag } from './i18n';
 import { useLocale } from './use-locale';
+import { canManageBusiness } from './permissions';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
@@ -127,7 +128,7 @@ const validDetail = (value: unknown, id: string): value is SupportRecord =>
 export default function SupportPage({ companies, notify, onRefresh }: Props) {
   useLocale();
   const { user, canWrite } = useAuth();
-  const isAdmin = user?.role === 'admin' && user.status === 'active';
+  const canManage = canManageBusiness(user);
   const {
     settings,
     loading: policyLoading,
@@ -199,7 +200,7 @@ export default function SupportPage({ companies, notify, onRefresh }: Props) {
     setDetailMessage('');
     setSaveError('');
     setBusy(false);
-    if (!isAdmin) setArchiveFilter('active');
+    if (!canManage) setArchiveFilter('active');
     return () => {
       ++generation.current;
       operation.current?.abort();
@@ -214,7 +215,7 @@ export default function SupportPage({ companies, notify, onRefresh }: Props) {
       kind,
       search,
       status: kind === 'tickets' ? statusFilter : '',
-      ...(isAdmin && archiveFilter !== 'active' ? { includeArchived: 'true' } : {}),
+      ...(canManage && archiveFilter !== 'active' ? { includeArchived: 'true' } : {}),
     });
     void request<{ items: SupportRecord[] }>(`/support?${params.toString()}`, { signal: controller.signal })
       .then((result) => {
@@ -240,7 +241,7 @@ export default function SupportPage({ companies, notify, onRefresh }: Props) {
     search,
     statusFilter,
     archiveFilter,
-    isAdmin,
+    canManage,
     retry,
     scopeKey,
     listKey,
@@ -419,7 +420,7 @@ export default function SupportPage({ companies, notify, onRefresh }: Props) {
               ))}
             </select>
           )}
-          {isAdmin && (
+          {canManage && (
             <select
               aria-label={t('고객지원 보관 상태')}
               value={archiveFilter}
@@ -586,8 +587,8 @@ export default function SupportPage({ companies, notify, onRefresh }: Props) {
           message={detailMessage}
           policyPending={policyPending}
           canWrite={canWrite && !visibleDetail?.deleted}
-          isAdmin={isAdmin}
-          protectionEnabled={(settings?.protectionEnabled ?? true) || !isAdmin}
+          canManage={canManage}
+          protectionEnabled={(settings?.protectionEnabled ?? true) || !canManage}
           busy={busy}
           companyName={
             visibleDetail?.companyId
@@ -753,7 +754,7 @@ function SupportDetail({
   message,
   policyPending,
   canWrite,
-  isAdmin,
+  canManage,
   protectionEnabled,
   busy,
   companyName,
@@ -776,7 +777,7 @@ function SupportDetail({
   message: string;
   policyPending: boolean;
   canWrite: boolean;
-  isAdmin: boolean;
+  canManage: boolean;
   protectionEnabled: boolean;
   busy: boolean;
   companyName: string;
@@ -1256,7 +1257,7 @@ function SupportDetail({
                   : t('현재 설정에 따라 정보를 표시하고 있습니다.')}
             </span>
             <div>
-              {isAdmin && record && (
+              {canManage && record && (
                 <button
                   className="button"
                   disabled={busy || policyPending}
@@ -1329,7 +1330,7 @@ function SupportDetail({
                     {t('” 자료를')}{' '}
                     {record.deleted
                       ? t('일반 목록으로 복원합니다.')
-                      : t('휴지통으로 이동합니다. 관리자가 다시 복원할 수 있습니다.')}
+                      : t('휴지통으로 이동합니다. 관리자와 담당자가 다시 복원할 수 있습니다.')}
                   </Dialog.Description>
                   {error && (
                     <p className="catalog-message is-error" role="alert">
@@ -2081,7 +2082,7 @@ function SupportAttachments({
         <p className="support-attachment-hint">
           {policyPending
             ? t('보호 설정을 확인하고 있습니다.')
-            : t('보호 기능이 꺼져 있는 관리자 계정에서만 등록된 파일을 다운로드할 수 있습니다.')}
+            : t('보호 기능이 꺼져 있으면 관리자와 담당자가 등록된 파일을 다운로드할 수 있습니다.')}
         </p>
       )}
       {deleting && (

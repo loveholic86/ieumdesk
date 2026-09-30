@@ -39,13 +39,16 @@ import { requireCrmRequestHeader } from './csrf-defense.ts';
 import { createRequestLimits, trackRequestWork } from './request-limits.ts';
 import { validLocalAuthority, validateRequestShape, validateJsonStructure } from './request-validation.ts';
 import { validDevelopmentOrigin } from './network-access.ts';
+import { productionSettings } from './runtime-config.ts';
+import { productionProxyGuard } from './proxy-access.ts';
+import { preserveProtectedValues } from './protected-writes.ts';
 const recordKind = (value: string): RecordKind => {
   if (!['contacts', 'sales', 'quotations', 'installations'].includes(value))
     throw new ApiError(404, 'NOT_FOUND', '요청한 업무 항목을 찾을 수 없습니다.');
   return value as RecordKind;
 };
-export function assertLocalDevelopment(environment = process.env.NODE_ENV) {
-  if (environment === 'production') throw new Error('PRODUCTION_AUTHENTICATION_REQUIRED');
+export function assertExecutionEnvironment(environment = process.env.NODE_ENV) {
+  productionSettings({ ...process.env, NODE_ENV: environment });
 }
 export function createApp(
   store: Store,
@@ -59,12 +62,13 @@ export function createApp(
     installation?: Pick<InstallationWorkspaceRouterOptions, 'repository' | 'attachments' | 'vault'>;
   } = {},
 ) {
-  assertLocalDevelopment();
+  assertExecutionEnvironment();
+  const production = productionSettings();
   if (!authStore) throw new Error('AUTH_STORE_REQUIRED');
   const app = express();
   app.disable('x-powered-by');
   app.disable('etag');
-  app.set('trust proxy', false);
+  app.set('trust proxy', production ? 'loopback' : false);
   app.set('query parser', 'simple');
   app.use(helmet({ referrerPolicy: { policy: 'no-referrer' }, frameguard: { action: 'deny' } }));
   // Apply before origin checks and body parsing so rejected requests are not cached either.
@@ -80,21 +84,22 @@ export function createApp(
     }
     next();
   });
+  if (production) app.use(productionProxyGuard(production));
   app.use('/api', createRequestLimits());
   app.use(validateRequestShape);
   // Vite forwards the browser's Host and Origin from this machine's loopback or LAN address.
   app.use((request, response, next) => {
     const origin = request.get('origin');
     if (
-      !validLocalAuthority(request.headers.host || '') ||
-      (origin && !validDevelopmentOrigin(origin)) ||
+      (!production && !validLocalAuthority(request.headers.host || '')) ||
+      (!production && origin && !validDevelopmentOrigin(origin)) ||
       request.get('sec-fetch-site') === 'cross-site' ||
       // A browser request from another same-site port still needs an allowed Origin.
       (request.get('sec-fetch-site') === 'same-site' && !origin)
     ) {
       response
         .status(403)
-        .json({ error: { code: 'LOCAL_ONLY', message: '이 개발 서버는 로컬 접속만 허용합니다.' } });
+        .json({ error: { code: production ? 'ORIGIN_NOT_ALLOWED' : 'LOCAL_ONLY', message: '허용되지 않은 접속 주소입니다.' } });
       return;
     }
     if (['POST', 'PATCH', 'PUT'].includes(request.method) && !request.is('application/json')) {
@@ -111,7 +116,13 @@ export function createApp(
   app.use('/api/support', express.json({ limit: '1mb', inflate: false }));
   app.use(express.json({ limit: '100kb', inflate: false }));
   app.use('/api', validateJsonStructure);
-  const auth = createAuthentication(authStore, authOptions);
+  const auth = createAuthentication(authStore, {
+    ...authOptions,
+    onAdminPasswordReset: async (actorId, targetId) => {
+      await workspace.audit({ actorId, action: '비밀번호 재설정 링크 발급', area: 'users', result: '완료', fields: [`user:${targetId}`] });
+      await authOptions?.onAdminPasswordReset?.(actorId, targetId);
+    },
+  });
   const installation = installationAccess ?? createInstallationDetailsAccess(store);
   const workspace =
     options.workspace ??
@@ -158,11 +169,13 @@ export function createApp(
   const installationWorkspace = createInstallationWorkspace({
     details: installation,
     mode: store.mode,
-    requireAdmin: auth.requireAdmin,
+    requireEditor: auth.requireEditor,
     ...options.installation,
     metadata: {
       async read(id) {
-        const record = (await store.listRecords('installations')).find((row) => row.id === id);
+        const record = store.getRecord
+          ? await store.getRecord('installations', id)
+          : (await store.listRecords('installations')).find((row) => row.id === id);
         if (!record) throw new ApiError(404, 'NOT_FOUND', '설치 정보를 찾을 수 없습니다.');
         return record as unknown as Record<string, unknown>;
       },
@@ -170,7 +183,8 @@ export function createApp(
         await store.updateInstallationMetadata(id, installationMetadataPatch(values), expectedRevision, {
           id: actorId,
           name: '',
-          role: 'admin',
+          // The router rechecks the live business role; PostgreSQL also locks and checks this actor.
+          role: 'editor',
         });
       },
     },
@@ -198,6 +212,14 @@ export function createApp(
       workspace.audit({ actorId: request.authUser!.id, action, area: 'backups', result: '완료' }),
   });
   app.locals.backupManager = backups;
+  app.get(
+    '/api/branding',
+    trackRequestWork(async (_request, response) => {
+      const { brandName, workspaceName } = await workspace.get();
+      // Login pages need display names only; settings, policy and audit data stay authenticated.
+      response.json({ brandName, workspaceName });
+    }),
+  );
   app.use('/api/auth', auth.router);
   app.use('/api/admin', auth.admin);
   app.use('/api', auth.requireActive);
@@ -272,17 +294,21 @@ export function createApp(
     }),
   );
   app.use(
+    ['/api/companies', '/api/activities', '/api/tasks', '/api/records', '/api/catalog', '/api/support'],
+    preserveProtectedValues,
+  );
+  app.use(
     '/api/catalog',
     createCatalogRouter(catalog, auth.requireAdmin, { assertActive, send: sendBusiness }),
   );
   app.use('/api/backups', backups.router);
   app.use(
     '/api/support',
-    createSupportRouter(support, workspace, auth.requireAdmin, auth.requireEditor, assertActive),
+    createSupportRouter(support, workspace, auth.requireEditor, assertActive),
   );
   app.post(
     '/api/archive/companies/:id',
-    auth.requireAdmin,
+    auth.requireEditor,
     trackRequestWork(async (request, _response, next) => {
       if (await support.countCompany(String(request.params.id)))
         throw new ApiError(
@@ -293,7 +319,7 @@ export function createApp(
       next();
     }),
   );
-  app.use('/api/archive', createArchiveRouter(store, auth.requireAdmin));
+  app.use('/api/archive', createArchiveRouter(store, auth.requireAdmin, auth.requireEditor));
   app.use('/api/records/installations', installationWorkspace.router);
   app.use('/api', (request, response, next) => {
     if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(request.method))
@@ -320,6 +346,15 @@ export function createApp(
         'companies',
         await store.listCompanies(querySchema.parse(request.query)),
       );
+    }),
+  );
+  app.get(
+    '/api/companies/all',
+    trackRequestWork(async (request, response) => {
+      // The UI already needs the complete directory. Read/decrypt/enrich it once, not once per page.
+      await sendBusiness(request, response, 'companies', await store.listCompanies({
+        ...querySchema.parse({}), pageSize: Number.MAX_SAFE_INTEGER,
+      }));
     }),
   );
   app.get(

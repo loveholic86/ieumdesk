@@ -1,6 +1,7 @@
 import { t, getLocaleTag, displayValue } from './i18n';
 import { useLocale } from './use-locale';
 import { useAuth } from './auth';
+import { canManageBusiness } from './permissions';
 import { useWorkspaceSettings } from './workspace-settings';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -43,6 +44,7 @@ type LineItem = QuotationItem;
 type RecordRow = {
   id: string;
   companyId: string | null;
+  companyName?: string;
   relatedCompanyIds?: string[];
   updatedAt?: string;
   createdAt?: string;
@@ -100,6 +102,7 @@ type RecordRow = {
   author?: string;
 };
 type Props = {
+  companiesPending?: boolean;
   kind: ModuleKind;
   companies: Company[];
   refresh: number;
@@ -250,7 +253,15 @@ function DetailItem({ label, value }: { label: string; value?: React.ReactNode }
   );
 }
 
-export default function Modules({ kind, companies, refresh, onRefresh, notify, onCompany }: Props) {
+export default function Modules({
+  kind,
+  companies,
+  companiesPending = false,
+  refresh,
+  onRefresh,
+  notify,
+  onCompany,
+}: Props) {
   useLocale();
   const { canWrite, user } = useAuth();
   const workspace = useWorkspaceSettings();
@@ -316,7 +327,6 @@ export default function Modules({ kind, companies, refresh, onRefresh, notify, o
     rememberFocus();
     setSelected(row);
   };
-  const companyIds = companies.map((company) => company.id).join(',');
   const companyNames = useMemo(
     () => new Map(companies.map((company) => [company.id, company.name])),
     [companies],
@@ -366,7 +376,7 @@ export default function Modules({ kind, companies, refresh, onRefresh, notify, o
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [kind, refresh, retry, companyIds, policyToken]);
+  }, [kind, refresh, retry, policyToken]);
   useEffect(() => {
     setPage(1);
   }, [query, companyFilter, category]);
@@ -417,7 +427,9 @@ export default function Modules({ kind, companies, refresh, onRefresh, notify, o
       고객사:
         recordCompanyIds(row)
           .map((id) => companyNames.get(id) || '고객사 확인 필요')
-          .join(', ') || '고객사 연결 없음',
+          .join(', ') ||
+        row.companyName ||
+        '고객사 연결 없음',
       [config.singular]: recordTitle(kind, row),
       [categoryLabel]: kind === 'activities' ? activityLabels[row.type || ''] : categoryValue(row),
       ...(kind === 'contacts'
@@ -467,7 +479,12 @@ export default function Modules({ kind, companies, refresh, onRefresh, notify, o
           <p>{t(config.description)}</p>
         </div>
         {canWrite && (
-          <button className="button primary" ref={addButton} onClick={openNew} disabled={!companies.length}>
+          <button
+            className="button primary"
+            ref={addButton}
+            onClick={openNew}
+            disabled={companiesPending || (kind !== 'installations' && !companies.length)}
+          >
             <Plus size={18} />
             {t('{0} 추가', [t(config.singular)])}
           </button>
@@ -536,6 +553,7 @@ export default function Modules({ kind, companies, refresh, onRefresh, notify, o
           <div className="m-filters">
             <select
               aria-label={t('고객사 필터')}
+              disabled={companiesPending}
               value={companyFilter}
               onChange={(e) => setCompanyFilter(e.target.value)}
             >
@@ -563,7 +581,11 @@ export default function Modules({ kind, companies, refresh, onRefresh, notify, o
                 </option>
               ))}
             </select>
-            <button className="button m-export" disabled={!filtered.length || loading} onClick={exportData}>
+            <button
+              className="button m-export"
+              disabled={!filtered.length || loading || companiesPending}
+              onClick={exportData}
+            >
               <Download size={16} />
               {t('내보내기')}
             </button>
@@ -616,16 +638,19 @@ export default function Modules({ kind, companies, refresh, onRefresh, notify, o
                 ? t('검색어나 필터를 변경해 주세요.')
                 : !canWrite
                   ? t('담당자가 등록한 정보를 이곳에서 확인할 수 있습니다.')
-                  : companies.length
+                  : companies.length || kind === 'installations'
                     ? t('첫 {0} 정보를 추가해 업무를 시작하세요.', [t(config.singular)])
                     : t('고객사 관리에서 고객사를 먼저 등록해 주세요.')}
             </p>
-            {canWrite && !rows.length && companies.length > 0 && (
-              <button className="button" onClick={openNew}>
-                <Plus size={16} />
-                {t('{0} 추가', [t(config.singular)])}
-              </button>
-            )}
+            {canWrite &&
+              !companiesPending &&
+              !rows.length &&
+              (companies.length > 0 || kind === 'installations') && (
+                <button className="button" onClick={openNew}>
+                  <Plus size={16} />
+                  {t('{0} 추가', [t(config.singular)])}
+                </button>
+              )}
           </div>
         ) : (
           <>
@@ -633,7 +658,11 @@ export default function Modules({ kind, companies, refresh, onRefresh, notify, o
               <table className="m-table">
                 <caption className="m-sr-only">
                   {t(config.title)}
-                  {t(' 목록, 항목 이름을 누르면 상세 정보가 열립니다.')}
+                  {t(
+                    kind === 'installations'
+                      ? ' 목록, 행을 누르면 상세 정보가 열립니다.'
+                      : ' 목록, 항목 이름을 누르면 상세 정보가 열립니다.',
+                  )}
                 </caption>
                 <thead>
                   <tr>
@@ -691,7 +720,36 @@ export default function Modules({ kind, companies, refresh, onRefresh, notify, o
                     const RowIcon =
                       kind === 'activities' ? activityIcons[row.type || 'note'] || FileText : config.icon;
                     return (
-                      <tr key={row.id}>
+                      <tr
+                        key={row.id}
+                        className={kind === 'installations' ? 'm-clickable-row' : undefined}
+                        tabIndex={kind === 'installations' ? 0 : undefined}
+                        aria-label={
+                          kind === 'installations' ? t('{0} 상세 보기', [recordTitle(kind, row)]) : undefined
+                        }
+                        onClick={
+                          kind === 'installations'
+                            ? (event) => {
+                                if ((event.target as HTMLElement).closest('button, a')) return;
+                                event.currentTarget.focus();
+                                openDetail(row);
+                              }
+                            : undefined
+                        }
+                        onKeyDown={
+                          kind === 'installations'
+                            ? (event) => {
+                                if (
+                                  event.target !== event.currentTarget ||
+                                  !['Enter', ' '].includes(event.key)
+                                )
+                                  return;
+                                event.preventDefault();
+                                openDetail(row);
+                              }
+                            : undefined
+                        }
+                      >
                         <td>
                           <div className="m-name-cell">
                             <span className={`m-record-icon ${kind}`}>
@@ -720,11 +778,21 @@ export default function Modules({ kind, companies, refresh, onRefresh, notify, o
                           {recordCompanyIds(row).length ? (
                             recordCompanyIds(row).map((id) => (
                               <div key={id}>
-                                <button className="m-company-link" onClick={() => onCompany(id)}>
-                                  {companyNames.get(id) || t('고객사 확인 필요')}
-                                </button>
+                                {kind === 'installations' ? (
+                                  <span>
+                                    {companyNames.get(id) ||
+                                      t(companiesPending ? '불러오는 중…' : '고객사 확인 필요')}
+                                  </span>
+                                ) : (
+                                  <button className="m-company-link" onClick={() => onCompany(id)}>
+                                    {companyNames.get(id) ||
+                                      t(companiesPending ? '불러오는 중…' : '고객사 확인 필요')}
+                                  </button>
+                                )}
                               </div>
                             ))
+                          ) : row.companyName ? (
+                            <span>{displayValue(row.companyName)}</span>
                           ) : (
                             <span className="muted">{t('고객사 연결 없음')}</span>
                           )}
@@ -909,6 +977,7 @@ export default function Modules({ kind, companies, refresh, onRefresh, notify, o
         onChanged={onRefresh}
         notify={notify}
         onEdit={() => {
+          if (companiesPending) return;
           if (kind === 'installations') {
             setEditing(selected);
             return;
@@ -1213,7 +1282,7 @@ function RecordDetail({
                       {t('새 버전 작성')}
                     </button>
                   )}
-                  {canWrite && (kind !== 'quotations' || row.status !== '승인' || user?.role === 'admin') && (
+                  {canWrite && (
                     <button className="button primary" onClick={onEdit}>
                       <Pencil size={15} />
                       {t('정보 수정')}
@@ -1485,6 +1554,12 @@ function RecordForm({
         },
   );
   const initialDraft = useRef(draft);
+  const [manualCompany, setManualCompany] = useState(
+    kind === 'installations' &&
+      (record === 'new'
+        ? !defaultCompanyId && companies.length === 0
+        : !record.companyId && Boolean(record.companyName)),
+  );
   const isRevision = record !== 'new' && Boolean(record.revisionSourceId);
   const isNew = record === 'new' || isRevision;
   const [targetAmount, setTargetAmount] = useState('');
@@ -1613,6 +1688,7 @@ function RecordForm({
       ],
       installations: [
         'companyId',
+        'companyName',
         'systemCode',
         'serviceVersion',
         'version',
@@ -1702,7 +1778,13 @@ function RecordForm({
                 ? t('{0} 추가', [t(config.singular)])
                 : t('{0} 수정', [t(config.singular)])}
           </Title>
-          <Description>{t('고객사와 연결할 정보를 입력하세요. * 표시는 필수입니다.')}</Description>
+          <Description>
+            {t(
+              kind === 'installations'
+                ? '설치 정보를 입력하세요. 고객사는 선택하거나 직접 입력할 수 있습니다. * 표시는 필수입니다.'
+                : '고객사와 연결할 정보를 입력하세요. * 표시는 필수입니다.',
+            )}
+          </Description>
         </div>
         <button
           type="button"
@@ -1717,15 +1799,33 @@ function RecordForm({
       <form autoComplete="off" spellCheck={false} onSubmit={save}>
         <div className="m-form-scroll">
           <div className="form-grid">
-            <Field label={record === 'new' || record.companyId ? t('고객사 *') : t('고객사')} wide>
+            <Field
+              label={record === 'new' || record.companyId || record.companyName ? t('고객사 *') : t('고객사')}
+              wide
+            >
               <select
-                required={record === 'new' || Boolean(record.companyId)}
-                value={draft.companyId || ''}
-                onChange={(e) => update('companyId', e.target.value)}
+                required={record === 'new' || Boolean(record.companyId || record.companyName)}
+                value={manualCompany ? '__manual_company__' : draft.companyId || ''}
+                onChange={(e) => {
+                  if (kind !== 'installations') {
+                    update('companyId', e.target.value);
+                    return;
+                  }
+                  const manual = e.target.value === '__manual_company__';
+                  setManualCompany(manual);
+                  setDraft((current) => ({
+                    ...current,
+                    companyId: manual ? '' : e.target.value,
+                    companyName: manual ? current.companyName || '' : '',
+                  }));
+                }}
               >
                 <option value="">
                   {record !== 'new' && !record.companyId ? t('고객사 연결 없음') : t('고객사를 선택하세요')}
                 </option>
+                {kind === 'installations' && (
+                  <option value="__manual_company__">{t('고객사명 직접 입력')}</option>
+                )}
                 {companies.map((company) => (
                   <option key={company.id} value={company.id}>
                     {company.name}
@@ -1733,6 +1833,18 @@ function RecordForm({
                 ))}
               </select>
             </Field>
+            {kind === 'installations' && manualCompany && (
+              <Field label={t('고객사명 *')} wide>
+                <input
+                  required
+                  maxLength={150}
+                  value={draft.companyName || ''}
+                  placeholder={t('고객사명을 입력하세요')}
+                  onChange={(event) => update('companyName', event.target.value)}
+                />
+                <small>{t('고객사 관리에 등록하지 않고 설치 정보에만 저장합니다.')}</small>
+              </Field>
+            )}
             {kind === 'contacts' ? (
               <>
                 {input('name', '담당자 이름', {
@@ -1823,12 +1935,12 @@ function RecordForm({
                 {input('issueDate', '발행일', { required: !legacyLocked, type: 'date' })}
                 {input('contactName', '수신 담당자', { maxLength: 100 })}
                 {select('quotationType', '계약 유형', ['신규계약', '재계약', '미분류'])}
-                {user?.role === 'admin' ? (
+                {canManageBusiness(user) ? (
                   select('status', '견적 상태', ['발행', '승인', '반려'])
                 ) : (
                   <Field label={t('견적 상태')}>
                     <input value={draft.status || '발행'} readOnly />
-                    <small>{t('승인·반려는 관리자가 결정합니다.')}</small>
+                    <small>{t('승인·반려는 관리자와 담당자가 결정합니다.')}</small>
                   </Field>
                 )}
               </>

@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { createApp, assertLocalDevelopment } from './app.ts';
+import { createApp, assertExecutionEnvironment } from './app.ts';
 import { DemoStore, type Store } from './store.ts';
 import { PostgresStore } from './postgres-store.ts';
 import { DemoAuthStore, PostgresAuthStore, type AuthStore } from './auth-store.ts';
@@ -8,6 +8,7 @@ import type { WorkspaceSettingsAccess } from './workspace-settings.ts';
 import type { CatalogService } from './catalog.ts';
 import type { SupportService } from './support.ts';
 import { createApiHttpServer } from './request-limits.ts';
+import { backupSchedulerEnabled, validateRuntimeStorage } from './runtime-config.ts';
 
 let store: Store | undefined;
 let authStore: AuthStore | undefined;
@@ -18,7 +19,8 @@ let catalogService:CatalogService|undefined;
 let supportService:SupportService|undefined;
 let backupManager:{startScheduler:()=>void;close:()=>Promise<void>}|undefined;
 try {
-  assertLocalDevelopment();
+  assertExecutionEnvironment();
+  await validateRuntimeStorage();
   const mode = process.env.CRM_DATA_MODE || 'demo';
   if (mode !== 'demo' && mode !== 'postgres') throw new Error('INVALID_DATA_MODE');
   const port = Number(process.env.PORT || 3001);
@@ -34,7 +36,7 @@ try {
   catalogService=app.locals.catalogService;
   supportService=app.locals.supportService;
   backupManager=app.locals.backupManager;
-  backupManager?.startScheduler();
+  if (backupSchedulerEnabled()) backupManager?.startScheduler();
   const closeStores = async () => { await backupManager?.close(); await app.locals.flushAuditWrites?.(); await Promise.all([store?.close?.(), authStore?.close?.(), installationAccess?.close?.(),workspaceAccess?.close?.(),installationWorkspace?.close(),catalogService?.close(),supportService?.close()]); };
   const server = createApiHttpServer(app);
   server.listen(port, '127.0.0.1', () => {
@@ -57,11 +59,12 @@ try {
 } catch (error) {
   const code = (error as { code?: string; message?: string }).code || (error as Error).message;
   const messages: Record<string, string> = {
-    PRODUCTION_AUTHENTICATION_REQUIRED:
-      '운영용 HTTPS·접속 도메인 설정 전까지 로컬 개발 전용입니다.',
+    PRODUCTION_CONFIGURATION_REQUIRED:
+      '운영용 HTTPS 주소, PostgreSQL, 영구 저장 경로와 암호화 키 설정을 확인해 주세요.',
     DATABASE_SCHEMA_MISSING:
       'CRM 전용 스키마가 없습니다. db/001_initial.sql의 적용 절차를 확인해 주세요. 자동 생성하거나 데모로 전환하지 않습니다.',
     AUTH_SCHEMA_MISSING: '계정 스키마가 없습니다. db/002_auth.sql을 명시적으로 적용한 뒤 다시 실행해 주세요.',
+    PASSWORD_RESET_SCHEMA_MISSING: '비밀번호 재설정 스키마가 없습니다. db/016_password_reset.sql을 명시적으로 적용한 뒤 다시 실행해 주세요.',
     INVALID_DATA_MODE: 'CRM_DATA_MODE는 demo 또는 postgres여야 합니다.',
     INVALID_PORT: 'PORT는 1024~65535 정수여야 합니다.',
   };

@@ -8,17 +8,18 @@ const area = (value: string): ArchiveArea => {
     throw new ApiError(404, 'NOT_FOUND', '휴지통 항목을 찾을 수 없습니다.');
   return value as ArchiveArea;
 };
-export function createArchiveRouter(store: Store, requireAdmin: RequestHandler) {
+export function createArchiveRouter(store: Store, requireAdmin: RequestHandler, requireEditor: RequestHandler) {
   const router = Router();
-  router.use(requireAdmin);
   router.get(
     '/',
+    requireAdmin,
     trackRequestWork(async (_request, response) => {
       response.json({ items: await store.listArchived() });
     }),
   );
   router.post(
     '/:area/:id',
+    requireEditor,
     trackRequestWork(async (request, response) => {
       response.json(
         await store.archive(
@@ -31,6 +32,7 @@ export function createArchiveRouter(store: Store, requireAdmin: RequestHandler) 
   );
   router.post(
     '/:area/:id/restore',
+    requireAdmin,
     trackRequestWork(async (request, response) => {
       response.json(
         await store.restoreArchived(

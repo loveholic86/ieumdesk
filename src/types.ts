@@ -138,6 +138,7 @@ export interface QuotationRecord extends RecordBase {
   total: number;
 }
 export interface InstallationRecord extends RecordBase {
+  companyName?: string;
   systemCode: string;
   serviceVersion: ServiceVersion;
   version: string;

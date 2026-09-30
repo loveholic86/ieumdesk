@@ -2,6 +2,8 @@ import { trackRequestWork } from './request-limits.ts';
 import express, { Router, type Request, type RequestHandler, type Response } from 'express';
 import { z } from 'zod';
 import { ApiError } from './errors.ts';
+import { canViewProtectedInformation } from '../src/protection-policy.ts';
+import { canManageBusiness } from '../src/permissions.ts';
 import type { InstallationDetailsAccess } from './installation-details.ts';
 import type { LegacyVault } from './legacy-vault.ts';
 import {
@@ -22,7 +24,7 @@ import {
 export interface InstallationWorkspaceRouterOptions {
   details: InstallationDetailsAccess;
   mode: 'demo' | 'postgres';
-  requireAdmin: RequestHandler;
+  requireEditor: RequestHandler;
   protectionEnabled: () => Promise<boolean>;
   /** Refresh request.authUser from the live session; reject revoked/disabled sessions. */
   assertActive?: (request: Request) => Promise<void>;
@@ -84,20 +86,20 @@ export function createInstallationWorkspace(options: InstallationWorkspaceRouter
     if (!request.authUser || request.authUser.status !== 'active')
       throw new ApiError(401, 'AUTHENTICATION_REQUIRED', '로그인이 필요합니다.');
   };
-  const assertAdmin = async (request: Request) => {
+  const assertEditor = async (request: Request) => {
     await assertActive(request);
-    if (request.authUser!.role !== 'admin')
-      throw new ApiError(403, 'ADMIN_REQUIRED', '관리자 권한이 필요합니다.');
+    if (!canManageBusiness(request.authUser))
+      throw new ApiError(403, 'WRITE_PERMISSION_REQUIRED', '등록·수정 권한이 필요합니다.');
   };
   const protectedFor = async (request: Request) => {
     const enabled = await options.protectionEnabled();
     await assertActive(request);
-    return enabled || request.authUser!.role !== 'admin';
+    return enabled || !canViewProtectedInformation(request.authUser);
   };
   const assertDownloadAllowed = async (request: Request) => {
-    await assertAdmin(request);
+    await assertEditor(request);
     const enabled = await options.protectionEnabled();
-    await assertAdmin(request);
+    await assertEditor(request);
     if (enabled) throw protectionRequired();
   };
   const disclose = async (request: Request, id: string) => {
@@ -126,148 +128,190 @@ export function createInstallationWorkspace(options: InstallationWorkspaceRouter
     // never release raw values without recording a disclosure first.
     response.json(protectInstallationDetails(details, protectedValues));
   };
-  router.get('/:id/details', trackRequestWork(async (request, response) =>
-    current(parameter(request.params.id), request, response)),
+  router.get(
+    '/:id/details',
+    trackRequestWork(async (request, response) => current(parameter(request.params.id), request, response)),
   );
-  router.post('/:id/rows', options.requireAdmin, trackRequestWork(async (request, response) => {
-    try {
-      await access.createRow(parameter(request.params.id), request.body, request.authUser!.id, () =>
-        assertAdmin(request),
-      );
-      await current(parameter(request.params.id), request, response.status(201));
-    } finally {
-      request.body = undefined;
-    }
-  }));
-  router.patch('/:id/rows/:rowId', options.requireAdmin, trackRequestWork(async (request, response) => {
-    try {
-      await access.updateRow(
+  router.post(
+    '/:id/rows',
+    options.requireEditor,
+    trackRequestWork(async (request, response) => {
+      try {
+        await access.createRow(parameter(request.params.id), request.body, request.authUser!.id, () =>
+          assertEditor(request),
+        );
+        await current(parameter(request.params.id), request, response.status(201));
+      } finally {
+        request.body = undefined;
+      }
+    }),
+  );
+  router.patch(
+    '/:id/rows/:rowId',
+    options.requireEditor,
+    trackRequestWork(async (request, response) => {
+      try {
+        await access.updateRow(
+          parameter(request.params.id),
+          parameter(request.params.rowId),
+          request.body,
+          request.authUser!.id,
+          () => assertEditor(request),
+        );
+        await current(parameter(request.params.id), request, response);
+      } finally {
+        request.body = undefined;
+      }
+    }),
+  );
+  router.delete(
+    '/:id/rows/:rowId',
+    options.requireEditor,
+    trackRequestWork(async (request, response) => {
+      await access.deleteRow(
         parameter(request.params.id),
         parameter(request.params.rowId),
         request.body,
         request.authUser!.id,
-        () => assertAdmin(request),
+        () => assertEditor(request),
       );
       await current(parameter(request.params.id), request, response);
-    } finally {
-      request.body = undefined;
-    }
-  }));
-  router.delete('/:id/rows/:rowId', options.requireAdmin, trackRequestWork(async (request, response) => {
-    await access.deleteRow(
-      parameter(request.params.id),
-      parameter(request.params.rowId),
-      request.body,
-      request.authUser!.id,
-      () => assertAdmin(request),
-    );
-    await current(parameter(request.params.id), request, response);
-  }));
-  router.post('/:id/access-notes', options.requireAdmin, trackRequestWork(async (request, response) => {
-    try {
-      await access.createAccessNote(parameter(request.params.id), request.body, request.authUser!.id, () =>
-        assertAdmin(request),
-      );
-      await current(parameter(request.params.id), request, response.status(201));
-    } finally {
-      request.body = undefined;
-    }
-  }));
-  router.patch('/:id/access-notes/:noteId', options.requireAdmin, trackRequestWork(async (request, response) => {
-    try {
-      await access.updateAccessNote(
-        parameter(request.params.id),
-        parameter(request.params.noteId),
-        request.body,
-        request.authUser!.id,
-        () => assertAdmin(request),
-      );
-      await current(parameter(request.params.id), request, response);
-    } finally {
-      request.body = undefined;
-    }
-  }));
-  router.delete('/:id/access-notes/:noteId', options.requireAdmin, trackRequestWork(async (request, response) => {
-    try {
-      await access.deleteAccessNote(
-        parameter(request.params.id),
-        parameter(request.params.noteId),
-        request.body,
-        request.authUser!.id,
-        () => assertAdmin(request),
-      );
-      await current(parameter(request.params.id), request, response);
-    } finally {
-      request.body = undefined;
-    }
-  }));
-  router.get('/:id/attachments', trackRequestWork(async (request, response) => {
-    await access.details(parameter(request.params.id)); // Verify the installation exists before file lookup.
-    const items = await attachments.list(parameter(request.params.id));
-    await assertActive(request);
-    response.json({
-      items,
-      maxBytes: INSTALLATION_ATTACHMENT_MAX_BYTES,
-      allowedExtensions: INSTALLATION_ATTACHMENT_EXTENSIONS,
-      downloadsEnabled: !(await protectedFor(request)),
-    });
-  }));
-  router.post('/:id/attachments', options.requireAdmin, trackRequestWork(async (request, response) => {
-    try {
-      const parsed = z
-        .object({ name: z.string(), contentBase64: z.string() })
-        .strict()
-        .safeParse(request.body);
-      if (!parsed.success)
-        throw new ApiError(400, 'INSTALLATION_ATTACHMENT_INVALID', '첨부파일 입력값을 확인해 주세요.');
-      await access.details(parameter(request.params.id));
-      const uploaded = await attachments.upload(parameter(request.params.id), parsed.data, () =>
-        assertAdmin(request),
-      );
+    }),
+  );
+  router.post(
+    '/:id/access-notes',
+    options.requireEditor,
+    trackRequestWork(async (request, response) => {
+      try {
+        await access.createAccessNote(parameter(request.params.id), request.body, request.authUser!.id, () =>
+          assertEditor(request),
+        );
+        await current(parameter(request.params.id), request, response.status(201));
+      } finally {
+        request.body = undefined;
+      }
+    }),
+  );
+  router.patch(
+    '/:id/access-notes/:noteId',
+    options.requireEditor,
+    trackRequestWork(async (request, response) => {
+      try {
+        await access.updateAccessNote(
+          parameter(request.params.id),
+          parameter(request.params.noteId),
+          request.body,
+          request.authUser!.id,
+          () => assertEditor(request),
+        );
+        await current(parameter(request.params.id), request, response);
+      } finally {
+        request.body = undefined;
+      }
+    }),
+  );
+  router.delete(
+    '/:id/access-notes/:noteId',
+    options.requireEditor,
+    trackRequestWork(async (request, response) => {
+      try {
+        await access.deleteAccessNote(
+          parameter(request.params.id),
+          parameter(request.params.noteId),
+          request.body,
+          request.authUser!.id,
+          () => assertEditor(request),
+        );
+        await current(parameter(request.params.id), request, response);
+      } finally {
+        request.body = undefined;
+      }
+    }),
+  );
+  router.get(
+    '/:id/attachments',
+    trackRequestWork(async (request, response) => {
+      await access.details(parameter(request.params.id)); // Verify the installation exists before file lookup.
+      const items = await attachments.list(parameter(request.params.id));
       await assertActive(request);
-      response.status(201).json(uploaded);
-    } finally {
-      request.body = undefined;
-    }
-  }));
-  router.delete('/:id/attachments/:attachmentId', options.requireAdmin, trackRequestWork(async (request, response) => {
-    await access.details(parameter(request.params.id));
-    await attachments.remove(parameter(request.params.id), parameter(request.params.attachmentId), () =>
-      assertAdmin(request),
-    );
-    response.status(204).end();
-  }));
-  router.get('/:id/attachments/:attachmentId/download', trackRequestWork(async (request, response) => {
-    await assertDownloadAllowed(request);
-    await access.details(parameter(request.params.id));
-    const file = await attachments.download(
-      parameter(request.params.id),
-      parameter(request.params.attachmentId),
-    );
-    try {
-      await disclose(request, parameter(request.params.id));
+      const protectedValues = await protectedFor(request);
+      response.json({
+        items,
+        maxBytes: INSTALLATION_ATTACHMENT_MAX_BYTES,
+        allowedExtensions: INSTALLATION_ATTACHMENT_EXTENSIONS,
+        downloadsEnabled: !protectedValues && canManageBusiness(request.authUser),
+      });
+    }),
+  );
+  router.post(
+    '/:id/attachments',
+    options.requireEditor,
+    trackRequestWork(async (request, response) => {
+      try {
+        const parsed = z
+          .object({ name: z.string(), contentBase64: z.string() })
+          .strict()
+          .safeParse(request.body);
+        if (!parsed.success)
+          throw new ApiError(400, 'INSTALLATION_ATTACHMENT_INVALID', '첨부파일 입력값을 확인해 주세요.');
+        await access.details(parameter(request.params.id));
+        const uploaded = await attachments.upload(parameter(request.params.id), parsed.data, () =>
+          assertEditor(request),
+        );
+        await assertActive(request);
+        response.status(201).json(uploaded);
+      } finally {
+        request.body = undefined;
+      }
+    }),
+  );
+  router.delete(
+    '/:id/attachments/:attachmentId',
+    options.requireEditor,
+    trackRequestWork(async (request, response) => {
+      await access.details(parameter(request.params.id));
+      await attachments.remove(parameter(request.params.id), parameter(request.params.attachmentId), () =>
+        assertEditor(request),
+      );
+      response.status(204).end();
+    }),
+  );
+  router.get(
+    '/:id/attachments/:attachmentId/download',
+    trackRequestWork(async (request, response) => {
       await assertDownloadAllowed(request);
-    } catch (error) {
-      file.content.fill(0);
-      throw error;
-    }
-    download(response, file);
-  }));
-  router.post('/:id/configuration', trackRequestWork(async (request, response) => {
-    await assertDownloadAllowed(request);
-    const file = await access.configuration(parameter(request.params.id), request.body ?? {});
-    try {
-      await disclose(request, parameter(request.params.id));
+      await access.details(parameter(request.params.id));
+      const file = await attachments.download(
+        parameter(request.params.id),
+        parameter(request.params.attachmentId),
+      );
+      try {
+        await disclose(request, parameter(request.params.id));
+        await assertDownloadAllowed(request);
+      } catch (error) {
+        file.content.fill(0);
+        throw error;
+      }
+      download(response, file);
+    }),
+  );
+  router.post(
+    '/:id/configuration',
+    trackRequestWork(async (request, response) => {
       await assertDownloadAllowed(request);
-    } catch (error) {
-      file.content.fill(0);
-      throw error;
-    }
-    response.set('X-Installation-Format', 'generic-java-properties');
-    response.set('X-Original-Format-Verified', 'false');
-    download(response, file);
-  }));
-  // The retired endpoint cannot bypass administrator-only disclosure and global protection.
+      const file = await access.configuration(parameter(request.params.id), request.body ?? {});
+      try {
+        await disclose(request, parameter(request.params.id));
+        await assertDownloadAllowed(request);
+      } catch (error) {
+        file.content.fill(0);
+        throw error;
+      }
+      response.set('X-Installation-Format', 'yeta-yts-base64');
+      download(response, file);
+    }),
+  );
+  // The retired endpoint cannot bypass the current disclosure policy.
   router.post('/:id/secrets', () => {
     throw new ApiError(
       410,

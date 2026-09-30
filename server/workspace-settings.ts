@@ -1,3 +1,4 @@
+import { runtimePath } from './runtime-config.ts';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
@@ -10,6 +11,8 @@ import { DemoPrivateFile } from './demo-private-file.ts';
 import {
   defaultWorkspaceSettings,
   defaultWorkspaceBranding,
+  defaultStartPage,
+  validStartPage,
   validWorkspaceName,
   menuDefinitions,
   validWorkspaceSettings,
@@ -27,6 +30,7 @@ export const workspacePatchSchema = z
     revision: z.number().int().positive(),
     brandName: nameSchema.optional(),
     workspaceName: nameSchema.optional(),
+    startPage: z.custom<WorkspaceSettings['startPage']>(validStartPage).optional(),
     protectionEnabled: z.boolean().optional(),
     menus: z
       .object(Object.fromEntries(menuDefinitions.map(([key]) => [key, z.boolean().optional()])))
@@ -38,6 +42,7 @@ export const workspacePatchSchema = z
     (value) =>
       value.brandName !== undefined ||
       value.workspaceName !== undefined ||
+      value.startPage !== undefined ||
       value.protectionEnabled !== undefined ||
       (value.menus && Object.keys(value.menus).length > 0),
     '변경할 설정을 선택해 주세요.',
@@ -69,6 +74,7 @@ const merge = (current: WorkspaceSettings, input: WorkspaceSettingsPatch): Works
     revision: current.revision + 1,
     brandName: input.brandName ?? current.brandName,
     workspaceName: input.workspaceName ?? current.workspaceName,
+    startPage: input.startPage ?? current.startPage,
     protectionEnabled: input.protectionEnabled ?? current.protectionEnabled,
     menus: { ...current.menus, ...input.menus },
     updatedAt: new Date().toISOString(),
@@ -77,6 +83,7 @@ const merge = (current: WorkspaceSettings, input: WorkspaceSettingsPatch): Works
 const changed = (input: WorkspaceSettingsPatch) => [
   ...(input.brandName === undefined ? [] : ['brandName']),
   ...(input.workspaceName === undefined ? [] : ['workspaceName']),
+  ...(input.startPage === undefined ? [] : ['startPage']),
   ...(input.protectionEnabled === undefined ? [] : ['protectionEnabled']),
   ...Object.keys(input.menus ?? {}).map((key) => `menus.${key}`),
 ];
@@ -86,7 +93,7 @@ export class DemoWorkspaceSettings implements WorkspaceSettingsAccess {
   private queue: Promise<unknown> = Promise.resolve();
   private readonly storage: DemoPrivateFile;
   constructor(
-    private file = path.resolve(process.env.CRM_SETTINGS_DEMO_FILE || '.local/crm-workspace-demo.json'),
+    private file = path.resolve(process.env.CRM_SETTINGS_DEMO_FILE || runtimePath('crm-workspace-demo.json')),
   ) {
     this.file = path.resolve(file);
     this.storage = new DemoPrivateFile(this.file, unavailable);
@@ -100,9 +107,9 @@ export class DemoWorkspaceSettings implements WorkspaceSettingsAccess {
       if (raw === undefined)
         return { value: { settings: defaultWorkspaceSettings(), audit: [] }, missing: true };
       const data = JSON.parse(raw);
-      // Old files have no branding fields. Add defaults in memory without changing policy or writing the file.
+      // Fill presentation defaults for old files without changing policy or writing the file.
       if (data.settings && typeof data.settings === 'object' && !Array.isArray(data.settings))
-        data.settings = { ...defaultWorkspaceBranding, ...data.settings };
+        data.settings = { ...defaultWorkspaceBranding, startPage: defaultStartPage, ...data.settings };
       if (!validWorkspaceSettings(data.settings) || !Array.isArray(data.audit)) throw unavailable();
       return { value: data, missing: false };
     } catch {
@@ -236,6 +243,7 @@ export class PostgresWorkspaceSettings implements WorkspaceSettingsAccess {
           JSON.stringify({
             brandName: next.brandName,
             workspaceName: next.workspaceName,
+            startPage: next.startPage,
             protectionEnabled: next.protectionEnabled,
             menus: next.menus,
           }),

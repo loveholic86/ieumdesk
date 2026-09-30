@@ -1,7 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { canManageBusiness } from '../src/permissions.ts';
 import pg from 'pg';
 import { z } from 'zod';
 import { ApiError, notFound } from './errors.ts';
+import {
+  installationConfigurationKeys,
+  normalizeInstallationConfiguration,
+} from '../src/installation-configuration.ts';
 import { databaseConfig } from './config.ts';
 import { openLegacyVault, type LegacyVault, type LegacyVaultEnvelope } from './legacy-vault.ts';
 import { installationWorkspaceField, type InstallationDetailsAccess } from './installation-details.ts';
@@ -258,61 +263,25 @@ class LegacyInstallationWorkspaceService {
   }
 }
 
-function configurationFile(details: InstallationDetails, input: unknown) {
-  const filter = parse(
-    z
-      .object({
-        systemCode: z.string().min(1).max(80).optional(),
-        year: z
-          .string()
-          .regex(/^\d{4}$/)
-          .optional(),
-      })
-      .strict(),
-    input,
-  );
-  const rows = details.sections.find((section) => section.id === 'files')!.rows;
-  const properties = new Map<string, string>();
-  const scopes = new Set<string>();
-  for (const row of rows) {
-    const value = (key: string) => row.fields.find((field) => field.key === key)?.value ?? '';
-    if (filter.systemCode !== undefined && value('system_code') !== filter.systemCode) continue;
-    if (filter.year !== undefined && value('att_year') !== filter.year) continue;
-    const key = value('set_name');
-    if (!key || !row.fields.some((field) => field.key === 'set_value')) continue;
-    if (properties.has(key))
-      throw new ApiError(
-        409,
-        'INSTALLATION_CONFIGURATION_DUPLICATE',
-        '같은 설정 키가 여러 개 있습니다. 시스템과 연도를 선택하거나 중복 항목을 정리해 주세요.',
-      );
-    properties.set(key, value('set_value'));
-    scopes.add(JSON.stringify([value('system_code'), value('att_year')]));
+function configurationFile(input: unknown) {
+  let values;
+  try {
+    values = normalizeInstallationConfiguration(input);
+  } catch (error) {
+    throw new ApiError(
+      400,
+      'INSTALLATION_CONFIGURATION_INVALID',
+      error instanceof Error ? error.message : '설정 파일의 입력값을 확인해 주세요.',
+    );
   }
-  if (scopes.size > 1)
-    throw new ApiError(
-      409,
-      'INSTALLATION_CONFIGURATION_SCOPE_REQUIRED',
-      '설정 파일을 생성할 시스템과 연도를 선택해 주세요.',
-    );
-  if (!properties.size)
-    throw new ApiError(
-      409,
-      'INSTALLATION_CONFIGURATION_EMPTY',
-      '선택한 시스템과 연도에 설정 키·값이 없습니다.',
-    );
-  const header = '# Generic Java properties export\n# Original YETA delivery format has not been verified.\n';
+  // Root_ConfigFileController decodes the WHOLE file, then splits by comma and '='.
+  // No properties escaping, comments, key/IV, BOM, or additional saved settings.
+  const body = installationConfigurationKeys.map((key) => `${key}=${values[key]}`).join(',');
+  const safeSystem = values.system_code.replace(/[^A-Za-z0-9_-]/g, '_');
   return {
-    name: 'yeta-installation.properties',
-    mime: 'text/plain; charset=us-ascii',
-    content: Buffer.from(
-      header +
-        [...properties.entries()]
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([key, value]) => `${escapeProperty(key)}=${escapeProperty(value)}\n`)
-          .join(''),
-      'ascii',
-    ),
+    name: `YETA_${safeSystem}_${values.att_year}.yts`,
+    mime: 'application/octet-stream',
+    content: Buffer.from(Buffer.from(body, 'utf8').toString('base64'), 'ascii'),
   };
 }
 
@@ -658,28 +627,13 @@ export class InstallationWorkspaceService {
     );
   }
   async configuration(id: string, input: unknown) {
-    return configurationFile(await this.details(id, { protected: false, raw: true }), input);
+    // Check that the installation exists without exporting its stored settings.
+    await this.details(id);
+    return configurationFile(input);
   }
   async close() {
     await this.repository.close?.();
   }
-}
-
-export function escapeProperty(value: string): string {
-  let result = '';
-  for (let index = 0; index < value.length; index += 1) {
-    const character = value[index],
-      code = value.charCodeAt(index);
-    if (character === '\\') result += '\\\\';
-    else if (character === '\n') result += '\\n';
-    else if (character === '\r') result += '\\r';
-    else if (character === '\t') result += '\\t';
-    else if (character === '\f') result += '\\f';
-    else if (' =:#!'.includes(character)) result += `\\${character}`;
-    else if (code < 0x20 || code > 0x7e) result += `\\u${code.toString(16).padStart(4, '0')}`;
-    else result += character;
-  }
-  return result;
 }
 
 export class MemoryInstallationWorkspaceRepository implements InstallationWorkspaceRepository {
@@ -759,8 +713,8 @@ export class PostgresInstallationWorkspaceRepository implements InstallationWork
       const account = (
         await client.query('SELECT role,status FROM yeta_crm.auth_users WHERE id=$1 FOR UPDATE', [actor])
       ).rows[0];
-      if (account?.role !== 'admin' || account?.status !== 'active')
-        throw new ApiError(403, 'ADMIN_REQUIRED', '관리자 권한이 필요합니다.');
+      if (!canManageBusiness(account))
+        throw new ApiError(403, 'WRITE_PERMISSION_REQUIRED', '등록·수정 권한이 필요합니다.');
       await client.query(
         'INSERT INTO yeta_crm_private.installation_workspace(installation_id,revision,envelope,updated_by) VALUES($1,$2,$3,$4) ON CONFLICT(installation_id) DO UPDATE SET revision=EXCLUDED.revision,envelope=EXCLUDED.envelope,updated_by=EXCLUDED.updated_by,updated_at=now()',
         [id, expected + 1, envelope, actor],

@@ -2,7 +2,101 @@ import type {
   InstallationDetails,
   InstallationDetailField,
   InstallationDetailRow,
+  InstallationDetailSection,
+  InstallationSectionId,
 } from './installation-types';
+
+/** Only yes/no fields qualify. Unknown/third-choice values remain editable without coercion. */
+export function installationBooleanChoice(key: string, value: string) {
+  if (key === 'bonding_yn') return null; // This field also supports E (other).
+  if (key !== 'autoUpdate' && !key.endsWith('_yn')) return null;
+  const normalized = value.trim().toLowerCase();
+  if (!['', 'y', 'n', 'yes', 'no', 'true', 'false', '1', '0', '예', '아니오'].includes(normalized))
+    return null;
+  const checked = ['y', 'yes', 'true', '1', '예'].includes(normalized);
+  // Built-in flags accept canonical Y/N; primary metadata uses typed boolean text.
+  return { checked, yes: key === 'autoUpdate' ? 'true' : 'Y', no: key === 'autoUpdate' ? 'false' : 'N' };
+}
+
+export type InstallationSectionDraft = {
+  values: Record<string, string>;
+  titles: Record<string, string>;
+  notes: Record<string, string>;
+};
+export type InstallationSectionChange = {
+  kind: 'row' | 'note';
+  id: string;
+  body: RowDraftPayload | { content: string };
+  metadata: boolean;
+  fieldIds: string[];
+};
+
+/** Validate the entire tab before sending any mutation; untouched masked values are omitted. */
+export function prepareInstallationSection(
+  details: InstallationDetails,
+  sectionId: InstallationSectionId,
+  draft: InstallationSectionDraft,
+): InstallationSectionChange[] {
+  const section = details.sections.find((item) => item.id === sectionId);
+  if (!section) throw new Error('설치 상세 정보를 다시 불러와 주세요.');
+  const changes: InstallationSectionChange[] = [];
+  for (const row of visibleInstallationSection(section).rows) {
+    const values = Object.fromEntries(
+      row.fields
+        .filter((field) => Object.hasOwn(draft.values, field.id))
+        .map((field) => [field.key, draft.values[field.id]]),
+    );
+    const title = draft.titles[row.id] ?? row.title ?? section.title;
+    if (
+      title === (row.title ?? section.title) &&
+      !row.fields.some(
+        (field) => Object.hasOwn(values, field.key) && (field.masked || field.value !== values[field.key]),
+      )
+    )
+      continue;
+    changes.push({
+      kind: 'row',
+      id: row.id,
+      metadata: row.managed === 'metadata',
+      fieldIds: row.fields.map((field) => field.id),
+      body: prepareInstallationRow(row, title, values, [], []),
+    });
+  }
+  if (sectionId === 'access')
+    for (const note of details.accessNotes ?? []) {
+      if (!Object.hasOwn(draft.notes, note.id) || (!note.masked && draft.notes[note.id] === note.content))
+        continue;
+      const content = draft.notes[note.id];
+      if (
+        !content.trim() ||
+        content.length > 16384 ||
+        content.includes('\0') ||
+        /[\uD800-\uDFFF]/u.test(content)
+      )
+        throw new Error('참고사항은 빈 값이나 잘못된 문자 없이 16,384자 이내로 입력해 주세요.');
+      changes.push({ kind: 'note', id: note.id, body: { content }, metadata: false, fieldIds: [] });
+    }
+  return changes;
+}
+
+const unusedAccessFields = new Set([
+  'access_reqst_date',
+  'access_reqst_enddate',
+  'access_url',
+  'access_id',
+  'access_pwd',
+]);
+
+/** Hide retired controls in both reading and editing without deleting stored values. */
+export function visibleInstallationSection(section: InstallationDetailSection): InstallationDetailSection {
+  if (section.id !== 'access') return section;
+  return {
+    ...section,
+    rows: section.rows
+      .map((row) => ({ ...row, fields: row.fields.filter((field) => !unusedAccessFields.has(field.key)) }))
+      .filter((row) => row.fields.length > 0),
+  };
+}
 
 const sectionIds = ['installation', 'access', 'server', 'yeta', 'sap', 'settings', 'files'];
 const accessNoteId = /^[a-f\d]{8}-[a-f\d]{4}-[1-8][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i;

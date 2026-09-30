@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { hasBusinessRole } from '../src/permissions.ts';
 import type {
   ContactRecord,
   CRMRecord,
+  InstallationRecord,
   QuotationItem,
   QuotationRecord,
   RecordKind,
@@ -34,6 +36,24 @@ export function assembleRecord(
   actorName?: string,
 ): CRMRecord {
   const record = { ...existing, ...input, id, updatedAt: new Date().toISOString() } as CRMRecord;
+  if (kind === 'installations') {
+    const installation = record as InstallationRecord;
+    const companyChanged = Object.hasOwn(input, 'companyId') || Object.hasOwn(input, 'companyName');
+    installation.companyId ||= null;
+    installation.companyName = installation.companyId ? '' : installation.companyName?.trim() || '';
+    if ((!existing || companyChanged) && !installation.companyId && !installation.companyName)
+      throw new ApiError(
+        400,
+        'INSTALLATION_COMPANY_REQUIRED',
+        '고객사를 선택하거나 고객사명을 입력해 주세요.',
+      );
+    if (
+      companyChanged &&
+      ((!installation.companyId && installation.companyName) ||
+        (existing && installation.companyId !== existing.companyId))
+    )
+      installation.relatedCompanyIds = installation.companyId ? [installation.companyId] : [];
+  }
   if (kind === 'contacts') {
     const contact = record as ContactRecord & { comment?: string };
     if (contact.comment?.trim())
@@ -105,21 +125,17 @@ export function taskState(input: Partial<TaskInput>, existing?: Task) {
   };
 }
 
-/** Approval decisions and editing already approved documents require an administrator. */
+/** Approval and editing approved quotations are business operations. */
 export function assertQuotationPermission(
   role: string,
-  input: Partial<QuotationRecord>,
-  existing?: QuotationRecord,
+  _input: Partial<QuotationRecord>,
+  _existing?: QuotationRecord,
 ) {
-  if (role === 'admin') return;
-  if (
-    (input.status && input.status !== '발행' && input.status !== existing?.status) ||
-    existing?.status === '승인'
-  ) {
+  if (!hasBusinessRole(role)) {
     throw new ApiError(
       403,
-      'QUOTATION_APPROVAL_REQUIRED',
-      '견적 승인·반려와 승인된 견적 수정은 관리자만 할 수 있습니다. 새 버전으로 제안을 작성할 수 있습니다.',
+      'WRITE_PERMISSION_REQUIRED',
+      '등록·수정 권한이 필요합니다.',
     );
   }
 }

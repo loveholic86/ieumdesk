@@ -196,6 +196,8 @@ export const recordSchemas = {
   installations: z
     .object({
       ...recordBase,
+      companyId: text(100).default(''),
+      companyName: text(150).default(''),
       systemCode: text(80).min(1),
       serviceVersion: serviceVersion.default('Cloud'),
       version: text(80).default(''),
@@ -213,7 +215,11 @@ export const recordSchemas = {
         .default(''),
       note: text(10_000).default(''),
     })
-    .strict(),
+    .strict()
+    .refine((record) => Boolean(record.companyId || record.companyName), {
+      path: ['companyName'],
+      message: '고객사를 선택하거나 고객사명을 입력해 주세요.',
+    }),
 } as const;
 export type RecordInput = z.infer<(typeof recordSchemas)[RecordKind]>;
 export function parseRecord(kind: RecordKind, input: unknown): RecordInput {

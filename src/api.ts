@@ -24,7 +24,7 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const method = options?.method?.toUpperCase() || 'GET';
   const route = path.split('?')[0];
   const collection =
-    route === '/companies' ||
+    route === '/companies' || route === '/companies/all' ||
     route === '/tasks' ||
     /^\/records\/[^/]+$/.test(route) ||
     route.endsWith('/activities');
@@ -42,7 +42,7 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
         : collection
           ? Array.isArray(body.items) &&
             body.items.every((item) => item && typeof item.id === 'string') &&
-            (route !== '/companies' ||
+            (!['/companies', '/companies/all'].includes(route) ||
               (Number.isFinite(body.total) &&
                 typeof body.stats === 'object' &&
                 body.stats !== null &&

@@ -10,6 +10,7 @@ import type {
 } from './installation-types';
 
 import { prepareInstallationRow, type RowDraftPayload } from './installation-client';
+import InstallationFieldInput from './InstallationFieldInput';
 import './installation-record-editor.css';
 export type { RowDraftPayload } from './installation-client';
 
@@ -169,17 +170,15 @@ export default function InstallationRecordEditor({
                   : ''}
           </span>
         </div>
-        <textarea
+        <InstallationFieldInput
           id={inputId}
-          aria-describedby={`${inputId}-state`}
-          maxLength={16384}
+          fieldKey={field.key}
+          describedBy={`${inputId}-state`}
           rows={expanded ? 16 : wide ? 6 : 2}
           value={value}
-          onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))}
-          placeholder={field.masked ? t('현재 값 유지 · 변경할 때만 입력') : t('내용을 입력하세요')}
+          onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))}
+          masked={field.masked || hidden}
           disabled={busy || isRemoved || hidden}
-          autoComplete="off"
-          spellCheck={false}
         />
         <div className="installation-inline-edit-value-meta">
           <span>{t(valueCount(value, Boolean(field.masked && !touched)))}</span>
@@ -279,16 +278,13 @@ export default function InstallationRecordEditor({
         <label htmlFor={valueId} className="installation-inline-new-value-label">
           {t('값')}
         </label>
-        <textarea
+        <InstallationFieldInput
           id={valueId}
-          aria-label={t('{0} 값', [field.label || t('새 항목')])}
-          maxLength={16384}
+          fieldKey={field.key}
           value={value}
           rows={expanded ? 16 : longContent(field.label, field.key, value) ? 6 : 3}
-          onChange={(event) => updateAdded(field.localId, { value: event.target.value })}
+          onChange={(value) => updateAdded(field.localId, { value })}
           disabled={busy || policyPending}
-          autoComplete="off"
-          spellCheck={false}
         />
         <div className="installation-inline-edit-value-meta">
           <span>{t(valueCount(value))}</span>

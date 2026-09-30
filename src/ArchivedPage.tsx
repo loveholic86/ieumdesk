@@ -5,6 +5,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { ArchiveRestore, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import { api, dateLabel } from './api';
 import { useAuth } from './auth';
+import { canManageBusiness } from './permissions';
 import { archiveAreaLabels, type ArchivedEntry, type ArchiveArea } from './archive-types';
 
 export function ArchiveButton({
@@ -25,7 +26,7 @@ export function ArchiveButton({
   const [open, setOpen] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState('');
-  if (user?.role !== 'admin') return null;
+  if (!canManageBusiness(user)) return null;
   const archive = async () => {
     setBusy(true);
     setError('');
@@ -33,7 +34,7 @@ export function ArchiveButton({
       await api(`/archive/${area}/${encodeURIComponent(id)}`, { method: 'POST', body: '{}' });
       setOpen(false);
       onArchived();
-      notify('휴지통으로 이동했습니다. 환경설정의 휴지통에서 복원할 수 있습니다.');
+      notify('휴지통으로 이동했습니다. 관리자가 환경설정의 휴지통에서 복원할 수 있습니다.');
     } catch (error) {
       setError((error as Error).message);
     } finally {

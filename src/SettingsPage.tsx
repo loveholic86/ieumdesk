@@ -1,11 +1,25 @@
 import { t, getLocaleTag } from './i18n';
 import { useLocale } from './use-locale';
 import { useEffect, useState } from 'react';
-import { Check, History, LayoutGrid, RefreshCw, Settings2, ShieldCheck, Type } from 'lucide-react';
+import {
+  Check,
+  History,
+  House,
+  LayoutGrid,
+  Moon,
+  RefreshCw,
+  Settings2,
+  ShieldCheck,
+  Type,
+} from 'lucide-react';
+import { ThemeSelector } from './ThemeSelector';
 import { api } from './api';
 import { useWorkspaceSettings } from './workspace-settings';
 import {
   menuDefinitions,
+  startPageDefinitions,
+  resolveStartPage,
+  validStartPage,
   workspaceNameMaxLength,
   validWorkspaceName,
   type WorkspaceAudit,
@@ -72,6 +86,7 @@ export default function SettingsPage({
     const patch: WorkspaceSettingsPatch = { revision: draft.revision };
     if (brandName !== settings.brandName) patch.brandName = brandName;
     if (workspaceName !== settings.workspaceName) patch.workspaceName = workspaceName;
+    if (draft.startPage !== settings.startPage) patch.startPage = draft.startPage;
     if (draft.protectionEnabled !== settings.protectionEnabled)
       patch.protectionEnabled = draft.protectionEnabled;
     const menus = Object.fromEntries(
@@ -83,6 +98,7 @@ export default function SettingsPage({
     if (
       patch.brandName === undefined &&
       patch.workspaceName === undefined &&
+      patch.startPage === undefined &&
       patch.protectionEnabled === undefined &&
       !patch.menus
     ) {
@@ -111,7 +127,7 @@ export default function SettingsPage({
         <div>
           <div className="eyebrow">WORKSPACE SETTINGS</div>
           <h1>{t('환경설정')}</h1>
-          <p>{t('정보 표시와 메뉴 구성을 관리합니다. 설정은 전체 사용자에게 공통 적용됩니다.')}</p>
+          <p>{t('시작 페이지와 메뉴는 전체 사용자에게, 화면 테마는 이 브라우저에 적용됩니다.')}</p>
         </div>
       </header>
       <div className="settings-tabs" role="tablist" aria-label={t('환경설정 구분')}>
@@ -151,6 +167,47 @@ export default function SettingsPage({
       )}
       {tab === 'preferences' && draft && (
         <form onSubmit={submit} className="settings-form">
+          <section className="settings-card">
+            <div className="settings-card-title">
+              <House size={21} />
+              <div>
+                <h2>{t('로그인 후 시작 페이지')}</h2>
+                <p>{t('로그인하면 처음 열리는 페이지를 선택하세요. 저장 후 다음 로그인부터 적용됩니다.')}</p>
+              </div>
+            </div>
+            <label className="field settings-start-page" htmlFor="settings-start-page">
+              <span>{t('시작 페이지')}</span>
+              <select
+                id="settings-start-page"
+                value={draft.startPage}
+                disabled={saving}
+                onChange={(event) => {
+                  if (validStartPage(event.target.value)) change({ ...draft, startPage: event.target.value });
+                }}
+              >
+                {startPageDefinitions.map(([key, label]) => (
+                  <option key={key} value={key} disabled={key !== 'account' && !draft.menus[key]}>
+                    {t(label)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="settings-hint">
+              {t(
+                '활성화된 메뉴와 내 계정 중에서 선택할 수 있습니다. 시작 메뉴를 끄면 사용 가능한 페이지로 변경됩니다.',
+              )}
+            </p>
+          </section>
+          <section className="settings-card">
+            <div className="settings-card-title">
+              <Moon size={21} />
+              <div>
+                <h2>{t('화면 테마')}</h2>
+                <p>{t('선택한 테마는 즉시 적용되며 이 브라우저에 자동 저장됩니다.')}</p>
+              </div>
+            </div>
+            <ThemeSelector />
+          </section>
           <section className="settings-card">
             <div className="settings-card-title">
               <Type size={21} />
@@ -225,7 +282,7 @@ export default function SettingsPage({
                 <span>
                   <strong>{t('비활성화')}</strong>
                   <small>
-                    {t('관리자만 보호 정보 원문을 볼 수 있습니다. 담당자·조회 전용 계정은 계속 보호됩니다.')}
+                    {t('관리자와 담당자가 보호 정보 원문을 볼 수 있습니다. 조회 전용 계정은 계속 보호됩니다.')}
                   </small>
                 </span>
               </label>
@@ -254,9 +311,10 @@ export default function SettingsPage({
                       role="switch"
                       aria-label={t('{0} 활성화', [t(label)])}
                       checked={draft.menus[key]}
-                      onChange={(event) =>
-                        change({ ...draft, menus: { ...draft.menus, [key]: event.target.checked } })
-                      }
+                      onChange={(event) => {
+                        const next = { ...draft, menus: { ...draft.menus, [key]: event.target.checked } };
+                        change({ ...next, startPage: resolveStartPage(next) });
+                      }}
                     />
                     <i aria-hidden="true" />
                     <small>{draft.menus[key] ? t('활성화') : t('비활성화')}</small>

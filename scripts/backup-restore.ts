@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { validateRuntimeStorage } from '../server/runtime-config.ts';
 import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
 import { BackupService, PostgresBackupControl, safeBackupCode } from '../server/backup.ts';
@@ -25,6 +26,7 @@ export function parseBackupRestoreArguments(args: string[]) {
   return { backup: backup!, expectedFingerprint, apply };
 }
 async function main() {
+  await validateRuntimeStorage();
   const args = parseBackupRestoreArguments(process.argv.slice(2));
   const service = new BackupService(new PostgresBackupSnapshotProvider(), new PostgresBackupControl());
   try {

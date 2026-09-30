@@ -31,13 +31,13 @@
   display: flex;
   align-items: center;
   gap: 16px;
-  background: #f0f8f5;
-  border: 1px solid #d6e9df;
+  background: var(--theme-success-soft, #f0f8f5);
+  border: 1px solid var(--theme-border, #d6e9df);
   border-radius: 12px;
   padding: 22px;
 }
 .backup-summary > svg {
-  color: #35785c;
+  color: var(--theme-success, #35785c);
   flex-shrink: 0;
 }
 .backup-summary > div {
@@ -51,8 +51,8 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 16px;
-  background: #fff;
-  border: 1px solid #e0e5eb;
+  background: var(--theme-surface, #fff);
+  border: 1px solid var(--theme-border, #e0e5eb);
   border-radius: 12px;
   padding: 22px;
 }
@@ -71,22 +71,22 @@
   height: 16px;
 }
 .backup-schedule select {
-  border: 1px solid #d7dee6;
+  border: 1px solid var(--theme-border, #d7dee6);
   border-radius: 7px;
   padding: 8px;
-  background: #fff;
+  background: var(--theme-surface, #fff);
 }
 .backup-next {
   font-size: 12px;
-  color: #6a778a;
+  color: var(--theme-muted, #6a778a);
   margin-left: auto;
 }
 .backup-table-wrap {
   width: 100%;
   overflow: auto;
-  border: 1px solid #e0e5eb;
+  border: 1px solid var(--theme-border, #e0e5eb);
   border-radius: 10px;
-  background: #fff;
+  background: var(--theme-surface, #fff);
 }
 .backup-table {
   border-collapse: collapse;
@@ -103,20 +103,20 @@
 }
 .backup-table th {
   font-weight: 600;
-  color: #6a778a;
-  background: #f8f9fb;
+  color: var(--theme-muted, #6a778a);
+  background: var(--theme-surface-soft, #f8f9fb);
   font-size: 12px;
 }
 .backup-table th,
 .backup-table td {
   padding: 13px 16px;
-  border-top: 1px solid #e8edf1;
+  border-top: 1px solid var(--theme-border, #e8edf1);
   vertical-align: middle;
 }
 .backup-table small {
   display: block;
   font-size: 11px;
-  color: #8591a1;
+  color: var(--theme-muted, #8591a1);
   margin-top: 5px;
 }
 .backup-actions {
@@ -131,10 +131,10 @@
   min-height: 30px;
 }
 .backup-preview {
-  border: 1px solid #d5e2ef;
+  border: 1px solid var(--theme-border, #d5e2ef);
   border-radius: 12px;
   padding: 22px;
-  background: #f6faff;
+  background: var(--theme-surface-soft, #f6faff);
 }
 .backup-preview details {
   margin: 14px 0;
@@ -147,16 +147,16 @@
   display: block;
   overflow-wrap: anywhere;
   font-size: 12px;
-  background: #edf1f6;
+  background: var(--theme-surface-raised, #edf1f6);
   border-radius: 7px;
   padding: 12px;
   margin-top: 10px;
   line-height: 1.8;
 }
 .backup-success {
-  background: #edf7ef;
-  color: #31764a;
-  border: 1px solid #cce6d0;
+  background: var(--theme-success-soft, #edf7ef);
+  color: var(--theme-success, #31764a);
+  border: 1px solid var(--theme-border, #cce6d0);
   display: flex;
   align-items: center;
   gap: 8px;

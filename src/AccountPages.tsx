@@ -31,6 +31,7 @@ import {
   type UserStatus,
 } from './auth';
 import './auth.css';
+import { AdminPasswordResetDialog, type PasswordResetRequest } from './PasswordReset';
 
 const dateText = (value: string) => {
   const date = new Date(value);
@@ -332,6 +333,9 @@ export function UsersPage() {
   useLocale();
   const { user: currentUser, refresh } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
+  const [resetRequests, setResetRequests] = useState<PasswordResetRequest[]>([]);
+  const [resetting, setResetting] = useState<User | null>(null);
+  const [onlyResetRequests, setOnlyResetRequests] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -352,8 +356,11 @@ export function UsersPage() {
     setLoading(true);
     setError('');
     try {
-      const result = await authRequest<{ items: User[] }>('/admin/users');
-      if (request === loadGeneration.current) setUsers(result.items);
+      const [result, resets] = await Promise.all([
+        authRequest<{ items: User[] }>('/admin/users'),
+        authRequest<{ items: PasswordResetRequest[] }>('/admin/password-reset-requests'),
+      ]);
+      if (request === loadGeneration.current) { setUsers(result.items); setResetRequests(resets.items); }
     } catch (reason) {
       if (request === loadGeneration.current)
         setError(reason instanceof Error ? reason.message : '사용자 목록을 불러오지 못했습니다.');
@@ -382,15 +389,16 @@ export function UsersPage() {
     return users
       .filter(
         (user) =>
+          (!onlyResetRequests || resetRequests.some(request => request.userId === user.id)) &&
           (status === 'all' || user.status === status) &&
           (role === 'all' || user.role === role) &&
           (!text || `${user.name} ${user.email}`.toLocaleLowerCase().includes(text)),
       )
       .sort((a, b) => {
         const priority: Record<UserStatus, number> = { pending: 0, active: 1, disabled: 2 };
-        return priority[a.status] - priority[b.status] || b.createdAt.localeCompare(a.createdAt);
+        return Number(resetRequests.some(request => request.userId === b.id)) - Number(resetRequests.some(request => request.userId === a.id)) || priority[a.status] - priority[b.status] || b.createdAt.localeCompare(a.createdAt);
       });
-  }, [users, query, role, status]);
+  }, [users, query, role, status, resetRequests, onlyResetRequests]);
   const activeAdminCount = users.filter((user) => user.role === 'admin' && user.status === 'active').length;
   const isLastAdmin = editing?.role === 'admin' && editing.status === 'active' && activeAdminCount <= 1;
   const changed = editing && (editing.role !== editRole || editing.status !== editStatus);
@@ -482,6 +490,12 @@ export function UsersPage() {
         ))}
       </div>
       <AuthNotice success>{t(success)}</AuthNotice>
+      <div className="users-reset-filter">
+        <button className={`button ${onlyResetRequests ? 'primary' : ''}`} aria-pressed={onlyResetRequests} onClick={() => { setOnlyResetRequests(!onlyResetRequests); setStatus('all'); setRole('all'); }}>
+          <LockKeyhole size={15} />{t('비밀번호 초기화 요청 {0}건', [resetRequests.length])}
+        </button>
+        <span>{t('요청을 확인하려면 새로고침을 눌러 주세요.')}</span>
+      </div>
       {error && (
         <div className="users-load-error">
           <AuthNotice>{t(error)}</AuthNotice>
@@ -546,14 +560,15 @@ export function UsersPage() {
             {t('총 ')}
             <strong>{filtered.length}</strong>
             {t('명')}
-            {query.trim() ? t(' · “{0}” 검색 결과', [query.trim()]) : t(' · 승인 대기 계정부터 표시합니다.')}
+            {query.trim() ? t(' · “{0}” 검색 결과', [query.trim()]) : t(' · 초기화 요청과 승인 대기 계정부터 표시합니다.')}
           </span>
-          {(query || status !== 'all' || role !== 'all') && (
+          {(query || status !== 'all' || role !== 'all' || onlyResetRequests) && (
             <button
               onClick={() => {
                 setQuery('');
                 setStatus('all');
                 setRole('all');
+                setOnlyResetRequests(false);
               }}
             >
               {t('필터 초기화')}
@@ -604,6 +619,7 @@ export function UsersPage() {
                             <strong>
                               {user.name}
                               {user.id === currentUser.id && <span className="users-self">{t('나')}</span>}
+                              {resetRequests.some(request => request.userId === user.id) && <span className="users-reset-badge">{t('초기화 요청')}</span>}
                             </strong>
                             <span>{user.email}</span>
                           </div>
@@ -617,6 +633,7 @@ export function UsersPage() {
                       </td>
                       <td className="users-date">{dateText(user.createdAt)}</td>
                       <td>
+                        <div className="users-row-actions">
                         <button
                           className={`button users-edit-button ${user.status === 'pending' ? 'pending' : ''}`}
                           onClick={(event) => openEditor(user, event.currentTarget)}
@@ -625,6 +642,10 @@ export function UsersPage() {
                           <Pencil size={13} />
                           {user.status === 'pending' ? t('승인 · 관리') : t('관리')}
                         </button>
+                        <button className="button users-edit-button" onClick={() => setResetting(user)} disabled={user.status === 'disabled'} aria-label={t('{0} 비밀번호 초기화', [user.name])}>
+                          <LockKeyhole size={13} />{t('비밀번호 초기화')}
+                        </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -790,6 +811,7 @@ export function UsersPage() {
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
+      {resetting && <AdminPasswordResetDialog key={resetting.id} user={resetting} requestedAt={resetRequests.find(request => request.userId === resetting.id)?.requestedAt} onClose={() => setResetting(null)} onIssued={() => setResetRequests(items => items.filter(item => item.userId !== resetting.id))} onFocusFallback={() => searchRef.current?.focus()} />}
     </div>
   );
 }

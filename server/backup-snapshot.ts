@@ -373,6 +373,9 @@ export class PostgresBackupSnapshotProvider implements BackupSnapshotProvider {
       const revoked = snapshot.tables.some((table) => key(table) === 'yeta_crm.auth_sessions')
         ? ((await client.query('DELETE FROM yeta_crm.auth_sessions')).rowCount ?? 0)
         : 0;
+      // A restored backup must not resurrect a reset credential that was already consumed.
+      if (snapshot.tables.some((table) => key(table) === 'yeta_crm.auth_password_resets'))
+        await client.query('DELETE FROM yeta_crm.auth_password_resets');
       commitStarted = true;
       try {
         await client.query('COMMIT');

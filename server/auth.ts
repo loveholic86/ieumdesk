@@ -1,7 +1,10 @@
 import { trackRequestWork } from './request-limits.ts';
+import { requestClientAddress } from './proxy-access.ts';
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { ApiError } from './errors.ts';
+import { passwordResetPath, passwordResetTtlMs } from './password-reset.ts';
+import { canManageBusiness, canManageSystem } from '../src/permissions.ts';
 import { type AuthStore, type AuthUser, publicUser } from './auth-store.ts';
 import {
   dummyPasswordHash,
@@ -22,6 +25,7 @@ declare global {
 export interface AuthOptions {
   now?: () => number;
   sessionTtlMs?: number;
+  onAdminPasswordReset?: (actorId: string, targetId: string) => Promise<void>;
 }
 const cookieName = 'ieumdesk_session';
 // A project rename must not invalidate existing server-side sessions.
@@ -37,6 +41,8 @@ const profileSchema = z
   .strict();
 const passwordSchema = z.object({ currentPassword, newPassword: password }).strict();
 const adminReauthenticationSchema = z.object({ currentPassword }).strict();
+const resetRequestSchema = z.object({ email }).strict();
+const resetPasswordSchema = z.object({ token: z.string().regex(/^[A-Za-z\d_-]{43}$/), newPassword: password }).strict();
 const accessSchema = z
   .object({
     role: z.enum(['admin', 'editor', 'viewer']).optional(),
@@ -70,13 +76,20 @@ export class RateLimiter {
   check(kind: 'login' | 'register', request: Request) {
     const identifier =
       typeof request.body?.email === 'string' ? request.body.email.trim().toLowerCase().slice(0, 254) : '';
-    const address = request.socket.remoteAddress || 'local';
+    const address = requestClientAddress(request);
     this.consume(
       `${kind}:ip:${address}`,
       kind === 'login' ? 30 : 10,
       kind === 'login' ? 15 * 60_000 : 60 * 60_000,
     );
     this.consume(`${kind}:email:${identifier}`, 5, 15 * 60_000);
+  }
+  checkPasswordReset(kind: 'request' | 'consume' | 'admin', request: Request) {
+    const identifier = kind === 'request'
+      ? String(request.body?.email ?? '').trim().toLowerCase().slice(0, 254)
+      : kind === 'admin' ? String(request.params.id) : sessionHash(String(request.body?.token ?? '').slice(0, 128));
+    this.consume(`reset:${kind}:ip:${requestClientAddress(request)}`, kind === 'request' ? 10 : 30, 15 * 60_000);
+    this.consume(`reset:${kind}:identifier:${identifier}`, 5, 15 * 60_000);
   }
 }
 
@@ -161,7 +174,7 @@ export function createAuthentication(authStore: AuthStore, options: AuthOptions 
   const confirmCurrentPassword = async (request: Request, value: string, storedHash: string) => {
     const complete = reauthenticationLimiter.reserve(
       request.authUser!.id,
-      request.socket.remoteAddress || 'local',
+      requestClientAddress(request),
     );
     let succeeded: boolean | null = null;
     try {
@@ -209,7 +222,7 @@ export function createAuthentication(authStore: AuthStore, options: AuthOptions 
   };
   const requireEditor = (request: Request, _response: Response, next: NextFunction) => {
     if (!request.authUser) throw unauthenticated();
-    if (!['admin', 'editor'].includes(request.authUser.role))
+    if (!canManageBusiness(request.authUser))
       throw new ApiError(
         403,
         'WRITE_PERMISSION_REQUIRED',
@@ -219,7 +232,7 @@ export function createAuthentication(authStore: AuthStore, options: AuthOptions 
   };
   const requireAdmin = (request: Request, _response: Response, next: NextFunction) => {
     if (!request.authUser) throw unauthenticated();
-    if (request.authUser.role !== 'admin' || request.authUser.status !== 'active')
+    if (!canManageSystem(request.authUser))
       throw new ApiError(403, 'ADMIN_REQUIRED', '관리자 권한이 필요합니다.');
     next();
   };
@@ -254,7 +267,7 @@ export function createAuthentication(authStore: AuthStore, options: AuthOptions 
       }
     };
     await assertStillAuthorized();
-    const complete = reauthenticationLimiter.reserve(identity.id, request.socket.remoteAddress || 'local');
+    const complete = reauthenticationLimiter.reserve(identity.id, requestClientAddress(request));
     let succeeded: boolean | null = null;
     try {
       succeeded = await verifyPassword(input.currentPassword, identity.passwordHash);
@@ -322,6 +335,27 @@ export function createAuthentication(authStore: AuthStore, options: AuthOptions 
       response.json({ ok: true });
     }),
   );
+  router.post(
+    '/forgot-password',
+    trackRequestWork(async (request, response) => {
+      limiter.checkPasswordReset('request', request);
+      const input = resetRequestSchema.parse(request.body);
+      await authStore.requestPasswordReset(input.email, new Date(now()).toISOString());
+      // Identical response for missing, pending, active and disabled accounts. No credentials change here.
+      response.status(202).json({ ok: true });
+    }),
+  );
+  router.post(
+    '/reset-password',
+    trackRequestWork(async (request, response) => {
+      limiter.checkPasswordReset('consume', request);
+      const input = resetPasswordSchema.parse(request.body);
+      const passwordHash = await hashPassword(input.newPassword);
+      await authStore.consumePasswordReset(sessionHash(input.token), passwordHash, new Date(now()).toISOString());
+      clearSessionCookies(request, response);
+      response.json({ ok: true });
+    }),
+  );
   router.patch(
     '/profile',
     requireSession,
@@ -366,6 +400,36 @@ export function createAuthentication(authStore: AuthStore, options: AuthOptions 
     '/users',
     trackRequestWork(async (_request, response) => {
       response.json({ items: await authStore.listUsers() });
+    }),
+  );
+  admin.get(
+    '/password-reset-requests',
+    trackRequestWork(async (_request, response) => {
+      response.json({ items: await authStore.listPasswordResetRequests() });
+    }),
+  );
+  admin.post(
+    '/users/:id/password-reset',
+    trackRequestWork(async (request, response) => {
+      limiter.checkPasswordReset('admin', request);
+      const actor = {
+        id: request.authUser!.id, email: request.authUser!.email,
+        passwordHash: request.authUser!.passwordHash, tokenHash: request.authTokenHash!,
+      };
+      const confirmation = await reauthenticateAdmin(request);
+      await confirmation.assertStillAuthorized();
+      const token = newSessionToken();
+      const tokenHash = sessionHash(token);
+      const createdAt = new Date(now()).toISOString();
+      const expiresAt = new Date(now() + passwordResetTtlMs).toISOString();
+      const user = await authStore.createAdminPasswordReset(actor, String(request.params.id), { tokenHash, createdAt, expiresAt });
+      try {
+        await options.onAdminPasswordReset?.(actor.id, user.id);
+      } catch (error) {
+        await authStore.deletePasswordReset(tokenHash);
+        throw error;
+      }
+      response.status(201).json({ resetPath: passwordResetPath(token), expiresAt });
     }),
   );
   admin.patch(

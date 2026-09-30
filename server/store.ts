@@ -1,3 +1,5 @@
+import { runtimePath } from './runtime-config.ts';
+import { hasBusinessRole } from '../src/permissions.ts';
 import { constants } from 'node:fs';
 import { link, lstat, mkdir, open, rename, unlink, type FileHandle } from 'node:fs/promises';
 import path from 'node:path';
@@ -40,6 +42,7 @@ export interface Store {
   createTask(input: TaskInput): Promise<Task>;
   updateTask(id: string, patch: Partial<TaskInput>): Promise<Task>;
   listRecords(kind: RecordKind): Promise<CRMRecord[]>;
+  getRecord?(kind: RecordKind, id: string): Promise<CRMRecord>;
   createQuotationRevision(id: string, input: RecordInput): Promise<CRMRecord>;
   createRecord(
     kind: RecordKind,
@@ -129,7 +132,7 @@ export class DemoStore implements Store {
   private queue: Promise<unknown> = Promise.resolve();
   private vault?: Promise<LegacyVault>;
   constructor(
-    private file = path.resolve('.local/crm-demo.json'),
+    private file = runtimePath('crm-demo.json'),
     private options: { keyFile?: string } = {},
   ) {
     this.file = path.resolve(file);
@@ -544,7 +547,10 @@ export class DemoStore implements Store {
   }
   async createRecord(kind: RecordKind, input: RecordInput, actor?: { name: string; role: string }) {
     return this.mutate((data) => {
-      if (!data.companies.some((company) => company.id === input.companyId && !company.archivedAt))
+      if (
+        (kind !== 'installations' || input.companyId) &&
+        !data.companies.some((company) => company.id === input.companyId && !company.archivedAt)
+      )
         throw notFound();
       for (const relatedId of ('relatedCompanyIds' in input ? input.relatedCompanyIds : []) || [])
         if (!data.companies.some((company) => company.id === relatedId && !company.archivedAt))
@@ -604,7 +610,8 @@ export class DemoStore implements Store {
   ): Promise<CRMRecord> {
     const validated = installationMetadataRecordPatch(patch);
     return this.mutate((data) => {
-      if (actor.role !== 'admin') throw new ApiError(403, 'ADMIN_REQUIRED', '관리자 권한이 필요합니다.');
+      if (!hasBusinessRole(actor.role))
+        throw new ApiError(403, 'WRITE_PERMISSION_REQUIRED', '등록·수정 권한이 필요합니다.');
       const records = data.records!.installations;
       const index = records.findIndex((record) => record.id === id && !record.archivedAt);
       if (index < 0) throw notFound();

@@ -1,3 +1,4 @@
+import { runtimePath } from './runtime-config.ts';
 import { trackRequestWork } from './request-limits.ts';
 import { Router, type Request, type RequestHandler, type Response } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
@@ -62,7 +63,7 @@ export class CatalogService {
   private localFile: DemoPrivateFile;
   constructor(
     private mode: 'demo' | 'postgres',
-    private file = path.resolve(process.env.CRM_CATALOG_DEMO_FILE || '.local/crm-catalog-demo.json'),
+    private file = path.resolve(process.env.CRM_CATALOG_DEMO_FILE || runtimePath('crm-catalog-demo.json')),
     private options: { vault?: () => Promise<LegacyVault>; keyFile?: string } = {},
   ) {
     this.file = path.resolve(file);

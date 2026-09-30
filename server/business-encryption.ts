@@ -133,16 +133,28 @@ export function decryptBusinessRow(vault: LegacyVault, table: BusinessTable, row
 }
 
 export class BusinessEncryption {
+  private openingVault?: Promise<LegacyVault>;
   constructor(
     private getVault: () => Promise<LegacyVault> = () => openLegacyVault({ createIfMissing: false }),
   ) {}
+  /** Share only an in-flight key read; never retain decrypted rows or a settled key cache. */
+  private vault() {
+    if (this.openingVault) return this.openingVault;
+    const pending = Promise.resolve().then(() => this.getVault());
+    this.openingVault = pending;
+    const clear = () => {
+      if (this.openingVault === pending) this.openingVault = undefined;
+    };
+    void pending.then(clear, clear);
+    return pending;
+  }
   async encrypt(table: BusinessTable, row: Row) {
-    return encryptBusinessRow(await this.getVault(), table, row);
+    return encryptBusinessRow(await this.vault(), table, row);
   }
   async decrypt(table: BusinessTable, row: Row) {
-    return decryptBusinessRow(await this.getVault(), table, row);
+    return decryptBusinessRow(await this.vault(), table, row);
   }
   async ready() {
-    await this.getVault();
+    await this.vault();
   }
 }

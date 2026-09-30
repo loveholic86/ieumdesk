@@ -1,3 +1,4 @@
+import { runtimePath } from './runtime-config.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { lstat, mkdir, open, realpath, rename, unlink, type FileHandle } from 'node:fs/promises';
@@ -20,7 +21,7 @@ const owner = (uid: number) => typeof process.getuid === 'function' && uid === p
 /** Demo persistence keeps only the encrypted envelope and non-secret change metadata. */
 export class FileInstallationWorkspaceRepository implements InstallationWorkspaceRepository {
   private directory: string;
-  constructor(directory = path.join(process.cwd(), '.local/installation-workspaces')) {
+  constructor(directory = runtimePath('installation-workspaces')) {
     this.directory = path.resolve(directory);
   }
   private async root(create: boolean) {

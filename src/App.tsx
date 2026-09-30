@@ -1,7 +1,10 @@
+import { canManageSystem } from './permissions';
 import { t, getLocaleTag } from './i18n';
 import { useLocale } from './use-locale';
 import { LanguageSelector } from './LanguageSelector';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { ThemeToggle } from './ThemeSelector';
+import { initialView, isView, type View } from './navigation';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Tabs from '@radix-ui/react-tabs';
 import {
@@ -48,9 +51,10 @@ import { emailHref, phoneHref, safeWebsite } from './client-security';
 import type { Activity, Company, CompanyList, CompanyStatus, Health, Task } from './types';
 import Modules, { type ModuleKind } from './Modules';
 import { useAuth, roleLabels } from './auth';
-import { AccountPage, UsersPage } from './AccountPages';
-import SettingsPage from './SettingsPage';
-import SupportPage from './SupportPage';
+const AccountPage = lazy(() => import('./AccountPages').then((module) => ({ default: module.AccountPage })));
+const UsersPage = lazy(() => import('./AccountPages').then((module) => ({ default: module.UsersPage })));
+const SettingsPage = lazy(() => import('./SettingsPage'));
+const SupportPage = lazy(() => import('./SupportPage'));
 import { useWorkspaceSettings } from './workspace-settings';
 import { defaultWorkspaceBranding, menuDefinitions, type MenuKey } from './workspace-types';
 import { ArchiveButton } from './ArchivedPage';
@@ -85,7 +89,6 @@ const blankCompany: Omit<Company, 'id' | 'updatedAt'> = {
   serviceVersion: '',
 };
 const services = ['YETA'];
-type View = 'companies' | 'overview' | 'tasks' | 'account' | 'users' | 'settings' | 'support' | ModuleKind;
 type Toast = { text: string; error?: boolean } | null;
 
 function Status({ status }: { status: CompanyStatus }) {
@@ -187,31 +190,16 @@ export default function App() {
   const locale = useLocale();
   const { user, canWrite, logout } = useAuth();
   const workspaceSettings = useWorkspaceSettings();
+  const workspaceReady = Boolean(workspaceSettings.settings);
   const { brandName, workspaceName } = workspaceSettings.settings ?? defaultWorkspaceBranding;
   const [loggingOut, setLoggingOut] = useState(false);
-  const [requestedView, setView] = useState<View>(() => {
-    const saved = window.location.hash.slice(1);
-    return [
-      'companies',
-      'overview',
-      'tasks',
-      'contacts',
-      'activities',
-      'sales',
-      'quotations',
-      'installations',
-      'support',
-      'account',
-      'users',
-      'settings',
-    ].includes(saved)
-      ? (saved as View)
-      : 'companies';
-  });
+  const [requestedView, setView] = useState<View>(() =>
+    initialView(window.location.hash, workspaceSettings.settings ?? undefined),
+  );
   const menuAvailable = (next: View) =>
     !menuDefinitions.some(([key]) => key === next) ||
     workspaceSettings.settings?.menus[next as MenuKey] === true;
-  const fallbackView: View = user?.role === 'admin' ? 'settings' : 'account';
+  const fallbackView: View = canManageSystem(user) ? 'settings' : 'account';
   const view: View = menuAvailable(requestedView) ? requestedView : fallbackView;
   const [mobileNav, setMobileNav] = useState(false);
   useEffect(() => {
@@ -302,7 +290,9 @@ export default function App() {
     document.addEventListener('keydown', shortcut);
     return () => document.removeEventListener('keydown', shortcut);
   }, [workspaceSettings.settings?.menus.companies]);
+  const needsCompanyPage = view === 'companies' || view === 'overview';
   useEffect(() => {
+    if (!workspaceReady || !needsCompanyPage) return;
     const controller = new AbortController();
     setLoading(true);
     setError('');
@@ -332,39 +322,45 @@ export default function App() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [query, status, product, owner, page, sort, refresh]);
+  }, [query, status, product, owner, page, sort, refresh, needsCompanyPage, workspaceReady]);
   useEffect(() => {
-    api<Health>('/health')
+    if (!workspaceReady) return;
+    const controller = new AbortController();
+    const signal = controller.signal;
+    api<Health>('/health', { signal })
       .then((data) => {
+        if (signal.aborted) return;
         setHealth(data);
         setHealthFailed(false);
       })
       .catch(() => {
+        if (signal.aborted) return;
         setHealth(undefined);
         setHealthFailed(true);
       });
     setAllLoading(true);
     setAllError('');
-    const loadAll = async () => {
-      const first = await api<CompanyList>('/companies?pageSize=100&page=1');
-      const totalPages = Math.ceil(first.total / first.pageSize);
-      const more = await Promise.all(
-        Array.from({ length: Math.max(0, totalPages - 1) }, (_, i) =>
-          api<CompanyList>(`/companies?pageSize=100&page=${i + 2}`),
-        ),
-      );
-      setAllCompanies([...first.items, ...more.flatMap((data) => data.items)]);
-    };
-    loadAll()
-      .catch((e) => setAllError(e.message))
-      .finally(() => setAllLoading(false));
-    api<{ items: Task[] }>('/tasks')
+    api<CompanyList>('/companies/all', { signal })
       .then((data) => {
+        if (!signal.aborted) setAllCompanies(data.items);
+      })
+      .catch((e) => {
+        if (!signal.aborted) setAllError(e.message);
+      })
+      .finally(() => {
+        if (!signal.aborted) setAllLoading(false);
+      });
+    api<{ items: Task[] }>('/tasks', { signal })
+      .then((data) => {
+        if (signal.aborted) return;
         setTasks(data.items);
         setTaskError('');
       })
-      .catch((e) => setTaskError(e.message));
-  }, [refresh]);
+      .catch((e) => {
+        if (!signal.aborted) setTaskError(e.message);
+      });
+    return () => controller.abort();
+  }, [refresh, workspaceReady]);
 
   const changeView = (next: View) => {
     const available = menuAvailable(next) ? next : fallbackView;
@@ -375,23 +371,7 @@ export default function App() {
   useEffect(() => {
     const onHash = () => {
       const value = window.location.hash.slice(1);
-      if (
-        [
-          'companies',
-          'overview',
-          'tasks',
-          'contacts',
-          'activities',
-          'sales',
-          'quotations',
-          'installations',
-          'support',
-          'account',
-          'users',
-          'settings',
-        ].includes(value)
-      )
-        setView(value as View);
+      if (isView(value)) setView(value);
     };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
@@ -504,20 +484,28 @@ export default function App() {
 
   const accountItems: { id: View; label: string; icon: LucideIcon }[] = [
     { id: 'account', label: '내 계정', icon: UserRound },
-    ...(user?.role === 'admin' ? [{ id: 'users' as View, label: '사용자 및 권한', icon: ShieldCheck }] : []),
-    ...(user?.role === 'admin' ? [{ id: 'settings' as View, label: '환경설정', icon: Settings2 }] : []),
+    ...(canManageSystem(user) ? [{ id: 'users' as View, label: '사용자 및 권한', icon: ShieldCheck }] : []),
+    ...(canManageSystem(user) ? [{ id: 'settings' as View, label: '환경설정', icon: Settings2 }] : []),
   ];
   const pageTitle = [...navItems, ...accountItems].find((item) => item.id === view)?.label || '내 계정';
   const accountView = view === 'account' || view === 'users' || view === 'settings';
   useEffect(() => {
-    if ((view === 'users' || view === 'settings') && user?.role !== 'admin') changeView('account');
-  }, [view, user?.role]);
+    if ((view === 'users' || view === 'settings') && !canManageSystem(user)) changeView('account');
+  }, [view, user?.role, user?.status]);
   useEffect(() => {
     if (workspaceSettings.settings && requestedView !== view) {
       setView(view);
       window.location.hash = view;
     }
   }, [workspaceSettings.settings, requestedView, view]);
+  useEffect(() => {
+    if (workspaceReady && !isView(window.location.hash.slice(1)))
+      window.history.replaceState(
+        window.history.state,
+        '',
+        `${window.location.pathname}${window.location.search}#${view}`,
+      );
+  }, [workspaceReady, view]);
   useEffect(() => {
     if (!canWrite) setEditCompany(null);
   }, [canWrite]);
@@ -671,6 +659,7 @@ export default function App() {
             <strong>{t(pageTitle)}</strong>
           </div>
           <div className="topbar-right">
+            <ThemeToggle />
             <LanguageSelector />
             <span className="today">
               <CalendarDays size={15} />
@@ -1235,32 +1224,37 @@ export default function App() {
             </section>
           )}
 
-          {moduleView &&
-            (allError ? (
-              <ErrorBox message={allError} retry={refreshData} />
-            ) : allLoading && !allCompanies.length ? (
-              <div className="empty" role="status">
-                {t('고객사 정보를 불러오는 중입니다…')}
-              </div>
-            ) : (
+          {moduleView && (
+            <>
+              {allError && <ErrorBox message={allError} retry={refreshData} />}
               <Modules
                 key={view}
                 kind={view as ModuleKind}
                 companies={allCompanies}
+                companiesPending={allLoading || Boolean(allError)}
                 refresh={refresh}
                 onRefresh={refreshData}
                 notify={notify}
                 onCompany={setDetailId}
               />
-            ))}
-          {view === 'account' && <AccountPage />}
-          {view === 'support' && (
-            <SupportPage companies={allCompanies} notify={notify} onRefresh={refreshData} />
+            </>
           )}
-          {view === 'users' && user?.role === 'admin' && <UsersPage />}
-          {view === 'settings' && user?.role === 'admin' && (
-            <SettingsPage notify={notify} onRefresh={refreshData} />
-          )}
+          <Suspense
+            fallback={
+              <div className="empty" role="status">
+                {t('불러오는 중…')}
+              </div>
+            }
+          >
+            {view === 'account' && <AccountPage />}
+            {view === 'support' && (
+              <SupportPage companies={allCompanies} notify={notify} onRefresh={refreshData} />
+            )}
+            {view === 'users' && canManageSystem(user) && <UsersPage />}
+            {view === 'settings' && canManageSystem(user) && (
+              <SettingsPage notify={notify} onRefresh={refreshData} />
+            )}
+          </Suspense>
           {!canWrite && !accountView && (
             <p className="readonly-note">
               <ShieldCheck size={14} />

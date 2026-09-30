@@ -2,10 +2,10 @@
   width: 100%;
   min-width: 0;
   margin: 0;
-  border: 1px solid #a9c4e7;
+  border: 1px solid var(--theme-accent, #a9c4e7);
   border-radius: 10px;
-  background: #f3f6fb;
-  color: #20344f;
+  background: var(--theme-surface-soft, #f3f6fb);
+  color: var(--theme-ink, #20344f);
   outline: none;
   scroll-margin-block: 16px;
 }
@@ -15,16 +15,16 @@
   justify-content: space-between;
   gap: 20px;
   padding: 21px 24px;
-  border-bottom: 1px solid #d5dfec;
+  border-bottom: 1px solid var(--theme-border, #d5dfec);
   border-radius: 10px 10px 0 0;
-  background: #fff;
+  background: var(--theme-surface, #fff);
 }
 .installation-inline-editor .installation-inline-edit-header > div:first-child {
   min-width: 0;
 }
 .installation-inline-editor .installation-inline-edit-header h3 {
   margin: 0;
-  color: #20344f;
+  color: var(--theme-ink, #20344f);
   font-size: 20px;
   font-weight: 700;
   line-height: 1.5;
@@ -33,7 +33,7 @@
 }
 .installation-inline-editor .installation-inline-edit-header p {
   margin: 6px 0 0;
-  color: #596b82;
+  color: var(--theme-text, #596b82);
   font-size: 13px;
   line-height: 1.7;
   overflow-wrap: anywhere;
@@ -46,13 +46,13 @@
 .installation-inline-editor .installation-inline-edit-window-actions .icon-button {
   width: 36px;
   height: 36px;
-  color: #465b77;
-  border: 1px solid #d7e0ec;
+  color: var(--theme-text, #465b77);
+  border: 1px solid var(--theme-border, #d7e0ec);
   border-radius: 7px;
 }
 .installation-inline-editor .installation-inline-edit-window-actions .icon-button:hover {
-  color: #1f4f98;
-  background: #eef4ff;
+  color: var(--theme-accent, #1f4f98);
+  background: var(--theme-surface-soft, #eef4ff);
 }
 .installation-inline-editor .installation-inline-edit-form {
   display: flex;
@@ -62,8 +62,8 @@
 }
 .installation-inline-editor .installation-inline-edit-toolbar {
   padding: 18px 24px 16px;
-  border-bottom: 1px solid #d5dfec;
-  background: #fff;
+  border-bottom: 1px solid var(--theme-border, #d5dfec);
+  background: var(--theme-surface, #fff);
 }
 .installation-inline-editor .installation-inline-edit-toolbar-top {
   display: grid;
@@ -80,12 +80,12 @@
 .installation-inline-editor .installation-inline-edit-search > svg {
   position: absolute;
   left: 13px;
-  color: #65768c;
+  color: var(--theme-muted, #65768c);
   pointer-events: none;
 }
 .installation-inline-editor .installation-inline-edit-search input {
   padding-left: 40px;
-  background: #f6f8fc;
+  background: var(--theme-surface-soft, #f6f8fc);
 }
 .installation-inline-editor .installation-inline-edit-tools {
   display: flex;
@@ -95,27 +95,27 @@
   margin-top: 14px;
 }
 .installation-inline-editor .installation-inline-edit-count {
-  color: #52657e;
+  color: var(--theme-text, #52657e);
   font-size: 13px;
 }
 .installation-inline-editor .installation-inline-edit-count strong {
-  color: #243e63;
+  color: var(--theme-ink, #243e63);
 }
 .installation-inline-editor .installation-inline-edit-filter {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  border: 1px solid #d3ddea;
+  border: 1px solid var(--theme-border, #d3ddea);
   border-radius: 6px;
-  background: #fff;
-  color: #4c607c;
+  background: var(--theme-surface, #fff);
+  color: var(--theme-text, #4c607c);
   font-size: 12px;
 }
 .installation-inline-editor .installation-inline-edit-filter.is-active {
-  color: #205aa5;
-  border-color: #96b7e7;
-  background: #edf4ff;
+  color: var(--theme-accent, #205aa5);
+  border-color: var(--theme-accent, #96b7e7);
+  background: var(--theme-surface-raised, #edf4ff);
 }
 .installation-inline-editor .installation-inline-edit-focus-bar {
   display: flex;
@@ -123,16 +123,16 @@
   flex-wrap: wrap;
   gap: 8px 20px;
   padding: 14px 24px;
-  border-bottom: 1px solid #d5dfec;
-  background: #f8faff;
-  color: #596b82;
+  border-bottom: 1px solid var(--theme-border, #d5dfec);
+  background: var(--theme-surface-soft, #f8faff);
+  color: var(--theme-text, #596b82);
   font-size: 13px;
 }
 .installation-inline-editor .installation-inline-edit-focus-bar button {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  color: #245b9f;
+  color: var(--theme-accent, #245b9f);
   font-size: 14px;
   font-weight: 600;
 }
@@ -148,14 +148,14 @@
   min-width: 0;
   gap: 8px;
   margin: 0;
-  color: #344a68;
+  color: var(--theme-text, #344a68);
   font-size: 13px;
   font-weight: 600;
   line-height: 1.6;
 }
 .installation-inline-editor .installation-inline-edit-title strong {
   padding: 9px 0;
-  color: #20344f;
+  color: var(--theme-ink, #20344f);
   font-size: 16px;
   line-height: 24px;
   overflow-wrap: anywhere;
@@ -166,10 +166,10 @@
   width: 100%;
   min-width: 0;
   padding: 11px 13px;
-  border: 1px solid #bbc9dc;
+  border: 1px solid var(--theme-border, #bbc9dc);
   border-radius: 7px;
-  background: #fff;
-  color: #20344f;
+  background: var(--theme-surface, #fff);
+  color: var(--theme-ink, #20344f);
   font: inherit;
   font-size: 14px;
   font-weight: 400;
@@ -188,11 +188,11 @@
 }
 .installation-inline-editor input::placeholder,
 .installation-inline-editor textarea::placeholder {
-  color: #62738c;
+  color: var(--theme-muted, #62738c);
 }
 .installation-inline-editor input:focus,
 .installation-inline-editor textarea:focus {
-  border-color: #5790d8;
+  border-color: var(--theme-accent, #5790d8);
   outline: 2px solid #5790d8;
   outline-offset: 1px;
 }
@@ -206,10 +206,10 @@
   gap: 7px;
   margin: 0 0 16px;
   padding: 11px 14px;
-  border: 1px solid #d6e3f5;
+  border: 1px solid var(--theme-border, #d6e3f5);
   border-radius: 7px;
-  background: #eaf1fc;
-  color: #405a7b;
+  background: var(--theme-surface-raised, #eaf1fc);
+  color: var(--theme-text, #405a7b);
   font-size: 13px;
   line-height: 1.8;
 }
@@ -225,21 +225,21 @@
 .installation-inline-editor .installation-inline-edit-field {
   min-width: 0;
   padding: 18px;
-  border: 1px solid #d3deec;
+  border: 1px solid var(--theme-border, #d3deec);
   border-radius: 10px;
-  background: #fff;
+  background: var(--theme-surface, #fff);
   box-shadow: 0 1px 2px #203e6110;
 }
 .installation-inline-editor .installation-inline-edit-field.is-wide {
   grid-column: 1 / -1;
 }
 .installation-inline-editor .installation-inline-edit-field.is-changed {
-  border-color: #82acdf;
+  border-color: var(--theme-accent, #82acdf);
   box-shadow: inset 3px 0 #4c87d1;
 }
 .installation-inline-editor .installation-inline-edit-field.is-removed {
-  border-color: #e2baba;
-  background: #fff8f8;
+  border-color: var(--theme-accent, #e2baba);
+  background: var(--theme-danger-soft, #fff8f8);
 }
 .installation-inline-editor .installation-inline-edit-field-heading {
   display: flex;
@@ -252,17 +252,17 @@
   flex-direction: row;
   align-items: center;
   gap: 6px;
-  color: #243d5d;
+  color: var(--theme-ink, #243d5d);
   font-size: 14px;
   font-weight: 650;
   overflow-wrap: anywhere;
 }
 .installation-inline-editor .installation-inline-edit-field-heading label svg {
-  color: #5d7597;
+  color: var(--theme-muted, #5d7597);
   flex-shrink: 0;
 }
 .installation-inline-editor .installation-inline-edit-state {
-  color: #526b8b;
+  color: var(--theme-text, #526b8b);
   font-size: 11px;
   line-height: 1.7;
   white-space: nowrap;
@@ -270,15 +270,15 @@
 .installation-inline-editor .installation-inline-edit-state:not(:empty) {
   padding: 2px 7px;
   border-radius: 4px;
-  background: #edf2f8;
+  background: var(--theme-surface-raised, #edf2f8);
 }
 .installation-inline-editor .installation-inline-edit-state.is-change {
-  color: #215b9e;
-  background: #e9f2ff;
+  color: var(--theme-accent, #215b9e);
+  background: var(--theme-surface-raised, #e9f2ff);
 }
 .installation-inline-editor .installation-inline-edit-state.is-delete {
-  color: #a34141;
-  background: #fceaea;
+  color: var(--theme-danger, #a34141);
+  background: var(--theme-danger-soft, #fceaea);
 }
 .installation-inline-editor .installation-inline-edit-field.is-removed textarea {
   opacity: 0.65;
@@ -291,7 +291,7 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 8px;
-  color: #566b87;
+  color: var(--theme-text, #566b87);
   font-size: 11px;
 }
 .installation-inline-editor .installation-inline-edit-value-meta button {
@@ -299,7 +299,7 @@
   align-items: center;
   gap: 6px;
   padding: 3px 0;
-  color: #285fa5;
+  color: var(--theme-accent, #285fa5);
   font-size: 12px;
   font-weight: 550;
 }
@@ -319,13 +319,13 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: #516986;
+  color: var(--theme-text, #516986);
   font-size: 12px;
   line-height: 1.7;
 }
 .installation-inline-editor .installation-inline-edit-field-actions button.danger-text {
   margin-left: auto;
-  color: #a54949;
+  color: var(--theme-danger, #a54949);
 }
 .installation-inline-editor .installation-inline-new-fields {
   display: grid;
@@ -340,13 +340,13 @@
   min-width: 0;
   margin: 0;
   padding: 18px 22px 20px;
-  border: 1px solid #a9c6e9;
+  border: 1px solid var(--theme-accent, #a9c6e9);
   border-radius: 10px;
-  background: #fff;
+  background: var(--theme-surface, #fff);
 }
 .installation-inline-editor .installation-inline-new-field legend {
   padding: 0 7px;
-  color: #32629e;
+  color: var(--theme-accent, #32629e);
   font-size: 12px;
   font-weight: 600;
 }
@@ -400,11 +400,11 @@
   align-items: center;
   gap: 12px;
   padding: 48px 20px;
-  color: #5f748f;
+  color: var(--theme-muted, #5f748f);
   text-align: center;
 }
 .installation-inline-editor .installation-inline-edit-empty strong {
-  color: #344e70;
+  color: var(--theme-text, #344e70);
   font-size: 16px;
 }
 .installation-inline-editor .installation-inline-edit-empty p {
@@ -420,9 +420,9 @@
   justify-content: flex-end;
   gap: 16px;
   padding: 16px 24px;
-  border-top: 1px solid #cfdbea;
+  border-top: 1px solid var(--theme-border, #cfdbea);
   border-radius: 0 0 10px 10px;
-  background: #fff;
+  background: var(--theme-surface, #fff);
   box-shadow: 0 -3px 14px #213f6810;
 }
 .installation-inline-editor .installation-inline-edit-footer .button {
@@ -444,20 +444,20 @@
   overflow-wrap: anywhere;
 }
 .installation-inline-editor .installation-inline-edit-save-summary strong {
-  color: #2b507e;
+  color: var(--theme-text, #2b507e);
   font-size: 13px;
   font-weight: 600;
 }
 .installation-inline-editor .installation-inline-edit-save-summary span {
-  color: #60738c;
+  color: var(--theme-muted, #60738c);
   font-size: 11px;
 }
 .installation-inline-editor .installation-inline-edit-error {
   margin: 0;
   padding: 12px 24px;
-  border-block: 1px solid #efdede;
-  background: #fdf7f7;
-  color: #aa5252;
+  border-block: 1px solid var(--theme-border, #efdede);
+  background: var(--theme-danger-soft, #fdf7f7);
+  color: var(--theme-danger, #aa5252);
   font-size: 13px;
   line-height: 1.75;
   overflow-wrap: anywhere;
@@ -465,8 +465,8 @@
 .installation-inline-editor .installation-inline-edit-policy {
   margin: 0;
   padding: 10px 24px;
-  background: #eef4fd;
-  color: #486a95;
+  background: var(--theme-surface-raised, #eef4fd);
+  color: var(--theme-text, #486a95);
   font-size: 13px;
 }
 @media (max-width: 760px) {
@@ -543,4 +543,58 @@
     padding: 12px 16px;
     font-size: 12px;
   }
+}
+
+.installation-inline-editor label.installation-boolean-control {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  width: fit-content;
+  color: var(--theme-text, #344f70);
+  cursor: pointer;
+}
+.installation-inline-editor .installation-boolean-control input[type="checkbox"] {
+  appearance: auto;
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  min-height: 20px;
+  margin: 0;
+  padding: 0;
+  accent-color: #3a75d7;
+}
+.installation-section-edit-row {
+  min-width: 0;
+  margin: 22px;
+  padding: 18px;
+  border: 1px solid var(--theme-border, #dce5f1);
+  border-radius: 12px;
+}
+.installation-section-edit-row legend {
+  padding: 0 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--theme-text, #344f70);
+}
+.installation-section-edit-title {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.installation-section-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 18px 22px;
+  position: sticky;
+  bottom: 0;
+  background: var(--theme-surface, #fff);
+  border-top: 1px solid var(--theme-border, #dce5f1);
+}
+@media (max-width: 760px) {
+  .installation-section-edit-row { margin: 14px 8px; padding: 12px; }
 }

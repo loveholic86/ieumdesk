@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { canManageBusiness, canManageSystem, hasBusinessRole } from '../src/permissions.ts';
 import { archiveAreaLabels, type ArchiveArea, type ArchivedEntry } from '../src/archive-types.ts';
 import { randomUUID } from 'node:crypto';
 import type { Company, CompanyList, Activity, Task, CRMRecord, RecordKind } from '../src/types.ts';
@@ -214,8 +215,12 @@ export class PostgresStore implements Store {
       const actor = (
         await client.query('SELECT role,status FROM yeta_crm.auth_users WHERE id=$1 FOR UPDATE', [actorId])
       ).rows[0];
-      if (actor?.role !== 'admin' || actor?.status !== 'active')
-        throw new ApiError(403, 'ADMIN_REQUIRED', '관리자 권한이 필요합니다.');
+      if (restore ? !canManageSystem(actor) : !canManageBusiness(actor))
+        throw new ApiError(
+          403,
+          restore ? 'ADMIN_REQUIRED' : 'WRITE_PERMISSION_REQUIRED',
+          restore ? '관리자 권한이 필요합니다.' : '등록·수정 권한이 필요합니다.',
+        );
       await client.query(
         `UPDATE yeta_crm.${table} SET archived_at=${restore ? 'NULL' : 'now()'},archived_by=${restore ? 'NULL' : `$${values.length + 1}`} WHERE id=$1 ${recordKind ? 'AND kind=$2' : ''}`,
         restore ? values : [...values, actorId],
@@ -525,6 +530,15 @@ export class PostgresStore implements Store {
       client.release();
     }
   }
+  async getRecord(kind: RecordKind, id: string) {
+    const result = await this.pool.query<RecordRow>(
+      `SELECT ${recordSelect} FROM yeta_crm.records WHERE kind = $1 AND id = $2 AND archived_at IS NULL`,
+      [kind, id],
+    );
+    if (!result.rows[0]) throw notFound();
+    const record = await this.fromRecordRow(result.rows[0]);
+    return kind === 'contacts' || kind === 'sales' ? (await this.legacy.enrich([record]))[0] : record;
+  }
   async listRecords(kind: RecordKind) {
     const result = await this.pool.query<RecordRow>(
       `SELECT ${recordSelect} FROM yeta_crm.records WHERE kind = $1 AND archived_at IS NULL ORDER BY updated_at DESC, id ASC`,
@@ -534,7 +548,7 @@ export class PostgresStore implements Store {
     return kind === 'contacts' || kind === 'sales' ? this.legacy.enrich(records) : records;
   }
   async createRecord(kind: RecordKind, input: RecordInput, actor?: { name: string; role: string }) {
-    await this.getCompany(input.companyId);
+    if (kind !== 'installations' || input.companyId) await this.getCompany(input.companyId);
     for (const relatedId of ('relatedCompanyIds' in input ? input.relatedCompanyIds : []) || [])
       await this.getCompany(relatedId);
     if (kind === 'quotations' && actor)
@@ -632,7 +646,8 @@ export class PostgresStore implements Store {
     expectedRevision: string,
     actor: { id: string; name: string; role: string },
   ): Promise<CRMRecord> {
-    if (actor.role !== 'admin') throw new ApiError(403, 'ADMIN_REQUIRED', '관리자 권한이 필요합니다.');
+    if (!hasBusinessRole(actor.role))
+      throw new ApiError(403, 'WRITE_PERMISSION_REQUIRED', '등록·수정 권한이 필요합니다.');
     const validated = installationMetadataRecordPatch(patch);
     const client = await this.pool.connect();
     try {
@@ -646,11 +661,11 @@ export class PostgresStore implements Store {
       if (!current) throw notFound();
       if (installationMetadataRevision(await this.fromRecordRow(current)) !== expectedRevision)
         throw installationMetadataConflict();
-      const administrator = (
+      const currentActor = (
         await client.query('SELECT role,status FROM yeta_crm.auth_users WHERE id=$1 FOR UPDATE', [actor.id])
       ).rows[0];
-      if (!administrator || administrator.role !== 'admin' || administrator.status !== 'active')
-        throw new ApiError(403, 'ADMIN_REQUIRED', '활성 관리자 권한이 필요합니다.');
+      if (!canManageBusiness(currentActor))
+        throw new ApiError(403, 'WRITE_PERMISSION_REQUIRED', '등록·수정 권한이 필요합니다.');
       const original = await this.fromRecordRow(current);
       const { id: _id, companyId: _companyId, updatedAt: _updatedAt, ...originalData } = original;
       const encrypted = await this.encryption.encrypt('records', { kind: 'installations', id, data: { ...originalData, ...validated } });

@@ -2,10 +2,10 @@
   width: 100%;
   min-width: 0;
   padding: 20px;
-  border: 1px solid #dce5f1;
+  border: 1px solid var(--theme-border, #dce5f1);
   border-radius: 9px;
-  background: #fbfcfe;
-  color: #344054;
+  background: var(--theme-surface, #fbfcfe);
+  color: var(--theme-ink, #344054);
 }
 .installation-access-notes-heading,
 .installation-access-notes-heading > div {
@@ -21,11 +21,11 @@
 }
 .installation-access-notes-heading > div > svg {
   flex-shrink: 0;
-  color: #527dab;
+  color: var(--theme-muted, #527dab);
 }
 .installation-access-notes-heading h3 {
   margin: 0;
-  color: #263f5e;
+  color: var(--theme-ink, #263f5e);
   font-size: 15px;
   font-weight: 650;
   line-height: 1.5;
@@ -34,14 +34,14 @@
   min-width: 22px;
   padding: 2px 7px;
   border-radius: 12px;
-  background: #eaf0f8;
-  color: #557293;
+  background: var(--theme-surface-raised, #eaf0f8);
+  color: var(--theme-text, #557293);
   font-size: 11px;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
 .installation-access-notes-order {
-  color: #7c8ba0;
+  color: var(--theme-muted, #7c8ba0);
   font-size: 11px;
 }
 .installation-access-notes-composer,
@@ -53,13 +53,13 @@
 }
 .installation-access-notes-composer {
   padding: 15px;
-  border: 1px solid #e0e7f0;
+  border: 1px solid var(--theme-border, #e0e7f0);
   border-radius: 7px;
-  background: white;
+  background: var(--theme-surface, white);
   margin-bottom: 6px;
 }
 .installation-access-notes label {
-  color: #53677f;
+  color: var(--theme-text, #53677f);
   font-size: 12px;
   font-weight: 600;
   line-height: 1.5;
@@ -71,10 +71,10 @@
   min-height: 94px;
   max-height: 420px;
   padding: 11px 12px;
-  border: 1px solid #cfd9e7;
+  border: 1px solid var(--theme-border, #cfd9e7);
   border-radius: 5px;
-  background: white;
-  color: #293e57;
+  background: var(--theme-surface, white);
+  color: var(--theme-ink, #293e57);
   font: inherit;
   font-size: 14px;
   line-height: 1.75;
@@ -83,17 +83,17 @@
   resize: vertical;
 }
 .installation-access-notes textarea::placeholder {
-  color: #95a1b0;
+  color: var(--theme-muted, #95a1b0);
 }
 .installation-access-notes textarea:focus {
-  border-color: #5685c3;
+  border-color: var(--theme-accent, #5685c3);
   outline: 2px solid #dceafa;
   outline-offset: 1px;
   box-shadow: none;
 }
 .installation-access-notes textarea:disabled {
-  color: #8190a2;
-  background: #f6f8fb;
+  color: var(--theme-muted, #8190a2);
+  background: var(--theme-surface-soft, #f6f8fb);
   cursor: not-allowed;
 }
 .installation-access-note-form-footer,
@@ -108,7 +108,7 @@
   flex-wrap: wrap;
 }
 .installation-access-note-counter {
-  color: #8492a4;
+  color: var(--theme-muted, #8492a4);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
@@ -130,7 +130,7 @@
 .installation-access-note-item {
   min-width: 0;
   padding: 18px 0;
-  border-bottom: 1px solid #e3e9f1;
+  border-bottom: 1px solid var(--theme-border, #e3e9f1);
 }
 .installation-access-note-item:last-child {
   border-bottom: 0;
@@ -149,14 +149,14 @@
   margin-bottom: 9px;
 }
 .installation-access-note-meta time {
-  color: #7c8b9f;
+  color: var(--theme-muted, #7c8b9f);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   line-height: 1.6;
 }
 .installation-access-note-meta time > span {
   margin-right: 3px;
-  color: #95a1b0;
+  color: var(--theme-muted, #95a1b0);
 }
 .installation-access-note-actions {
   display: flex;
@@ -175,7 +175,7 @@
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: #5b7698;
+  color: var(--theme-muted, #5b7698);
   font: inherit;
   font-size: 12px;
   line-height: 1.5;
@@ -184,14 +184,14 @@
 .installation-access-note-action:hover,
 .installation-access-note-expand:hover,
 .installation-access-notes-more:hover {
-  color: #245da0;
-  background: #edf3fa;
+  color: var(--theme-accent, #245da0);
+  background: var(--theme-surface-raised, #edf3fa);
 }
 .installation-access-note-action.is-danger {
-  color: #a75a5a;
+  color: var(--theme-danger, #a75a5a);
 }
 .installation-access-note-action.is-danger:hover {
-  background: #fff0f0;
+  background: var(--theme-danger-soft, #fff0f0);
 }
 .installation-access-notes button:disabled {
   opacity: 0.5;
@@ -203,7 +203,7 @@
 }
 .installation-access-note-content {
   margin: 0;
-  color: #354b65;
+  color: var(--theme-text, #354b65);
   font-size: 14px;
   line-height: 1.8;
   white-space: pre-wrap;
@@ -220,7 +220,7 @@
 .installation-access-note-expand {
   margin-top: 5px;
   padding-left: 0;
-  color: #4776af;
+  color: var(--theme-muted, #4776af);
 }
 .installation-access-note-protected,
 .installation-access-note-hint {
@@ -228,7 +228,7 @@
   align-items: center;
   gap: 6px;
   margin: 0;
-  color: #7d8da3;
+  color: var(--theme-muted, #7d8da3);
   font-size: 12px;
   line-height: 1.7;
   overflow-wrap: anywhere;
@@ -244,7 +244,7 @@
   flex-basis: 100%;
   width: 100%;
   margin: 0;
-  color: #b54747;
+  color: var(--theme-danger, #b54747);
   font-size: 12px;
   line-height: 1.65;
   overflow-wrap: anywhere;
@@ -256,15 +256,15 @@
   gap: 9px 12px;
   padding: 12px;
   margin-top: 12px;
-  border: 1px solid #f0dcdc;
+  border: 1px solid var(--theme-border, #f0dcdc);
   border-radius: 6px;
-  background: #fff9f9;
+  background: var(--theme-danger-soft, #fff9f9);
 }
 .installation-access-note-delete > p:not(.installation-access-note-error) {
   margin: 0;
   font-size: 12px;
   line-height: 1.6;
-  color: #855858;
+  color: var(--theme-danger, #855858);
 }
 .installation-access-note-detached {
   margin-top: 15px;
@@ -275,7 +275,7 @@
 .installation-access-notes-empty {
   margin: 0;
   padding: 23px 5px 8px;
-  color: #8e9cad;
+  color: var(--theme-muted, #8e9cad);
   font-size: 12px;
   line-height: 1.7;
   text-align: center;
@@ -284,11 +284,11 @@
   width: 100%;
   min-height: 38px;
   margin-top: 15px;
-  border: 1px solid #dfe7f1;
-  background: white;
+  border: 1px solid var(--theme-border, #dfe7f1);
+  background: var(--theme-surface, white);
 }
 .installation-access-notes-more > span {
-  color: #8b9ab0;
+  color: var(--theme-muted, #8b9ab0);
   font-size: 11px;
 }
 @media (max-width: 600px) {

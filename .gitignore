@@ -61,6 +61,9 @@ id_ed25519*
 
 # Local regression fixtures, verification and one-off legacy work
 /tests/
+/server/*.test.ts
+/deploy/
+/scripts/cloud-*.ts
 /scripts/verify-*.ts
 /scripts/serve-feature-fixture.ts
 /scripts/inspect-sales-weights.ts

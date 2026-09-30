@@ -1,3 +1,4 @@
+import { runtimePath } from './runtime-config.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { lstat, mkdir, open, readdir, realpath, rename, rmdir, unlink, type FileHandle } from 'node:fs/promises';
@@ -65,7 +66,7 @@ function mime(extension: string, content: Buffer) {
 
 class LocalInstallationAttachmentStore implements InstallationAttachmentStore {
   private directory: string;
-  constructor(private options: { directory?: string; vault?: () => Promise<LegacyVault>; now?: () => number } = {}) { this.directory = path.resolve(options.directory ?? path.join(process.cwd(), '.local/installation-attachments')); }
+  constructor(private options: { directory?: string; vault?: () => Promise<LegacyVault>; now?: () => number } = {}) { this.directory = path.resolve(options.directory ?? runtimePath('installation-attachments')); }
   private async vault() { try { return await (this.options.vault ?? (() => openLegacyVault({ createIfMissing: false })))(); } catch { throw unavailable(); } }
   private async privateDirectory(directory: string, create: boolean) {
     let metadata;

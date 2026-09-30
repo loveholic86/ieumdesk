@@ -37,11 +37,28 @@ Navigation, forms, notices, validation messages and date formatting follow the s
 
 ## Display names
 
-Administrators can change the brand and workspace names under **Settings → Display & menus → Display names**. The defaults are `ieumdesk` and `Workspace`, with a maximum of 60 characters per name. Saved names appear in the sidebar for all users; the brand name also appears in the browser title, footer and help after sign-in. Custom names are not translated when the interface language changes.
+Administrators can change the brand and workspace names under **Settings → Display & menus → Display names**. The defaults are `ieumdesk` and `Workspace`, with a maximum of 60 characters per name. Saved names appear on the sign-in and registration pages and in the sidebar for all users; the brand name also appears in the browser title, footer and help. Only the two display names are available before sign-in; other workspace settings require authentication. Custom names are not translated when the interface language changes.
 
 Existing installations retain their protection and menu settings while receiving the new display defaults. The names extend the existing PostgreSQL JSON settings, so no schema migration is required.
 
 ## Features
+
+### Password reset (no SMTP required)
+
+- Users select **Forgot your password?** on the sign-in page and enter their registered email. The response is identical regardless of account existence. They contact an administrator to verify their identity and receive a link to choose a new password.
+- Administrators check **Users → Password reset requests**, or select **Reset password** for any eligible user without a prior request. Issuing a link requires the administrator's own password. Verify the customer's identity through an established contact before sharing the link; a request alone does not prove identity.
+- Links expire after 30 minutes, can be used once, and are invalidated by reissue. Only token hashes are stored; the original link cannot be retrieved after closing the dialog. Issuance is audited.
+- Saving a new password invalidates the old password and all sessions. Approval and permissions remain unchanged. Disabled accounts cannot receive a link. Password, email, role and status changes also invalidate outstanding links.
+- Signed-in users can use **My account → Change password**. A sole administrator who forgets their password needs a separate operational recovery procedure because no other administrator can approve the request.
+
+Existing PostgreSQL installations must apply this additive migration before restarting the updated server. It adds request and token tables without changing existing accounts, passwords or sessions. Demo storage remains compatible automatically.
+
+```sh
+npx tsx scripts/migrate-features.ts 016_password_reset.sql
+npx tsx scripts/migrate-features.ts 016_password_reset.sql --apply
+```
+
+Follow the existing backup procedure before applying, then create a new backup after adding the schema. Schema compatibility checks may prevent restoring older backups directly. The new tables can remain when rolling the application back. Do not restore users' changed passwords to old values.
 
 | Area                 | Features                                                                                |
 | -------------------- | --------------------------------------------------------------------------------------- |
@@ -53,7 +70,7 @@ Existing installations retain their protection and menu settings while receiving
 | Support              | Inquiries, notices, answers, comments, status, attachments and trash                    |
 | Settings             | Roles, protected-information masking, menus, products, codes and backup management      |
 
-Protected information and downloads are subject to role permissions and workspace protection settings. Administrators, editors and viewers have different access and editing permissions.
+Editors have the same CRM business permissions as administrators. **Users and roles** and **Settings** are restricted to administrators, including products, codes, the workspace trash and restore actions, and backups. Viewers cannot modify business records. Protected information and downloads remain subject to workspace protection settings.
 
 ## Data and PostgreSQL
 
@@ -81,7 +98,7 @@ npm run build
 - `npm run db:inspect`: inspect the configured database's metadata
 - `npm run format`: format project code
 
-Actual PostgreSQL behavior, external integrations and production deployment need separate verification. Email verification, password recovery, SSO, email and push delivery, external-system access and remote updates are not connected. Scheduled backups run while the application is running; off-site storage and key recovery require separate arrangements.
+Actual PostgreSQL behavior, external integrations and production deployment need separate verification. Password recovery uses administrator verification and manual link delivery. Email verification, automatic email delivery, SSO, push delivery, external-system access and remote updates are not connected. Scheduled backups run while the application is running; off-site storage and key recovery require separate arrangements.
 
 ## Project structure
 

@@ -1,3 +1,4 @@
+import { runtimePath } from './runtime-config.ts';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import pg from 'pg';
@@ -338,7 +339,7 @@ export class InstallationDetailsService implements InstallationDetailsAccess {
   private async buildIndex(batch: Batch, vault: LegacyVault): Promise<ArchiveIndex> {
     const metadata = JSON.parse(
       await readFile(
-        this.options.schemaFile ?? new URL('../.local/migration/source-schema.json', import.meta.url),
+        this.options.schemaFile ?? runtimePath('migration/source-schema.json'),
         'utf8',
       ),
     ) as { tables?: { table_name: string; columns: { name: string; type: string }[] }[] };

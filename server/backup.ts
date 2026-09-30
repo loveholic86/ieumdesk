@@ -1,3 +1,4 @@
+import { runtimePath } from './runtime-config.ts';
 import { Router, type Request, type RequestHandler } from 'express';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -153,7 +154,7 @@ export class BackupService {
     readonly control: BackupControl,
     options: { directory?: string; vault?: () => Promise<LegacyVault> } = {},
   ) {
-    this.directory = path.resolve(options.directory ?? '.local/backups');
+    this.directory = path.resolve(options.directory ?? runtimePath('backups'));
     this.vault = options.vault ?? (() => openLegacyVault());
   }
   private async exclusive<T>(action: () => Promise<T>): Promise<T> {

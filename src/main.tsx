@@ -4,12 +4,17 @@ import App from './App';
 import './styles.css';
 import { AuthProvider, AuthGate } from './auth';
 import { WorkspaceSettingsProvider } from './workspace-settings';
+import { initializeTheme } from './theme';
+
+initializeTheme();
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <AuthProvider>
       <AuthGate>
-        <WorkspaceSettingsProvider><App /></WorkspaceSettingsProvider>
+        <WorkspaceSettingsProvider>
+          <App />
+        </WorkspaceSettingsProvider>
       </AuthGate>
     </AuthProvider>
   </React.StrictMode>,

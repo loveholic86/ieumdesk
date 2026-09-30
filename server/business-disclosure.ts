@@ -2,6 +2,7 @@ import type { CRMRecord, RecordKind } from '../src/types.ts';
 import type { User } from './auth-store.ts';
 import { mergeLegacyBusiness } from './business-legacy.ts';
 import { metadataRow } from './installation-managed.ts';
+import { canViewProtectedInformation } from '../src/protection-policy.ts';
 
 export type BusinessArea = 'companies' | 'activities' | 'tasks' | 'products' | 'codes' | RecordKind;
 export type BusinessDisclosureActor = Pick<User, 'id' | 'role' | 'status'>;
@@ -9,9 +10,9 @@ export type BusinessDisclosureSettings = { protectionEnabled: boolean };
 type Row = Record<string, unknown>;
 const object = (value: unknown): value is Row => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
-/** Public CRM fields remain available; protected content requires an active administrator and protection OFF. */
+/** Protected content requires an active administrator/editor and protection OFF. */
 export function businessProtectionEnabled(actor: BusinessDisclosureActor, settings: BusinessDisclosureSettings): boolean {
-  return settings.protectionEnabled !== false || actor.status !== 'active' || actor.role !== 'admin';
+  return settings.protectionEnabled !== false || !canViewProtectedInformation(actor);
 }
 
 function standardText(value: string): string {

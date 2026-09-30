@@ -1,5 +1,90 @@
 // UI messages only. Customer data and stored business values are never translated.
 export const english: Record<string, string> = {
+  '로그인 후 시작 페이지': 'Start page after login',
+  '로그인하면 처음 열리는 페이지를 선택하세요. 저장 후 다음 로그인부터 적용됩니다.': 'Choose the first page to open after login. Your saved choice applies from the next login.',
+  '시작 페이지': 'Start page',
+  '활성화된 메뉴와 내 계정 중에서 선택할 수 있습니다. 시작 메뉴를 끄면 사용 가능한 페이지로 변경됩니다.': 'Choose an enabled menu or My account. If you disable the start menu, an available page will be used.',
+  '시작 페이지와 메뉴는 전체 사용자에게, 화면 테마는 이 브라우저에 적용됩니다.': 'The start page and menus apply to all users. The theme applies to this browser.',
+  '화면 테마': 'Appearance',
+  '선택한 테마는 즉시 적용되며 이 브라우저에 자동 저장됩니다.': 'Your theme takes effect immediately and is saved automatically in this browser.',
+  '라이트': 'Light',
+  '다크': 'Dark',
+  '시스템 설정': 'System',
+  '밝은 배경으로 표시합니다.': 'Use a light background.',
+  '어두운 배경으로 표시합니다.': 'Use a dark background.',
+  '기기의 화면 설정을 따릅니다.': 'Follow your device appearance.',
+  '라이트 테마로 전환': 'Switch to light theme',
+  '다크 테마로 전환': 'Switch to dark theme',
+  '불러오는 중…': 'Loading…',
+  '정보 저장': 'Save information',
+  '고객사 변경': 'Change company',
+  '현재 탭의 모든 항목을 수정한 뒤 저장하세요. 입력하지 않은 보호된 값은 유지됩니다.':
+    'Edit the fields in this tab, then save. Protected values remain unchanged unless you enter a replacement.',
+  '{0} 기록': 'Record {0}',
+  '참고사항 {0}': 'Reference note {0}',
+  '현재 탭의 정보를 저장했습니다.': 'Saved the information in this tab.',
+  '일부 기록은 저장되었습니다. 나머지 입력 내용은 유지됩니다.':
+    'Some records were saved. Your remaining changes are still in the form.',
+  '참고사항은 빈 값이나 잘못된 문자 없이 16,384자 이내로 입력해 주세요.':
+    'Enter a nonempty reference note of up to 16,384 valid characters.',
+  '보호 설정을 확인한 뒤 다시 저장해 주세요.': 'Check the protection settings, then save again.',
+  '설치 상세 정보를 다시 불러와 주세요.': 'Reload the installation details.',
+
+  '고객사명 직접 입력': 'Enter a company name',
+  '고객사명을 입력하세요': 'Enter the company name',
+  '고객사를 선택하거나 고객사명을 입력해 주세요.': 'Select a company or enter a company name.',
+  '고객사 관리에 등록하지 않고 설치 정보에만 저장합니다.':
+    'Saved with this installation without creating a company record.',
+  '설치 정보를 입력하세요. 고객사는 선택하거나 직접 입력할 수 있습니다. * 표시는 필수입니다.':
+    'Enter installation details. Select a company or enter its name. * indicates a required field.',
+  '목록, 행을 누르면 상세 정보가 열립니다.': 'list. Select a row to open its details.',
+  '비밀번호 초기화': 'Reset password',
+  '· 초기화 요청과 승인 대기 계정부터 표시합니다.': '· Reset requests and pending accounts appear first.',
+  '비밀번호를 잊으셨나요?': 'Forgot your password?',
+  '비밀번호 초기화 요청': 'Request a password reset',
+  '가입 이메일을 입력하면 관리자에게 초기화 요청이 표시됩니다. 본인 확인 후 관리자가 전달하는 링크에서 새 비밀번호를 설정하세요.':
+    'Enter your registered email to request a reset from an administrator. After verifying your identity, they will provide a link to set a new password.',
+  '요청을 접수했습니다. 등록된 이용 가능 계정이면 관리자에게 요청이 표시됩니다. 관리자에게 연락해 본인 확인 후 재설정 링크를 받아 주세요.':
+    'Request received. If an eligible account is registered, the request will appear for administrators. Contact your administrator to verify your identity and receive a reset link.',
+  '초기화 요청을 처리하지 못했습니다.': 'Could not request a password reset.',
+  '가입 이메일': 'Registered email',
+  '요청 중': 'Requesting',
+  '관리자에게 초기화 요청': 'Request reset from administrator',
+  '로그인으로 돌아가기': 'Back to sign in',
+  '새 비밀번호 설정': 'Set a new password',
+  '비밀번호를 재설정했습니다': 'Password reset',
+  '새 비밀번호를 저장하면 모든 기기에서 로그아웃됩니다. 가입 승인과 이용 권한은 그대로 유지됩니다.':
+    'Saving your new password signs you out on all devices. Account approval and access permissions stay the same.',
+  '재설정 링크가 유효하지 않습니다. 관리자에게 새 링크를 요청해 주세요.':
+    'This reset link is invalid. Ask your administrator for a new link.',
+  '재설정 링크가 만료되었거나 유효하지 않습니다. 관리자에게 새 링크를 요청해 주세요.':
+    'This reset link has expired or is invalid. Ask your administrator for a new link.',
+  '새 비밀번호 저장': 'Save new password',
+  '본인 확인 후 고객에게 일회용 재설정 링크를 전달하세요.':
+    'Verify the customer’s identity, then share a single-use reset link.',
+  '초기화 요청일: {0}': 'Reset requested: {0}',
+  '재설정 링크를 발급하지 못했습니다.': 'Could not issue a reset link.',
+  '복사하지 못했습니다. 링크를 직접 선택해 복사해 주세요.':
+    'Could not copy the link. Select and copy it manually.',
+  '재설정 링크를 발급했습니다. 이 창을 닫으면 링크를 다시 확인할 수 없습니다.':
+    'Reset link issued. You cannot view this link again after closing this dialog.',
+  '일회용 재설정 링크': 'Single-use reset link',
+  '만료 시각: {0}': 'Expires: {0}',
+  '링크 복사': 'Copy link',
+  복사했습니다: 'Copied',
+  '고객이 링크에서 새 비밀번호를 저장하면 기존 비밀번호와 모든 로그인이 무효화됩니다.':
+    'When the customer saves a new password using the link, their old password and all sessions are invalidated.',
+  '초기화 요청만으로는 본인이 확인되지 않습니다. 기존에 확인된 연락처로 본인 확인 후 링크를 전달하세요. 링크는 30분 동안 한 번만 사용할 수 있으며, 재발급하면 이전 링크는 무효화됩니다.':
+    'A reset request does not verify identity. Verify the customer through a previously confirmed contact before sharing the link. Links expire in 30 minutes and can be used once. Issuing a new link invalidates the previous one.',
+  '관리자 본인의 비밀번호': 'Your administrator password',
+  '발급 중': 'Issuing',
+  '재설정 링크 발급': 'Issue reset link',
+  '비밀번호 초기화 요청 {0}건': 'Password reset requests: {0}',
+  '요청을 확인하려면 새로고침을 눌러 주세요.': 'Refresh to check for new requests.',
+  '초기화 요청': 'Reset requested',
+  '{0} 비밀번호 초기화': 'Reset password for {0}',
+  '이용 중지 계정은 비밀번호를 초기화할 수 없습니다. 계정 상태를 먼저 확인해 주세요.':
+    'A disabled account cannot reset its password. Check the account status first.',
   '화면 표시 이름': 'Display names',
   브랜드명: 'Brand name',
   워크스페이스명: 'Workspace name',
@@ -395,8 +480,8 @@ export const english: Record<string, string> = {
   '업무 내용': 'Task description',
   '업무 상세 닫기': 'Close task details',
   '할 일 추가 닫기': 'Close new task',
-  '휴지통으로 이동했습니다. 환경설정의 휴지통에서 복원할 수 있습니다.':
-    'Moved to trash. You can restore it from Settings → Trash.',
+  '휴지통으로 이동했습니다. 관리자가 환경설정의 휴지통에서 복원할 수 있습니다.':
+    'Moved to trash. An administrator can restore it from Settings → Trash.',
   '휴지통으로 이동': 'Move to trash',
   '자료를 목록에서 숨깁니다. 저장된 내용은 유지되며 관리자가 복원할 수 있습니다.':
     'Hide this item from the list. Its content is retained and an administrator can restore it.',
@@ -609,8 +694,7 @@ export const english: Record<string, string> = {
   '별도 설정 정보': 'Additional settings',
   '이 설치에 적용되는 설정 값을 관리합니다.': 'Manage configuration values for this installation.',
   '설정 파일': 'Configuration files',
-  '설정 키·값을 관리하고 설정 파일과 첨부파일을 다운로드합니다.':
-    'Manage configuration keys and values, and download configuration files and attachments.',
+  '설정 파일을 생성하고 다운로드합니다.': 'Generate and download configuration files.',
   기록: 'Record',
   '{0} 삭제': 'Delete {0}',
   '설정 키·값': 'Configuration keys and values',
@@ -649,11 +733,10 @@ export const english: Record<string, string> = {
   '설치 상세 다시 불러오기': 'Reload installation details',
   '설치 상세 정보 탭': 'Installation detail tabs',
   '보호 설정 확인 중': 'Checking protection settings',
-  '보호 정보 원문은 관리자만 열람할 수 있습니다.': 'Only administrators can view protected information.',
+  '보호 정보 원문은 관리자와 담당자가 열람할 수 있습니다.': 'Administrators and editors can view protected information.',
   '환경설정에 따라 민감한 정보를 보호하고 있습니다.':
     'Sensitive information is hidden by your protection settings.',
-  '관리자 권한으로 보호 정보 원문을 표시하고 있습니다.':
-    'Protected information is visible with administrator access.',
+  '보호 정보 원문을 표시하고 있습니다.': 'Protected information is visible.',
   '기본 정보 수정': 'Edit basic information',
   '기록 삭제': 'Delete record',
   '기록을 삭제하시겠습니까?': 'Delete this record?',
@@ -666,8 +749,26 @@ export const english: Record<string, string> = {
     'Files must not be empty and must be no larger than {0}.',
   '허용된 형식의 파일을 선택해 주세요.': 'Select a file in an allowed format.',
   '설정 파일 생성': 'Generate configuration file',
-  '저장된 설정 키와 값으로 Java .properties 파일을 만듭니다. 필요한 시스템과 연도를 지정하세요.':
-    'Generate a Java .properties file from the saved keys and values. Select a system and year.',
+  'YETA 사용 유형': 'YETA usage type',
+  '최대 사용 인원': 'Maximum users',
+  '최대 회사 수': 'Maximum companies',
+  '간이지급명세서 사용': 'Enable simplified payment statements',
+  '간이지급명세서 사용 인원': 'Simplified payment statement users',
+  '선택 필요': 'Selection required',
+  '설정 파일의 7개 항목을 모두 입력해 주세요.': 'Complete all seven configuration fields.',
+  '시스템 코드는 공백, 쉼표, 등호 없이 영문·숫자·기호로 입력해 주세요.':
+    'Enter an ASCII system code without spaces, commas, or equals signs.',
+  'YETA 사용 유형을 선택해 주세요.': 'Select the YETA usage type.',
+  '간이지급명세서 사용 여부를 선택해 주세요.': 'Choose whether to enable simplified payment statements.',
+  '최대 사용 인원은 1 이상 2,147,483,647 이하의 정수로 입력해 주세요.':
+    'Maximum users must be an integer from 1 to 2,147,483,647.',
+  '최대 회사 수는 1 이상 2,147,483,647 이하의 정수로 입력해 주세요.':
+    'Maximum companies must be an integer from 1 to 2,147,483,647.',
+  '간이지급명세서 사용 인원은 1 이상 2,147,483,647 이하의 정수로 입력해 주세요.':
+    'Simplified payment statement users must be an integer from 1 to 2,147,483,647.',
+
+  '선택·입력한 값으로 고객 서버에 적용할 .yts 설정 파일을 만듭니다.':
+    'Generate a .yts configuration file from the selected and entered values for the customer server.',
   '시스템 코드': 'System code',
   '전체 시스템': 'All systems',
   '귀속 연도': 'Tax year',
@@ -679,8 +780,8 @@ export const english: Record<string, string> = {
     'Download stopped because protection settings changed or are being checked. Try again.',
   '생성 중…': 'Generating…',
   '생성·다운로드': 'Generate and download',
-  '보호 기능이 꺼져 있는 관리자 계정에서만 파일을 다운로드할 수 있습니다.':
-    'Only administrators with protection disabled can download files.',
+  '보호 기능이 꺼져 있으면 관리자와 담당자가 파일을 다운로드할 수 있습니다.':
+    'Administrators and editors can download files when protection is disabled.',
   첨부파일: 'Attachments',
   '첨부파일 다시 불러오기': 'Reload attachments',
   '첨부할 파일 선택': 'Select attachment',
@@ -954,7 +1055,7 @@ export const english: Record<string, string> = {
   '영업 단계의 가중치를 적용합니다.': 'Applies the weight assigned to this sales stage.',
   '예: YETA-2026-001': 'e.g. YETA-2026-001',
   '견적 상태': 'Quotation status',
-  '승인·반려는 관리자가 결정합니다.': 'Administrators decide approval or rejection.',
+  '승인·반려는 관리자와 담당자가 결정합니다.': 'Administrators and editors decide approval or rejection.',
   '예: YETA-CLOUD-001': 'e.g. YETA-CLOUD-001',
   '설치 버전': 'Installation version',
   '예: 2026.1.0': 'e.g. 2026.1.0',
@@ -1017,8 +1118,10 @@ export const english: Record<string, string> = {
   '보호 기능 활성화': 'Enable protection',
   '민감정보를 ‘보호됨’으로 가립니다.': 'Hide sensitive values as “Protected”.',
   '보호 기능 비활성화': 'Disable protection',
-  '관리자만 보호 정보 원문을 볼 수 있습니다. 담당자·조회 전용 계정은 계속 보호됩니다.':
-    'Only administrators can view protected values. They stay hidden from editors and viewers.',
+  '관리자와 담당자가 보호 정보 원문을 볼 수 있습니다. 조회 전용 계정은 계속 보호됩니다.':
+    'Administrators and editors can view protected values. They stay hidden from viewers.',
+  '보호 표시 문구는 저장할 수 없습니다. 원문을 조회한 뒤 수정하거나 실제 내용을 입력해 주세요.':
+    'Protected display text cannot be saved. View the original before editing, or enter the actual content.',
   '선택 후 아래 ‘설정 저장’을 누르면 적용됩니다. 개별 상세창에서 별도로 열람할 필요가 없습니다.':
     'Select “Save settings” below to apply your choice. No separate reveal action is needed in detail views.',
   '좌측 메뉴': 'Sidebar menus',
@@ -1138,8 +1241,8 @@ export const english: Record<string, string> = {
   '선택한 자료': 'Selected item',
   '” 자료를': '” will be',
   '일반 목록으로 복원합니다.': 'restored to the active list.',
-  '휴지통으로 이동합니다. 관리자가 다시 복원할 수 있습니다.':
-    'moved to trash. An administrator can restore it.',
+  '휴지통으로 이동합니다. 관리자와 담당자가 다시 복원할 수 있습니다.':
+    'moved to trash. An administrator or editor can restore it.',
   '처리 중…': 'Processing…',
   '내용을 확인해 주세요.': 'Check the content.',
   '선택한 {0}을 삭제합니다. 삭제 후에는 되돌릴 수 없습니다.':
@@ -1183,8 +1286,8 @@ export const english: Record<string, string> = {
   '파일 등록됨': 'File uploaded',
   '원본 파일 미연결': 'Original file unavailable',
   '다운로드 중…': 'Downloading…',
-  '보호 기능이 꺼져 있는 관리자 계정에서만 등록된 파일을 다운로드할 수 있습니다.':
-    'Only administrators with protection disabled can download uploaded files.',
+  '보호 기능이 꺼져 있으면 관리자와 담당자가 등록된 파일을 다운로드할 수 있습니다.':
+    'Administrators and editors can download uploaded files when protection is disabled.',
   '” 파일을 삭제하시겠습니까?': '” file?',
   '서버 응답을 확인하지 못했습니다. 저장 결과를 확인한 뒤 다시 시도해 주세요.':
     'Could not verify the server response. Check whether your changes were saved before trying again.',
@@ -1200,8 +1303,9 @@ export const english: Record<string, string> = {
   관리자: 'Administrator',
   '조회 전용': 'Viewer',
   활성: 'Active',
-  'CRM 데이터와 사용자 권한을 관리합니다.': 'Manage CRM data and user roles.',
-  'CRM 데이터를 조회하고 등록·수정합니다.': 'View, add and edit CRM data.',
+  'CRM 업무, 사용자·권한 및 환경설정을 관리합니다.': 'Manage CRM work, users, roles and workspace settings.',
+  '사용자·권한 및 환경설정을 제외한 CRM 업무를 관리합니다.':
+    'Manage CRM work, excluding users, roles and workspace settings.',
   'CRM 데이터를 조회합니다.': 'View CRM data.',
   '서버에 연결하지 못했습니다. 연결 상태를 확인하고 다시 시도해 주세요.':
     'Could not connect to the server. Check your connection and try again.',
@@ -1219,6 +1323,7 @@ export const english: Record<string, string> = {
   숨기기: 'Hide',
   보기: 'Show',
   'ieumdesk 소개': 'About ieumdesk',
+  '{0} 소개': 'About {0}',
   '고객을 이해하고,': 'Understand your customers.',
   '다음 기회를 연결하세요.': 'Connect the next opportunity.',
   '고객사와 담당자, 영업과 서비스 이력까지.': 'Companies, contacts, sales and service history.',
@@ -1239,6 +1344,7 @@ export const english: Record<string, string> = {
   '비밀번호 확인이 일치하지 않습니다.': 'The passwords do not match.',
   '계정 요청을 처리하지 못했습니다.': 'Could not complete the account request.',
   'ieumdesk을 시작할 첫 번째 계정입니다.': 'Create the first account to get started with ieumdesk.',
+  '{0}에서 사용할 첫 번째 계정입니다.': 'Create the first account to get started with {0}.',
   '팀과 함께 사용할 계정을 만들어 주세요.': 'Create an account to work with your team.',
   '로그인하고 오늘의 고객 업무를 시작하세요.': "Sign in to start today's customer work.",
   '첫 가입자는': 'The first account is an',
@@ -1519,7 +1625,7 @@ export const english: Record<string, string> = {
   '고객지원 자료를 확인하지 못했습니다.': 'Could not verify the support item.',
   '현재 계정을 확인해 주세요.': 'Check your current account.',
   '등록·수정 권한이 필요합니다.': 'Permission to add or edit records is required.',
-  '작성자 또는 관리자가 수정할 수 있습니다.': 'Only the author or an administrator can edit this item.',
+  '관리자 또는 담당자가 수정할 수 있습니다.': 'Only administrators or editors can edit this item.',
   '환경설정에서 보호정보를 비활성화한 뒤 파일을 내려받을 수 있습니다.':
     'Disable protection in Settings before downloading files.',
   '첨부 다운로드': 'Attachment download',

@@ -1,0 +1,147 @@
+:root {
+  color-scheme: light;
+}
+
+/* Fallbacks in each component preserve its light palette. Screen-only tokens
+   also keep printed quotations on their original white background. */
+@media screen {
+  :root[data-theme='dark'] {
+    color-scheme: dark;
+    color: #e7edf6;
+    background: #101722;
+    --background: #101722;
+    --surface: #192331;
+    --primary: #94bbff;
+    --ink: #e7edf6;
+    --muted: #aab7c9;
+    --border: #38475c;
+    --chrome: #0d1420;
+    --success: #8cdbb4;
+    --warning: #f1c781;
+    --danger: #ffaaa6;
+    --text-muted: var(--muted);
+    --text-secondary: #c0ccdc;
+    --theme-ink: var(--ink);
+    --theme-text: #c0ccdc;
+    --theme-muted: var(--muted);
+    --theme-accent: var(--primary);
+    --theme-border: var(--border);
+    --theme-surface: var(--surface);
+    --theme-surface-soft: #1d2939;
+    --theme-surface-raised: #253449;
+    --theme-control: #45556d;
+    --theme-success: var(--success);
+    --theme-success-soft: #193b30;
+    --theme-warning: var(--warning);
+    --theme-warning-soft: #3c3020;
+    --theme-danger: var(--danger);
+    --theme-danger-soft: #40282c;
+    --theme-purple: #d0b5fa;
+    --theme-purple-soft: #332c46;
+  }
+
+  :root[data-theme='dark'] .button.primary,
+  :root[data-theme='dark'] .skip-link {
+    color: #fff;
+    background: #285fb6;
+    border-color: #5483cf;
+  }
+  :root[data-theme='dark'] .button.primary:hover {
+    background: #326dcc;
+  }
+  :root[data-theme='dark'] .dialog-overlay,
+  :root[data-theme='dark'] .installation-edit-overlay,
+  :root[data-theme='dark'] .installation-unlock-overlay,
+  :root[data-theme='dark'] .support-edit-overlay {
+    background: #030812b8;
+  }
+  :root[data-theme='dark'] input:autofill {
+    box-shadow: 0 0 0 1000px var(--surface) inset;
+    -webkit-text-fill-color: var(--ink);
+  }
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.theme-toggle:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+.auth-language {
+  gap: 8px;
+}
+.settings-start-page {
+  max-width: 420px;
+}
+.theme-choices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.theme-choices label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 18px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.theme-choices label.selected {
+  border-color: var(--primary);
+  background: var(--theme-surface-raised, #f5f8ff);
+}
+.theme-choices label:focus-within {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+.theme-choices input {
+  accent-color: var(--primary);
+  margin: 3px 0 0;
+  flex-shrink: 0;
+}
+.theme-choices svg {
+  flex-shrink: 0;
+  color: var(--primary);
+}
+.theme-choices strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 8px;
+  color: var(--ink);
+}
+.theme-choices small {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+@media (max-width: 700px) {
+  .theme-choices {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .theme-toggle {
+    width: 34px;
+    height: 38px;
+  }
+  .topbar-right .mode-tag,
+  .topbar-right .topbar-account-avatar {
+    display: none;
+  }
+}

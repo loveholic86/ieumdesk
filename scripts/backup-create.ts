@@ -1,8 +1,10 @@
 import 'dotenv/config';
+import { validateRuntimeStorage } from '../server/runtime-config.ts';
 import { pathToFileURL } from 'node:url';
 import { BackupService, PostgresBackupControl, safeBackupCode } from '../server/backup.ts';
 import { PostgresBackupSnapshotProvider } from '../server/backup-snapshot.ts';
 async function main() {
+  await validateRuntimeStorage();
   if (process.argv.length !== 2) throw new Error('BACKUP_ARGUMENT_INVALID');
   const service = new BackupService(new PostgresBackupSnapshotProvider(), new PostgresBackupControl());
   try {
