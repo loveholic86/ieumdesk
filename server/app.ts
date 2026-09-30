@@ -71,8 +71,9 @@ export function createApp(
   app.set('trust proxy', production ? 'loopback' : false);
   app.set('query parser', 'simple');
   app.use(helmet({ referrerPolicy: { policy: 'no-referrer' }, frameguard: { action: 'deny' } }));
-  // Apply before origin checks and body parsing so rejected requests are not cached either.
+  // Apply before origin checks and body parsing so rejected requests are not indexed or cached either.
   app.use('/api', (request, response, next) => {
+    response.set('X-Robots-Tag', 'noindex, nofollow');
     response.set('Cache-Control', 'no-store');
     response.set('Pragma', 'no-cache');
     response.set('Expires', '0');

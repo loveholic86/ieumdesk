@@ -6,6 +6,7 @@ import { validLocalAuthority } from './network-access.ts';
 
 // Vite serves the HTML, so API-only Helmet headers cannot protect the application page.
 export const uiSecurityHeaders = {
+  'X-Robots-Tag': 'noindex, nofollow',
   'Cache-Control': 'no-store',
   Pragma: 'no-cache',
   Expires: '0',
