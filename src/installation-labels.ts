@@ -1,5 +1,9 @@
 import { t } from './i18n';
-import type { InstallationSectionId } from './installation-types';
+import type {
+  InstallationDetailField,
+  InstallationDetailRow,
+  InstallationSectionId,
+} from './installation-types';
 
 export const installationFieldTemplates: Record<InstallationSectionId, [string, string][]> = {
   installation: [
@@ -93,6 +97,7 @@ export const installationFieldTemplates: Record<InstallationSectionId, [string, 
 
 const builtInLabels: Record<string, string> = {
   ...Object.fromEntries(Object.values(installationFieldTemplates).flat()),
+  setup_cd: '설치 ID',
   systemCode: '시스템 코드',
   serviceVersion: '서비스 버전',
   version: '현재 버전',
@@ -106,4 +111,45 @@ const builtInLabels: Record<string, string> = {
 };
 export function installationFieldLabel(field: { key: string; label: string }) {
   return builtInLabels[field.key] === field.label ? t(field.label) : field.label;
+}
+
+const builtInChoices: Record<string, readonly string[]> = {
+  autoUpdate: ['예', '아니오'],
+  autoupdate_yn: ['예', '아니오'],
+  ssl_apply_yn: ['예', '아니오'],
+  setting_yn: ['예', '아니오'],
+  bonding_yn: ['기타'],
+  yeta_version: ['일반', '중도퇴사자'],
+  accessType: ['알 수 없음', '바로 접근', '원격', '불가', 'VPN/VDI'],
+};
+
+/** Only fixed choices are UI labels; notes, custom labels and protected values stay verbatim. */
+export function installationFieldValue(field: InstallationDetailField) {
+  return !field.secret &&
+    !field.masked &&
+    builtInLabels[field.key] === field.label &&
+    builtInChoices[field.key]?.includes(field.value)
+    ? t(field.value)
+    : field.value;
+}
+
+const builtInRowTitles = new Set([
+  '설치 정보',
+  '현재 설치 정보',
+  '추가 설치 정보',
+  '설치 세부 정보',
+  '접근 정보',
+  '서버 정보',
+  '접속 주소',
+  '이관 원본 설치 정보',
+  '이관 원본 Address',
+  '이관 원본 VPN',
+  '이관 원본 접근 정보',
+  '이관 원본 서버 정보',
+]);
+const numberedRowTitle = /^(?:이관 원본 )?(?:고객사 연결|YETA 로그인|SAP|별도 설정|고객 전달용 설정|설정) \d+$/;
+
+export function installationRowTitle(row: Pick<InstallationDetailRow, 'id' | 'title'>) {
+  if (!row.title || row.id.startsWith('workspace-row-')) return row.title;
+  return builtInRowTitles.has(row.title) || numberedRowTitle.test(row.title) ? t(row.title) : row.title;
 }

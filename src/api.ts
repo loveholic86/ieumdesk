@@ -74,7 +74,9 @@ export const dateLabel = (value: string) =>
 export const money = (value: number) => new Intl.NumberFormat(getLocaleTag()).format(value);
 export function downloadCsv(rows: Record<string, unknown>[], filename: string) {
   if (!rows.length) return;
-  const csv = csvContent(rows);
+  const csv = csvContent(
+    rows.map((row) => Object.fromEntries(Object.entries(row).map(([label, value]) => [t(label), value]))),
+  );
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   const a = document.createElement('a');
   a.href = url;

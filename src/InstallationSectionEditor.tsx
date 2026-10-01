@@ -2,7 +2,7 @@ import { useId, useRef, useState } from 'react';
 import { Check, LockKeyhole, RotateCcw } from 'lucide-react';
 import { t } from './i18n';
 import { useLocale } from './use-locale';
-import { installationFieldLabel } from './installation-labels';
+import { installationFieldLabel, installationRowTitle } from './installation-labels';
 import {
   visibleInstallationSection,
   type InstallationSectionChange,
@@ -80,7 +80,7 @@ export default function InstallationSectionEditor({
       >
         {section.rows.map((row, index) => (
           <fieldset key={row.id} className="installation-section-edit-row" disabled={busy}>
-            <legend>{row.title || t('{0} 기록', [index + 1])}</legend>
+            <legend>{installationRowTitle(row) || t('{0} 기록', [index + 1])}</legend>
             {row.managed !== 'metadata' && (
               <label className="installation-section-edit-title">
                 {t('기록 이름')}

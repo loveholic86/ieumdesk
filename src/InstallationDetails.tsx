@@ -1,4 +1,4 @@
-import { installationFieldLabel } from './installation-labels';
+import { installationFieldLabel, installationFieldValue, installationRowTitle } from './installation-labels';
 import { canViewProtectedInformation } from './protection-policy';
 import { canManageBusiness } from './permissions';
 import { t } from './i18n';
@@ -144,7 +144,7 @@ function DataValue({ field, policyPending }: { field: InstallationDetailField; p
     );
   return (
     <span className={`installation-field-value ${/[\n\r]/.test(field.value) ? 'multiline' : ''}`}>
-      {field.value || <span className="installation-missing">{t('미등록')}</span>}
+      {installationFieldValue(field) || <span className="installation-missing">{t('미등록')}</span>}
     </span>
   );
 }
@@ -169,7 +169,7 @@ function RowActions({
       <button
         type="button"
         className="button"
-        aria-label={t('{0} 수정', [row.title || t('기록')])}
+        aria-label={t('{0} 수정', [installationRowTitle(row) || t('기록')])}
         onClick={() => onEdit(row)}
         disabled={disabled}
       >
@@ -180,7 +180,7 @@ function RowActions({
         <button
           type="button"
           className="icon-button danger-text"
-          aria-label={t('{0} 삭제', [row.title || t('기록')])}
+          aria-label={t('{0} 삭제', [installationRowTitle(row) || t('기록')])}
           onClick={() => onDelete(row)}
           disabled={disabled}
         >
@@ -273,7 +273,7 @@ function SectionRows({
                     <>
                       {credentials && (
                         <td className="installation-record-title">
-                          {row.id.startsWith('workspace-row-') ? row.title : t(row.title)}
+                          {installationRowTitle(row)}
                         </td>
                       )}
                       {columns.map(([key]) => (
@@ -330,7 +330,7 @@ function SectionRows({
               )}
             </span>
             <h3>
-              {(row.id.startsWith('workspace-row-') ? row.title : t(row.title)) ||
+              {installationRowTitle(row) ||
                 (section.rows.length > 1 ? `${t(section.title)} ${index + 1}` : t(section.title))}
             </h3>
             <span className="installation-count">
@@ -1057,7 +1057,7 @@ export default function InstallationDetails({
                     disabled={editingActive || interactionBusy}
                   >
                     <Icon size={16} />
-                    {title}
+                    {t(title)}
                   </Tabs.Trigger>
                 ))}
               </Tabs.List>
@@ -1155,7 +1155,7 @@ export default function InstallationDetails({
                 >
                   <Dialog.Title>{t('기록 삭제')}</Dialog.Title>
                   <Dialog.Description>
-                    <strong>{visibleDeleting.row.title || t(activeConfig.title)}</strong>
+                    <strong>{installationRowTitle(visibleDeleting.row) || t(activeConfig.title)}</strong>
                     {t(' 기록을 삭제하시겠습니까?')}
                   </Dialog.Description>
                   {actionError && (

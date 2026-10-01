@@ -31,6 +31,14 @@ import { ProductCatalogPage, CodeCatalogPage } from './CatalogPage';
 import ArchivedPage from './ArchivedPage';
 import BackupPage from './BackupPage';
 
+const auditAreaLabels: Record<string, string> = {
+  ...Object.fromEntries(menuDefinitions),
+  settings: '환경설정',
+  catalog: '카탈로그',
+  records: '업무 자료',
+  backups: '백업 관리',
+};
+
 export default function SettingsPage({
   notify,
   onRefresh = () => {},
@@ -393,9 +401,9 @@ export default function SettingsPage({
                   <tr key={row.id}>
                     <td>{new Date(row.createdAt).toLocaleString(getLocaleTag())}</td>
                     <td>{row.actorName}</td>
-                    <td>{row.area}</td>
-                    <td>{row.action}</td>
-                    <td>{row.result}</td>
+                    <td>{t(auditAreaLabels[row.area] ?? row.area)}</td>
+                    <td>{t(row.action)}</td>
+                    <td>{t(row.result)}</td>
                   </tr>
                 ))}
               </tbody>

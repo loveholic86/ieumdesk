@@ -141,7 +141,7 @@ export default function ArchivedPage({
     }
   };
   const filtered = items.filter((item) =>
-    `${item.title} ${archiveAreaLabels[item.area]}`
+    `${item.title} ${archiveAreaLabels[item.area]} ${t(archiveAreaLabels[item.area])}`
       .toLocaleLowerCase()
       .includes(query.trim().toLocaleLowerCase()),
   );

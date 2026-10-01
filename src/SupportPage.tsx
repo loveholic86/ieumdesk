@@ -592,8 +592,8 @@ export default function SupportPage({ companies, notify, onRefresh }: Props) {
           busy={busy}
           companyName={
             visibleDetail?.companyId
-              ? companyNames.get(visibleDetail.companyId) || '고객사 확인 필요'
-              : '고객사 연결 없음'
+              ? companyNames.get(visibleDetail.companyId) || t('고객사 확인 필요')
+              : t('고객사 연결 없음')
           }
           onClose={() => {
             if (!busy) {

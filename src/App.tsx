@@ -423,7 +423,7 @@ export default function App() {
           서비스버전: c.serviceVersion,
           사업자등록번호: c.businessNumber,
           업종: c.industry,
-          이용상태: statusLabels[c.status],
+          이용상태: t(statusLabels[c.status]),
           서비스: c.products.join(' / '),
           담당자: c.contactName,
           이메일: c.email,
@@ -431,7 +431,7 @@ export default function App() {
           내부담당: c.owner,
           계약종료일: c.contractEnd,
         })),
-        'ieumdesk_고객사.csv',
+        locale === 'en' ? 'ieumdesk_companies.csv' : 'ieumdesk_고객사.csv',
       );
       notify(`${rows.length}개 고객사 정보를 내보냈습니다.`);
     } catch {
@@ -2394,7 +2394,7 @@ function TaskRow({
           {task.title}
         </button>
         <div className="task-meta">
-          <span>{task.type || t('개발요청')}</span>
+          <span>{t(task.type || '개발요청')}</span>
           {company && (
             <button className="text-button" onClick={() => openCompany(company.id)}>
               <Building2 size={13} />

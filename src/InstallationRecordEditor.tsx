@@ -1,5 +1,9 @@
-import { installationFieldTemplates as templates, installationFieldLabel } from './installation-labels';
-import { t } from './i18n';
+import {
+  installationFieldTemplates as templates,
+  installationFieldLabel,
+  installationRowTitle,
+} from './installation-labels';
+import { t, getLocaleTag } from './i18n';
 import { useLocale } from './use-locale';
 import { useEffect, useId, useRef, useState } from 'react';
 import { ArrowLeft, Check, LockKeyhole, Maximize2, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react';
@@ -69,7 +73,7 @@ export default function InstallationRecordEditor({
   const hasChanges = !row || titleChanged || changedCount > 0 || removed.length > 0 || added.length > 0;
   const search = query.trim().toLocaleLowerCase();
   const matches = (label: string, key: string) =>
-    !search || `${label} ${key}`.toLocaleLowerCase().includes(search);
+    !search || `${label} ${key} ${installationFieldLabel({ key, label })}`.toLocaleLowerCase().includes(search);
   const visibleFields =
     row?.fields.filter(
       (field) =>
@@ -133,8 +137,11 @@ export default function InstallationRecordEditor({
   };
   const valueCount = (value: string, preserved = false) =>
     preserved
-      ? '기존 값 유지'
-      : `${value.length.toLocaleString()} / 16,384자${value.includes('\n') ? ` · ${value.split('\n').length}줄` : ''}`;
+      ? t('기존 값 유지')
+      : t('{0} / 16,384자{1}', [
+          value.length.toLocaleString(getLocaleTag()),
+          value.includes('\n') ? t(' · {0}줄', [value.split('\n').length]) : '',
+        ]);
   const renderField = (field: InstallationDetailField, expanded = false) => {
     const isRemoved = removed.includes(field.key);
     const touched = Object.hasOwn(values, field.key);
@@ -181,7 +188,7 @@ export default function InstallationRecordEditor({
           disabled={busy || isRemoved || hidden}
         />
         <div className="installation-inline-edit-value-meta">
-          <span>{t(valueCount(value, Boolean(field.masked && !touched)))}</span>
+          <span>{valueCount(value, Boolean(field.masked && !touched))}</span>
           {!expanded && (
             <button
               type="button"
@@ -287,7 +294,7 @@ export default function InstallationRecordEditor({
           disabled={busy || policyPending}
         />
         <div className="installation-inline-edit-value-meta">
-          <span>{t(valueCount(value))}</span>
+          <span>{valueCount(value)}</span>
           {!expanded && (
             <button
               type="button"
@@ -357,7 +364,7 @@ export default function InstallationRecordEditor({
       <header className="installation-inline-edit-header">
         <div>
           <h3 id={`${id}-heading`}>
-            {t(sectionTitle)} {row ? t('수정') : t('추가')}
+            {t(row ? '{0} 수정' : '{0} 추가', [t(sectionTitle)])}
           </h3>
           <p id={`${id}-description`}>
             {t('이 기록의 항목을 수정하세요. 긴 내용도 이 영역에서 크게 펼쳐 편집할 수 있습니다.')}
@@ -388,7 +395,7 @@ export default function InstallationRecordEditor({
               {isMetadata ? (
                 <div className="installation-inline-edit-title">
                   <span>{t('기록 이름')}</span>
-                  <strong>{title}</strong>
+                  <strong>{row ? installationRowTitle(row) : title}</strong>
                 </div>
               ) : (
                 <label className="installation-inline-edit-title">
@@ -524,10 +531,10 @@ export default function InstallationRecordEditor({
             <strong>
               {hasChanges
                 ? [
-                    titleChanged && row ? '이름 변경' : '',
-                    changedCount ? `변경 ${changedCount}` : '',
-                    added.length ? `추가 ${added.length}` : '',
-                    removed.length ? `삭제 ${removed.length}` : '',
+                    titleChanged && row ? t('이름 변경') : '',
+                    changedCount ? t('변경 {0}', [changedCount]) : '',
+                    added.length ? t('추가 {0}', [added.length]) : '',
+                    removed.length ? t('삭제 {0}', [removed.length]) : '',
                   ]
                     .filter(Boolean)
                     .join(' · ') || t('새 기록 작성 중')

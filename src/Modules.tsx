@@ -426,12 +426,15 @@ export default function Modules({
     const data = filtered.map((row) => ({
       고객사:
         recordCompanyIds(row)
-          .map((id) => companyNames.get(id) || '고객사 확인 필요')
+          .map((id) => companyNames.get(id) || t('고객사 확인 필요'))
           .join(', ') ||
         row.companyName ||
-        '고객사 연결 없음',
+        t('고객사 연결 없음'),
       [config.singular]: recordTitle(kind, row),
-      [categoryLabel]: kind === 'activities' ? activityLabels[row.type || ''] : categoryValue(row),
+      [categoryLabel]:
+        kind === 'activities'
+          ? t(activityLabels[row.type || ''])
+          : t(categoryValue(row), undefined, kind === 'sales' ? 'sales' : undefined),
       ...(kind === 'contacts'
         ? {
             부서: row.department,
@@ -454,7 +457,7 @@ export default function Modules({
               가중예상매출: weightedRevenue(row, weightPolicy),
               서비스: row.serviceVersion,
               실패사유: row.failedReason,
-              재영업가능성: row.retryProbability,
+              재영업가능성: t(row.retryProbability),
             }
           : kind === 'quotations'
             ? { 발행일: row.issueDate, 공급가액: row.supplyAmount, 부가세: row.vat, 합계: row.total }
@@ -467,7 +470,7 @@ export default function Modules({
                   기록일: row.createdAt,
                 }),
     }));
-    downloadCsv(data, `ieumdesk_${config.title.replaceAll(' ', '_')}.csv`);
+    downloadCsv(data, `ieumdesk_${t(config.title).replaceAll(' ', '_')}.csv`);
     notify(`${filtered.length}개 ${config.singular} 정보를 내보냈습니다.`);
   };
   return (
@@ -1630,7 +1633,7 @@ function RecordForm({
       <select value={String(draft[key] ?? values[0])} onChange={(e) => update(key, e.target.value)}>
         {values.map((value) => (
           <option key={value} value={value}>
-            {t(value)}
+            {t(value, undefined, key === 'stage' ? 'sales' : undefined)}
           </option>
         ))}
       </select>
@@ -1919,7 +1922,7 @@ function RecordForm({
                 </Field>
                 <Field label={t('가중치 적용 예상 매출')}>
                   <input
-                    value={`${salesWeight(draft, weightPolicy)}% · ${money(weightedRevenue(draft, weightPolicy))}원`}
+                    value={`${salesWeight(draft, weightPolicy)}% · ${t('{0}원', [money(weightedRevenue(draft, weightPolicy))])}`}
                     readOnly
                   />
                   <small>{t('영업 단계의 가중치를 적용합니다.')}</small>
@@ -1939,7 +1942,7 @@ function RecordForm({
                   select('status', '견적 상태', ['발행', '승인', '반려'])
                 ) : (
                   <Field label={t('견적 상태')}>
-                    <input value={draft.status || '발행'} readOnly />
+                    <input value={t(draft.status || '발행')} readOnly />
                     <small>{t('승인·반려는 관리자와 담당자가 결정합니다.')}</small>
                   </Field>
                 )}
