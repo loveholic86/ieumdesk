@@ -5,6 +5,7 @@ import { LanguageSelector } from './LanguageSelector';
 import { ThemeToggle } from './ThemeSelector';
 import { openProjectChannel, type ProjectChannel } from './project-channel';
 import { usePublicBranding } from './use-public-branding';
+import { readRememberedLoginId, saveRememberedLoginId } from './remembered-login';
 import type { WorkspaceBranding } from './workspace-types';
 import {
   Fragment,
@@ -631,7 +632,9 @@ export function LoginPage() {
   const [signup, setSignup] = useState(setupRequired);
   const [forgotPassword, setForgotPassword] = useState(false);
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const [rememberedLoginId] = useState(readRememberedLoginId);
+  const [rememberId, setRememberId] = useState(Boolean(rememberedLoginId));
+  const [email, setEmail] = useState(setupRequired ? '' : rememberedLoginId);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -658,7 +661,10 @@ export function LoginPage() {
     setBusy(true);
     try {
       if (signup) await register(name.trim(), email.trim(), password);
-      else await login(email.trim(), password);
+      else {
+        await login(email.trim(), password);
+        saveRememberedLoginId(email, rememberId);
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '계정 요청을 처리하지 못했습니다.');
     } finally {
@@ -764,7 +770,24 @@ export function LoginPage() {
               disabled={busy}
             />
           )}
-          {!signup && <button type="button" className="auth-reset-link" disabled={busy} onClick={() => { setPassword(''); setError(''); setForgotPassword(true); }}>{t('비밀번호를 잊으셨나요?')}</button>}
+          {!signup && (
+            <div className="auth-login-options">
+              <label className="auth-remember-id">
+                <input
+                  type="checkbox"
+                  checked={rememberId}
+                  disabled={busy}
+                  onChange={(event) => {
+                    setRememberId(event.target.checked);
+                    if (!event.target.checked) saveRememberedLoginId('', false);
+                  }}
+                />
+                {t('ID 저장')}
+              </label>
+              <button type="button" className="auth-reset-link" disabled={busy} onClick={() => { setPassword(''); setError(''); setForgotPassword(true); }}>{t('비밀번호를 잊으셨나요?')}</button>
+              <small>{t('이 브라우저에 이메일만 저장합니다.')}</small>
+            </div>
+          )}
           <button className="button primary auth-submit" type="submit" disabled={busy}>
             {busy ? (
               <>

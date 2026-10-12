@@ -37,11 +37,17 @@ Navigation, forms, notices, validation messages and date formatting follow the s
 
 ## Display names
 
-Administrators can change the brand and workspace names under **Settings → Display & menus → Display names**. The defaults are `ieumdesk` and `Workspace`, with a maximum of 60 characters per name. Saved names appear on the sign-in and registration pages and in the sidebar for all users; the brand name also appears in the browser title, footer and help. Only the two display names are available before sign-in; other workspace settings require authentication. Custom names are not translated when the interface language changes.
+Administrators can change the brand and workspace names under **Settings → General settings → Display names**. The defaults are `ieumdesk` and `Workspace`, with a maximum of 60 characters per name. Saved names appear on the sign-in and registration pages and in the sidebar for all users; the brand name also appears in the browser title, footer and help. Only the two display names are available before sign-in; other workspace settings require authentication. Custom names are not translated when the interface language changes.
 
 Existing installations retain their protection and menu settings while receiving the new display defaults. The names extend the existing PostgreSQL JSON settings, so no schema migration is required.
 
 ## Features
+
+### Remember ID and automatic logout
+
+- Select **Remember ID** before signing in to save your email in this browser. It is filled in on subsequent sign-in screens; clearing the checkbox deletes the saved ID. Passwords are not stored by this feature.
+- Administrators can set **Settings → General settings → Automatic logout** to 1–1440 minutes (24 hours). The default remains 720 minutes (12 hours). Time is counted from login and is not extended by activity.
+- Saved changes apply to all users from their next login. Existing sessions retain their original expiry. The server session and login cookie use the same lifetime, with no database schema migration required.
 
 ### Password reset (no SMTP required)
 

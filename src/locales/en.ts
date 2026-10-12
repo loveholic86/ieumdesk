@@ -1,5 +1,14 @@
 // UI messages only. Customer data and stored business values are never translated.
 export const english: Record<string, string> = {
+  'ID 저장': 'Remember ID',
+  '이 브라우저에 이메일만 저장합니다.': 'Only your email is saved in this browser.',
+  '일반 설정': 'General settings',
+  '자동 로그아웃': 'Automatic logout',
+  '자동 로그아웃 시간(분)': 'Automatic logout time (minutes)',
+  '자동 로그아웃 시간은 1~1440분 사이의 정수로 입력해 주세요.': 'Enter a whole number between 1 and 1440 minutes for automatic logout.',
+  '로그인 후 설정한 시간이 지나면 자동 로그아웃됩니다. 저장 후 다음 로그인부터 전체 사용자에게 적용됩니다.': 'You are logged out after this time has elapsed since login. Saved changes apply to all users from their next login.',
+  '1~1440분(24시간)까지 설정할 수 있습니다. 기본값은 720분(12시간)이며, 사용 중에도 로그인 시점부터 계산합니다.': 'Set 1–1440 minutes (24 hours). The default is 720 minutes (12 hours), counted from login even while you are active.',
+  '시작 페이지·자동 로그아웃·메뉴는 전체 사용자에게, 화면 테마는 이 브라우저에 적용됩니다.': 'The start page, automatic logout and menus apply to all users. The theme applies to this browser.',
   '허용되지 않은 접속 주소입니다.': 'This access address is not allowed.',
   '설정 파일의 입력값을 확인해 주세요.': 'Check the configuration file values.',
   '비밀번호 재설정 링크 발급': 'Issue password reset link',

@@ -20,6 +20,12 @@ export const startPageDefinitions = [
 ] as const;
 export type StartPage = (typeof startPageDefinitions)[number][0];
 export const defaultStartPage: StartPage = 'companies';
+export const defaultSessionTimeoutMinutes = 12 * 60;
+export const minSessionTimeoutMinutes = 1;
+export const maxSessionTimeoutMinutes = 24 * 60;
+export const validSessionTimeoutMinutes = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) &&
+  value >= minSessionTimeoutMinutes && value <= maxSessionTimeoutMinutes;
 export const validStartPage = (value: unknown): value is StartPage =>
   startPageDefinitions.some(([key]) => key === value);
 export function resolveStartPage(settings: Pick<WorkspaceSettings, 'startPage' | 'menus'>): StartPage {
@@ -53,6 +59,7 @@ export type WorkspaceSettings = {
   brandName: string;
   workspaceName: string;
   startPage: StartPage;
+  sessionTimeoutMinutes: number;
   protectionEnabled: boolean;
   menus: Record<MenuKey, boolean>;
   updatedAt: string;
@@ -62,6 +69,7 @@ export type WorkspaceSettingsPatch = {
   brandName?: string;
   workspaceName?: string;
   startPage?: StartPage;
+  sessionTimeoutMinutes?: number;
   protectionEnabled?: boolean;
   menus?: Partial<Record<MenuKey, boolean>>;
 };
@@ -69,6 +77,7 @@ export const defaultWorkspaceSettings = (): WorkspaceSettings => ({
   ...defaultWorkspaceBranding,
   revision: 1,
   startPage: defaultStartPage,
+  sessionTimeoutMinutes: defaultSessionTimeoutMinutes,
   protectionEnabled: true,
   menus: Object.fromEntries(menuDefinitions.map(([key]) => [key, true])) as Record<MenuKey, boolean>,
   updatedAt: '',
@@ -82,6 +91,7 @@ export function validWorkspaceSettings(value: unknown): value is WorkspaceSettin
     validWorkspaceName(item.brandName) &&
     validWorkspaceName(item.workspaceName) &&
     validStartPage(item.startPage) &&
+    validSessionTimeoutMinutes(item.sessionTimeoutMinutes) &&
     typeof item.protectionEnabled === 'boolean' &&
     typeof item.updatedAt === 'string' &&
     !!item.menus &&

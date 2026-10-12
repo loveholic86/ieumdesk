@@ -232,6 +232,30 @@
   flex-direction: column;
   gap: 20px;
 }
+.auth-login-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+.auth-remember-id {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--theme-text, #35475f);
+  font-size: 13px;
+  cursor: pointer;
+}
+.auth-login-options > small {
+  flex-basis: 100%;
+  color: var(--theme-muted, #8290a4);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.auth-login-options .auth-reset-link {
+  margin: 0;
+}
 .auth-field {
   display: flex;
   flex-direction: column;

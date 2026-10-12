@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { ApiError } from './errors.ts';
 import { passwordResetPath, passwordResetTtlMs } from './password-reset.ts';
 import { canManageBusiness, canManageSystem } from '../src/permissions.ts';
+import { defaultSessionTimeoutMinutes } from '../src/workspace-types.ts';
 import { type AuthStore, type AuthUser, publicUser } from './auth-store.ts';
 import {
   dummyPasswordHash,
@@ -25,6 +26,7 @@ declare global {
 export interface AuthOptions {
   now?: () => number;
   sessionTtlMs?: number;
+  getSessionTtlMs?: () => Promise<number>;
   onAdminPasswordReset?: (actorId: string, targetId: string) => Promise<void>;
 }
 const cookieName = 'ieumdesk_session';
@@ -166,7 +168,7 @@ const invalidCurrentPassword = () =>
 
 export function createAuthentication(authStore: AuthStore, options: AuthOptions = {}) {
   const now = options.now ?? Date.now;
-  const ttl = options.sessionTtlMs ?? 12 * 60 * 60_000;
+  const ttl = options.sessionTtlMs ?? defaultSessionTimeoutMinutes * 60_000;
   if (!Number.isFinite(ttl) || ttl <= 0 || ttl > 30 * 24 * 60 * 60_000)
     throw new Error('INVALID_SESSION_TTL');
   const limiter = new RateLimiter(now);
@@ -196,17 +198,22 @@ export function createAuthentication(authStore: AuthStore, options: AuthOptions 
     return user;
   };
   const issueSession = async (request: Request, response: Response, user: AuthUser) => {
+    // Snapshot the workspace policy when issuing a session; existing expiry times stay intact.
+    const sessionTtl = options.getSessionTtlMs ? await options.getSessionTtlMs() : ttl;
+    if (!Number.isFinite(sessionTtl) || sessionTtl <= 0 || sessionTtl > 30 * 24 * 60 * 60_000)
+      throw new Error('INVALID_SESSION_TTL');
+    const issuedAt = now();
     const old = tokenFromRequest(request);
     if (old) await authStore.deleteSession(sessionHash(old));
     const token = newSessionToken();
     await authStore.createSession(
       user.id,
       sessionHash(token),
-      new Date(now() + ttl).toISOString(),
-      new Date(now()).toISOString(),
+      new Date(issuedAt + sessionTtl).toISOString(),
+      new Date(issuedAt).toISOString(),
       { passwordHash: user.passwordHash, email: user.email },
     );
-    response.cookie(cookieName, token, { ...cookieOptions(request), maxAge: ttl });
+    response.cookie(cookieName, token, { ...cookieOptions(request), maxAge: sessionTtl });
     response.clearCookie(legacyCookieName, cookieOptions(request));
   };
   const requireSession = async (request: Request, _response: Response, next: NextFunction) => {

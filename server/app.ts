@@ -119,6 +119,9 @@ export function createApp(
   app.use('/api', validateJsonStructure);
   const auth = createAuthentication(authStore, {
     ...authOptions,
+    getSessionTtlMs: authOptions?.getSessionTtlMs ?? (authOptions?.sessionTtlMs === undefined
+      ? async () => (await workspace.get()).sessionTimeoutMinutes * 60_000
+      : undefined),
     onAdminPasswordReset: async (actorId, targetId) => {
       await workspace.audit({ actorId, action: '비밀번호 재설정 링크 발급', area: 'users', result: '완료', fields: [`user:${targetId}`] });
       await authOptions?.onAdminPasswordReset?.(actorId, targetId);

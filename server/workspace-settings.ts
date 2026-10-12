@@ -12,6 +12,8 @@ import {
   defaultWorkspaceSettings,
   defaultWorkspaceBranding,
   defaultStartPage,
+  defaultSessionTimeoutMinutes,
+  validSessionTimeoutMinutes,
   validStartPage,
   validWorkspaceName,
   menuDefinitions,
@@ -31,6 +33,7 @@ export const workspacePatchSchema = z
     brandName: nameSchema.optional(),
     workspaceName: nameSchema.optional(),
     startPage: z.custom<WorkspaceSettings['startPage']>(validStartPage).optional(),
+    sessionTimeoutMinutes: z.custom<number>(validSessionTimeoutMinutes).optional(),
     protectionEnabled: z.boolean().optional(),
     menus: z
       .object(Object.fromEntries(menuDefinitions.map(([key]) => [key, z.boolean().optional()])))
@@ -43,6 +46,7 @@ export const workspacePatchSchema = z
       value.brandName !== undefined ||
       value.workspaceName !== undefined ||
       value.startPage !== undefined ||
+      value.sessionTimeoutMinutes !== undefined ||
       value.protectionEnabled !== undefined ||
       (value.menus && Object.keys(value.menus).length > 0),
     '변경할 설정을 선택해 주세요.',
@@ -75,6 +79,7 @@ const merge = (current: WorkspaceSettings, input: WorkspaceSettingsPatch): Works
     brandName: input.brandName ?? current.brandName,
     workspaceName: input.workspaceName ?? current.workspaceName,
     startPage: input.startPage ?? current.startPage,
+    sessionTimeoutMinutes: input.sessionTimeoutMinutes ?? current.sessionTimeoutMinutes,
     protectionEnabled: input.protectionEnabled ?? current.protectionEnabled,
     menus: { ...current.menus, ...input.menus },
     updatedAt: new Date().toISOString(),
@@ -84,6 +89,7 @@ const changed = (input: WorkspaceSettingsPatch) => [
   ...(input.brandName === undefined ? [] : ['brandName']),
   ...(input.workspaceName === undefined ? [] : ['workspaceName']),
   ...(input.startPage === undefined ? [] : ['startPage']),
+  ...(input.sessionTimeoutMinutes === undefined ? [] : ['sessionTimeoutMinutes']),
   ...(input.protectionEnabled === undefined ? [] : ['protectionEnabled']),
   ...Object.keys(input.menus ?? {}).map((key) => `menus.${key}`),
 ];
@@ -107,9 +113,9 @@ export class DemoWorkspaceSettings implements WorkspaceSettingsAccess {
       if (raw === undefined)
         return { value: { settings: defaultWorkspaceSettings(), audit: [] }, missing: true };
       const data = JSON.parse(raw);
-      // Fill presentation defaults for old files without changing policy or writing the file.
+      // Fill missing fields for old files without rewriting them or changing existing values.
       if (data.settings && typeof data.settings === 'object' && !Array.isArray(data.settings))
-        data.settings = { ...defaultWorkspaceBranding, startPage: defaultStartPage, ...data.settings };
+        data.settings = { ...defaultWorkspaceBranding, startPage: defaultStartPage, sessionTimeoutMinutes: defaultSessionTimeoutMinutes, ...data.settings };
       if (!validWorkspaceSettings(data.settings) || !Array.isArray(data.audit)) throw unavailable();
       return { value: data, missing: false };
     } catch {
@@ -244,6 +250,7 @@ export class PostgresWorkspaceSettings implements WorkspaceSettingsAccess {
             brandName: next.brandName,
             workspaceName: next.workspaceName,
             startPage: next.startPage,
+            sessionTimeoutMinutes: next.sessionTimeoutMinutes,
             protectionEnabled: next.protectionEnabled,
             menus: next.menus,
           }),

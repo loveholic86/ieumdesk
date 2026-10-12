@@ -3,6 +3,7 @@ import { useLocale } from './use-locale';
 import { useEffect, useState } from 'react';
 import {
   Check,
+  Clock3,
   History,
   House,
   LayoutGrid,
@@ -20,6 +21,9 @@ import {
   startPageDefinitions,
   resolveStartPage,
   validStartPage,
+  minSessionTimeoutMinutes,
+  maxSessionTimeoutMinutes,
+  validSessionTimeoutMinutes,
   workspaceNameMaxLength,
   validWorkspaceName,
   type WorkspaceAudit,
@@ -88,6 +92,11 @@ export default function SettingsPage({
       setFailed(true);
       return;
     }
+    if (!validSessionTimeoutMinutes(draft.sessionTimeoutMinutes)) {
+      setMessage('자동 로그아웃 시간은 1~1440분 사이의 정수로 입력해 주세요.');
+      setFailed(true);
+      return;
+    }
     setSaving(true);
     setMessage('');
     setFailed(false);
@@ -95,6 +104,8 @@ export default function SettingsPage({
     if (brandName !== settings.brandName) patch.brandName = brandName;
     if (workspaceName !== settings.workspaceName) patch.workspaceName = workspaceName;
     if (draft.startPage !== settings.startPage) patch.startPage = draft.startPage;
+    if (draft.sessionTimeoutMinutes !== settings.sessionTimeoutMinutes)
+      patch.sessionTimeoutMinutes = draft.sessionTimeoutMinutes;
     if (draft.protectionEnabled !== settings.protectionEnabled)
       patch.protectionEnabled = draft.protectionEnabled;
     const menus = Object.fromEntries(
@@ -107,6 +118,7 @@ export default function SettingsPage({
       patch.brandName === undefined &&
       patch.workspaceName === undefined &&
       patch.startPage === undefined &&
+      patch.sessionTimeoutMinutes === undefined &&
       patch.protectionEnabled === undefined &&
       !patch.menus
     ) {
@@ -135,13 +147,13 @@ export default function SettingsPage({
         <div>
           <div className="eyebrow">WORKSPACE SETTINGS</div>
           <h1>{t('환경설정')}</h1>
-          <p>{t('시작 페이지와 메뉴는 전체 사용자에게, 화면 테마는 이 브라우저에 적용됩니다.')}</p>
+          <p>{t('시작 페이지·자동 로그아웃·메뉴는 전체 사용자에게, 화면 테마는 이 브라우저에 적용됩니다.')}</p>
         </div>
       </header>
       <div className="settings-tabs" role="tablist" aria-label={t('환경설정 구분')}>
         <button role="tab" aria-selected={tab === 'preferences'} onClick={() => setTab('preferences')}>
           <Settings2 size={17} />
-          {t('표시 및 메뉴')}
+          {t('일반 설정')}
         </button>
         <button role="tab" aria-selected={tab === 'audit'} onClick={() => setTab('audit')}>
           <History size={17} />
@@ -204,6 +216,33 @@ export default function SettingsPage({
               {t(
                 '활성화된 메뉴와 내 계정 중에서 선택할 수 있습니다. 시작 메뉴를 끄면 사용 가능한 페이지로 변경됩니다.',
               )}
+            </p>
+          </section>
+          <section className="settings-card">
+            <div className="settings-card-title">
+              <Clock3 size={21} />
+              <div>
+                <h2>{t('자동 로그아웃')}</h2>
+                <p>{t('로그인 후 설정한 시간이 지나면 자동 로그아웃됩니다. 저장 후 다음 로그인부터 전체 사용자에게 적용됩니다.')}</p>
+              </div>
+            </div>
+            <label className="field settings-start-page" htmlFor="settings-session-timeout">
+              <span>{t('자동 로그아웃 시간(분)')}</span>
+              <input
+                id="settings-session-timeout"
+                type="number"
+                min={minSessionTimeoutMinutes}
+                max={maxSessionTimeoutMinutes}
+                step={1}
+                required
+                value={Number.isFinite(draft.sessionTimeoutMinutes) ? draft.sessionTimeoutMinutes : ''}
+                disabled={saving}
+                aria-describedby="settings-session-timeout-hint"
+                onChange={(event) => change({ ...draft, sessionTimeoutMinutes: event.target.valueAsNumber })}
+              />
+            </label>
+            <p className="settings-hint" id="settings-session-timeout-hint">
+              {t('1~1440분(24시간)까지 설정할 수 있습니다. 기본값은 720분(12시간)이며, 사용 중에도 로그인 시점부터 계산합니다.')}
             </p>
           </section>
           <section className="settings-card">
