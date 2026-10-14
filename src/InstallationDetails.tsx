@@ -48,7 +48,9 @@ import {
 import InstallationRecordEditor, { type RowDraftPayload } from './InstallationRecordEditor';
 import InstallationFiles from './InstallationFiles';
 import InstallationSectionEditor from './InstallationSectionEditor';
+import { InstallationDiscardDialog, InstallationEditorContext } from './InstallationEditorLayout';
 import InstallationAccessNotes from './InstallationAccessNotes';
+import { scrollInstallationContent } from './installation-scroll';
 import { ArchiveButton } from './ArchivedPage';
 import './installation-details.css';
 
@@ -272,9 +274,7 @@ function SectionRows({
                   ) : (
                     <>
                       {credentials && (
-                        <td className="installation-record-title">
-                          {installationRowTitle(row)}
-                        </td>
+                        <td className="installation-record-title">{installationRowTitle(row)}</td>
                       )}
                       {columns.map(([key]) => (
                         <td key={key}>
@@ -439,6 +439,9 @@ export default function InstallationDetails({
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState('');
   const [status, setStatus] = useState('');
+  const [editingDirty, setEditingDirty] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [editorFooter, setEditorFooter] = useState<HTMLDivElement | null>(null);
   const operation = useRef<AbortController | null>(null);
   const generation = useRef(0);
   const identity = useRef({ scopeKey, policyPending });
@@ -481,19 +484,26 @@ export default function InstallationDetails({
     const element = contentScroll.current?.querySelector<HTMLElement>(
       '.installation-inline-editor, .installation-basic-editor',
     );
-    element?.scrollIntoView({ block: 'start', behavior: 'instant' });
+    scrollInstallationContent(element, 'start');
     element
       ?.querySelector<HTMLInputElement>(
         'input:not(:disabled), textarea:not(:disabled), select:not(:disabled)',
       )
       ?.focus({ preventScroll: true });
   }, [editingFocusKey]);
-  const cancelEditing = () => {
+  const discardEditing = () => {
     if (interactionBusy) return;
+    setDiscardOpen(false);
+    setEditingDirty(false);
     setEditing(null);
     setSectionEditing(null);
     setActionError('');
     if (basicEditor) onBasicCancel?.();
+  };
+  const cancelEditing = () => {
+    if (interactionBusy) return;
+    if (editingDirty) setDiscardOpen(true);
+    else discardEditing();
   };
 
   useEffect(() => {
@@ -509,6 +519,8 @@ export default function InstallationDetails({
     setActionError('');
     setStatus('');
     setBusy(false);
+    setDiscardOpen(false);
+    setEditingDirty(false);
     return () => {
       ++generation.current;
       operation.current?.abort();
@@ -548,6 +560,8 @@ export default function InstallationDetails({
       setSectionEditing(null);
       setDeleting(null);
       setBusy(false);
+      setDiscardOpen(false);
+      setEditingDirty(false);
     };
     window.addEventListener('crm:unauthorized', clear);
     window.addEventListener('crm:permissions-changed', clear);
@@ -564,6 +578,8 @@ export default function InstallationDetails({
     setEditing(null);
     setSectionEditing(null);
     setDeleting(null);
+    setDiscardOpen(false);
+    setEditingDirty(false);
     onClose();
   };
   const mutate = async (
@@ -811,7 +827,14 @@ export default function InstallationDetails({
           />
         ) : undefined;
       return (
-        <Tabs.Content key={config.id} value={config.id} className="installation-tab-panel">
+        <Tabs.Content
+          key={config.id}
+          value={config.id}
+          className={
+            'installation-tab-panel' +
+            (visibleSectionEditing?.sectionId === config.id ? ' is-group-editing' : '')
+          }
+        >
           <div className="installation-section-heading">
             <div>
               <span className="installation-section-kicker">
@@ -936,14 +959,14 @@ export default function InstallationDetails({
       <Dialog.Portal>
         <Dialog.Overlay className="dialog-overlay installation-overlay" />
         <Dialog.Content
-          className="installation-dialog"
+          className={'installation-dialog' + (editingActive ? ' is-editing' : '')}
           onEscapeKeyDown={(event) => {
             if (interactionBusy || editingActive) {
               event.preventDefault();
             }
           }}
           onKeyDown={(event) => {
-            if (event.key === 'Escape' && editingActive && !event.nativeEvent.isComposing) {
+            if (event.key === 'Escape' && editingActive && !discardOpen && !event.nativeEvent.isComposing) {
               event.preventDefault();
               event.stopPropagation();
               cancelEditing();
@@ -957,236 +980,251 @@ export default function InstallationDetails({
             onRestoreFocus();
           }}
         >
-          <header className="installation-header">
-            <span className="installation-header-icon">
-              <Server size={26} strokeWidth={1.6} />
-            </span>
-            <div className="installation-header-title">
-              <span>INSTALLATION DETAILS</span>
-              <Dialog.Title>{record.systemCode || t('설치 상세 정보')}</Dialog.Title>
-              <Dialog.Description>{t('설치 정보와 서비스 운영 설정을 확인하세요.')}</Dialog.Description>
-            </div>
-            <div className="installation-header-actions">
-              <button
-                className="icon-button"
-                aria-label={editingActive ? t('수정 취소') : t('설치 상세 닫기')}
-                onClick={editingActive ? cancelEditing : close}
-                disabled={interactionBusy}
-              >
-                <X size={22} />
-              </button>
-            </div>
-          </header>
-          <div className="installation-context">
-            <div className="installation-companies">
-              <Building2 size={15} />
-              <span className="installation-context-label">{t('고객사')}</span>
-              {companies.length ? (
-                companies.map((company) => (
-                  <button
-                    key={company.id}
-                    disabled={interactionBusy || editingActive}
-                    onClick={() => {
-                      ++generation.current;
-                      operation.current?.abort();
-                      setCached(null);
-                      onCompany(company.id);
-                    }}
-                  >
-                    {company.name}
-                    <ChevronRight size={13} />
-                  </button>
-                ))
-              ) : record.companyName ? (
-                <span className="installation-company-name">{record.companyName}</span>
-              ) : (
-                <span className="installation-context-empty">{t('고객사 연결 없음')}</span>
-              )}
-            </div>
-            {canWrite && !editingActive && (
-              <button
-                className="button"
-                disabled={interactionBusy || policyPending}
-                onClick={() => {
-                  setTab('installation');
-                  onEdit();
-                }}
-              >
-                {t('고객사 변경')}
-              </button>
-            )}
-            <div className="installation-context-meta">
-              <span>
-                <small>{t('서비스')}</small>
-                <strong>{record.serviceVersion || t('미등록')}</strong>
-              </span>
-              <span>
-                <small>{t('버전')}</small>
-                <strong>{record.version || t('미등록')}</strong>
-              </span>
-              <span>
-                <small>{t('엔지니어')}</small>
-                <strong>{record.engineer || t('미등록')}</strong>
-              </span>
-              <button
-                className="icon-button"
-                aria-label={t('설치 상세 다시 불러오기')}
-                disabled={interactionBusy || policyPending || loading || editingActive}
-                onClick={() => setRetry((value) => value + 1)}
-              >
-                <RefreshCw size={14} className={loading ? 'auth-spin' : ''} />
-              </button>
-            </div>
-          </div>
-          <Tabs.Root
-            value={tab}
-            onValueChange={(value) => {
-              if (editingActive || interactionBusy) return;
-              setTab(value as InstallationSectionId);
-              contentScroll.current?.scrollTo({ top: 0 });
-            }}
-            className="installation-tabs"
+          <InstallationEditorContext.Provider
+            value={{ footer: editorFooter, setDirty: setEditingDirty, cancel: cancelEditing }}
           >
-            <div className="installation-tab-bar">
-              <Tabs.List className="installation-tab-list" aria-label={t('설치 상세 정보 탭')}>
-                {sectionConfig.map(({ id, title, icon: Icon }) => (
-                  <Tabs.Trigger
-                    key={id}
-                    value={id}
-                    className="installation-tab"
-                    disabled={editingActive || interactionBusy}
-                  >
-                    <Icon size={16} />
-                    {t(title)}
-                  </Tabs.Trigger>
-                ))}
-              </Tabs.List>
-            </div>
-            <div className="installation-content-scroll" ref={contentScroll}>
-              {status && (
-                <p className="installation-action-status installation-global-message" role="status">
-                  {t(status)}
-                </p>
-              )}
-              {error && visibleDetails && (
-                <p className="installation-action-error installation-global-message" role="alert">
-                  {t(error)}
-                  <button className="button" onClick={() => setRetry((value) => value + 1)}>
-                    {t('다시 불러오기')}
-                  </button>
-                </p>
-              )}
-              {basicEditor ? <div className="installation-tab-panel">{basicEditor}</div> : content}
-            </div>
-          </Tabs.Root>
-          <footer className="installation-footer">
-            <div className="installation-footer-info">
-              <ShieldCheck size={15} />
-              <span>
-                {policyPending
-                  ? t('보호 설정 확인 중')
-                  : !canViewProtected
-                    ? t('보호 정보 원문은 관리자와 담당자가 열람할 수 있습니다.')
-                    : protectionEnabled
-                      ? t('환경설정에 따라 민감한 정보를 보호하고 있습니다.')
-                      : t('보호 정보 원문을 표시하고 있습니다.')}
+            <header className="installation-header">
+              <span className="installation-header-icon">
+                <Server size={26} strokeWidth={1.6} />
               </span>
-            </div>
-            <div className="installation-footer-actions">
-              {canManage && !interactionBusy && !editingActive && onArchived && notify && (
-                <ArchiveButton
-                  area="installations"
-                  id={record.id}
-                  title={record.systemCode || t('설치 정보')}
-                  onArchived={() => {
-                    close();
-                    onArchived();
-                  }}
-                  notify={notify}
-                />
-              )}
-              <button
-                className="button"
-                onClick={editingActive ? cancelEditing : close}
-                disabled={interactionBusy}
-              >
-                {editingActive ? t('수정 취소') : t('닫기')}
-              </button>
-              {canWrite && !editingActive && tab !== 'files' && (
+              <div className="installation-header-title">
+                <span>INSTALLATION DETAILS</span>
+                <Dialog.Title>{record.systemCode || t('설치 상세 정보')}</Dialog.Title>
+                <Dialog.Description>{t('설치 정보와 서비스 운영 설정을 확인하세요.')}</Dialog.Description>
+              </div>
+              <div className="installation-header-actions">
                 <button
-                  ref={basicEditButton}
-                  className="button primary"
-                  disabled={
-                    interactionBusy ||
-                    policyPending ||
-                    loading ||
-                    !visibleDetails ||
-                    (!canManage && tab !== 'installation')
-                  }
+                  className="icon-button"
+                  aria-label={editingActive ? t('수정 취소') : t('설치 상세 닫기')}
+                  onClick={editingActive ? cancelEditing : close}
+                  disabled={interactionBusy}
+                >
+                  <X size={22} />
+                </button>
+              </div>
+            </header>
+            <div className="installation-context">
+              <div className="installation-companies">
+                <Building2 size={15} />
+                <span className="installation-context-label">{t('고객사')}</span>
+                {companies.length ? (
+                  companies.map((company) => (
+                    <button
+                      key={company.id}
+                      disabled={interactionBusy || editingActive}
+                      onClick={() => {
+                        ++generation.current;
+                        operation.current?.abort();
+                        setCached(null);
+                        onCompany(company.id);
+                      }}
+                    >
+                      {company.name}
+                      <ChevronRight size={13} />
+                    </button>
+                  ))
+                ) : record.companyName ? (
+                  <span className="installation-company-name">{record.companyName}</span>
+                ) : (
+                  <span className="installation-context-empty">{t('고객사 연결 없음')}</span>
+                )}
+              </div>
+              {canWrite && !editingActive && (
+                <button
+                  className="button"
+                  disabled={interactionBusy || policyPending}
                   onClick={() => {
-                    if (canManage && visibleDetails) {
-                      setActionError('');
-                      setStatus('');
-                      setSectionEditing({ scopeKey, sectionId: tab, details: visibleDetails });
-                    } else onEdit();
+                    setTab('installation');
+                    onEdit();
                   }}
                 >
-                  <Pencil size={15} />
-                  {t('정보 수정')}
+                  {t('고객사 변경')}
                 </button>
               )}
-            </div>
-          </footer>
-          {visibleDeleting && (
-            <Dialog.Root
-              open
-              onOpenChange={(open) => {
-                if (!open && !busy) setDeleting(null);
-              }}
-            >
-              <Dialog.Portal>
-                <Dialog.Overlay className="installation-edit-overlay" />
-                <Dialog.Content
-                  className="installation-confirm-dialog"
-                  onEscapeKeyDown={(event) => {
-                    if (busy) event.preventDefault();
-                  }}
-                  onInteractOutside={(event) => event.preventDefault()}
+              <div className="installation-context-meta">
+                <span>
+                  <small>{t('서비스')}</small>
+                  <strong>{record.serviceVersion || t('미등록')}</strong>
+                </span>
+                <span>
+                  <small>{t('버전')}</small>
+                  <strong>{record.version || t('미등록')}</strong>
+                </span>
+                <span>
+                  <small>{t('엔지니어')}</small>
+                  <strong>{record.engineer || t('미등록')}</strong>
+                </span>
+                <button
+                  className="icon-button"
+                  aria-label={t('설치 상세 다시 불러오기')}
+                  disabled={interactionBusy || policyPending || loading || editingActive}
+                  onClick={() => setRetry((value) => value + 1)}
                 >
-                  <Dialog.Title>{t('기록 삭제')}</Dialog.Title>
-                  <Dialog.Description>
-                    <strong>{installationRowTitle(visibleDeleting.row) || t(activeConfig.title)}</strong>
-                    {t(' 기록을 삭제하시겠습니까?')}
-                  </Dialog.Description>
-                  {actionError && (
-                    <p className="installation-action-error" role="alert">
-                      {t(actionError)}
-                    </p>
-                  )}
-                  <div>
-                    <button className="button" disabled={busy} onClick={() => setDeleting(null)}>
-                      {t('취소')}
-                    </button>
-                    <button
-                      className="button danger"
-                      disabled={busy || policyPending}
-                      onClick={() =>
-                        void mutate(
-                          `${base}/rows/${encodeURIComponent(visibleDeleting.row.id)}`,
-                          'DELETE',
-                          {},
-                          '기록을 삭제했습니다.',
-                          visibleDeleting.revision,
-                        )
-                      }
+                  <RefreshCw size={14} className={loading ? 'auth-spin' : ''} />
+                </button>
+              </div>
+            </div>
+            <Tabs.Root
+              value={tab}
+              onValueChange={(value) => {
+                if (editingActive || interactionBusy) return;
+                setTab(value as InstallationSectionId);
+                contentScroll.current?.scrollTo({ top: 0 });
+              }}
+              className="installation-tabs"
+            >
+              <div className="installation-tab-bar">
+                <Tabs.List className="installation-tab-list" aria-label={t('설치 상세 정보 탭')}>
+                  {sectionConfig.map(({ id, title, icon: Icon }) => (
+                    <Tabs.Trigger
+                      key={id}
+                      value={id}
+                      className="installation-tab"
+                      disabled={editingActive || interactionBusy}
                     >
-                      {busy ? t('삭제 중…') : t('기록 삭제')}
+                      <Icon size={16} />
+                      {t(title)}
+                    </Tabs.Trigger>
+                  ))}
+                </Tabs.List>
+              </div>
+              <div className="installation-content-scroll" ref={contentScroll}>
+                {status && (
+                  <p className="installation-action-status installation-global-message" role="status">
+                    {t(status)}
+                  </p>
+                )}
+                {error && visibleDetails && (
+                  <p className="installation-action-error installation-global-message" role="alert">
+                    {t(error)}
+                    <button className="button" onClick={() => setRetry((value) => value + 1)}>
+                      {t('다시 불러오기')}
                     </button>
+                  </p>
+                )}
+                {basicEditor ? <div className="installation-tab-panel">{basicEditor}</div> : content}
+              </div>
+            </Tabs.Root>
+            <footer className="installation-footer">
+              {editingActive ? (
+                <div className="installation-editor-actions-host" ref={setEditorFooter} />
+              ) : (
+                <>
+                  <div className="installation-footer-info">
+                    <ShieldCheck size={15} />
+                    <span>
+                      {policyPending
+                        ? t('보호 설정 확인 중')
+                        : !canViewProtected
+                          ? t('보호 정보 원문은 관리자와 담당자가 열람할 수 있습니다.')
+                          : protectionEnabled
+                            ? t('환경설정에 따라 민감한 정보를 보호하고 있습니다.')
+                            : t('보호 정보 원문을 표시하고 있습니다.')}
+                    </span>
                   </div>
-                </Dialog.Content>
-              </Dialog.Portal>
-            </Dialog.Root>
-          )}
+                  <div className="installation-footer-actions">
+                    {canManage && !interactionBusy && !editingActive && onArchived && notify && (
+                      <ArchiveButton
+                        area="installations"
+                        id={record.id}
+                        title={record.systemCode || t('설치 정보')}
+                        onArchived={() => {
+                          close();
+                          onArchived();
+                        }}
+                        notify={notify}
+                      />
+                    )}
+                    <button
+                      className="button"
+                      onClick={editingActive ? cancelEditing : close}
+                      disabled={interactionBusy}
+                    >
+                      {editingActive ? t('수정 취소') : t('닫기')}
+                    </button>
+                    {canWrite && !editingActive && tab !== 'files' && (
+                      <button
+                        ref={basicEditButton}
+                        className="button primary"
+                        disabled={
+                          interactionBusy ||
+                          policyPending ||
+                          loading ||
+                          !visibleDetails ||
+                          (!canManage && tab !== 'installation')
+                        }
+                        onClick={() => {
+                          if (canManage && visibleDetails) {
+                            setActionError('');
+                            setStatus('');
+                            setSectionEditing({ scopeKey, sectionId: tab, details: visibleDetails });
+                          } else onEdit();
+                        }}
+                      >
+                        <Pencil size={15} />
+                        {t('정보 수정')}
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </footer>
+            {visibleDeleting && (
+              <Dialog.Root
+                open
+                onOpenChange={(open) => {
+                  if (!open && !busy) setDeleting(null);
+                }}
+              >
+                <Dialog.Portal>
+                  <Dialog.Overlay className="installation-edit-overlay" />
+                  <Dialog.Content
+                    className="installation-confirm-dialog"
+                    onEscapeKeyDown={(event) => {
+                      if (busy) event.preventDefault();
+                    }}
+                    onInteractOutside={(event) => event.preventDefault()}
+                  >
+                    <Dialog.Title>{t('기록 삭제')}</Dialog.Title>
+                    <Dialog.Description>
+                      <strong>{installationRowTitle(visibleDeleting.row) || t(activeConfig.title)}</strong>
+                      {t(' 기록을 삭제하시겠습니까?')}
+                    </Dialog.Description>
+                    {actionError && (
+                      <p className="installation-action-error" role="alert">
+                        {t(actionError)}
+                      </p>
+                    )}
+                    <div>
+                      <button className="button" disabled={busy} onClick={() => setDeleting(null)}>
+                        {t('취소')}
+                      </button>
+                      <button
+                        className="button danger"
+                        disabled={busy || policyPending}
+                        onClick={() =>
+                          void mutate(
+                            `${base}/rows/${encodeURIComponent(visibleDeleting.row.id)}`,
+                            'DELETE',
+                            {},
+                            '기록을 삭제했습니다.',
+                            visibleDeleting.revision,
+                          )
+                        }
+                      >
+                        {busy ? t('삭제 중…') : t('기록 삭제')}
+                      </button>
+                    </div>
+                  </Dialog.Content>
+                </Dialog.Portal>
+              </Dialog.Root>
+            )}
+            <InstallationDiscardDialog
+              open={discardOpen && editingActive && !policyPending}
+              onOpenChange={setDiscardOpen}
+              onDiscard={discardEditing}
+            />
+          </InstallationEditorContext.Provider>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

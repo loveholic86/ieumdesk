@@ -3,7 +3,7 @@ import { useLocale } from './use-locale';
 import { useAuth } from './auth';
 import { canManageBusiness } from './permissions';
 import { useWorkspaceSettings } from './workspace-settings';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
   ArrowRight,
@@ -34,6 +34,17 @@ import { businessFormPayload, businessFormPolicy, businessFormPolicyMatches } fr
 import type { Company, ContactComment, QuotationItem } from './types';
 import { quotationTotals, quotationForTarget } from './quotation-calculation';
 import InstallationDetails from './InstallationDetails';
+import InstallationQuickFields from './InstallationQuickFields';
+import {
+  InstallationDiscardDialog,
+  InstallationEditorActions,
+  useInstallationDirty,
+} from './InstallationEditorLayout';
+import {
+  installationBasicChanges,
+  installationBasicErrors,
+  installationBasicKeys,
+} from './installation-editor';
 import { refreshedInstallationSelection } from './installation-client';
 import { ArchiveButton } from './ArchivedPage';
 import { originalSalesWeights, configuredSalesWeights, salesWeight, weightedRevenue } from './sales-policy';
@@ -1454,6 +1465,7 @@ function RecordFormFrame({
   children: React.ReactNode;
 }) {
   useLocale();
+  const dialog = useRef<HTMLDivElement>(null);
   if (inline)
     return (
       <section className="installation-basic-editor" aria-label={t('설치 기본 정보 수정')} aria-busy={saving}>
@@ -1470,7 +1482,13 @@ function RecordFormFrame({
       <Dialog.Portal>
         <Dialog.Overlay className="dialog-overlay form-overlay" />
         <Dialog.Content
+          ref={dialog}
           className={`dialog m-record-dialog m-form-dialog ${kind === 'quotations' ? 'm-wide-form' : ''} ${kind === 'installations' ? 'm-installation-form' : ''}`}
+          onOpenAutoFocus={(event) => {
+            if (kind !== 'installations') return;
+            event.preventDefault();
+            dialog.current?.querySelector<HTMLInputElement>('input:not(:disabled)')?.focus();
+          }}
           onCloseAutoFocus={(event) => {
             event.preventDefault();
             onRestoreFocus();
@@ -1592,6 +1610,22 @@ function RecordForm({
   const [error, setError] = useState('');
   const update = (key: keyof RecordRow, value: unknown) =>
     setDraft((previous) => ({ ...previous, [key]: value }));
+  const formId = useId();
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [basicErrors, setBasicErrors] = useState<ReturnType<typeof installationBasicErrors>>({});
+  const basicChanges = installationBasicChanges(draft, initialDraft.current);
+  const installationContext = useInstallationDirty(kind === 'installations' && basicChanges.length > 0);
+  const companyRequired = record === 'new' || Boolean(record.companyId || record.companyName);
+  const requestClose = () => {
+    if (saving) return;
+    if (kind !== 'installations') {
+      onClose();
+      return;
+    }
+    if (installationContext) installationContext.cancel();
+    else if (basicChanges.length) setDiscardOpen(true);
+    else onClose();
+  };
   const input = (
     key: keyof RecordRow,
     label: string,
@@ -1689,20 +1723,7 @@ function RecordForm({
         ...(legacyLocked ? [] : ['items' as const]),
         'note',
       ],
-      installations: [
-        'companyId',
-        'companyName',
-        'systemCode',
-        'serviceVersion',
-        'version',
-        'installedAt',
-        'patchedAt',
-        'engineer',
-        'accessType',
-        'autoUpdate',
-        'domain',
-        'note',
-      ],
+      installations: [...installationBasicKeys],
       activities: ['type', 'title', 'body', 'activityDate'],
     };
     const nativeFields = new FormData(event.currentTarget as HTMLFormElement);
@@ -1717,6 +1738,20 @@ function RecordForm({
     const original = Object.fromEntries(
       keys[kind].map((key) => [key, initialDraft.current[key] ?? (key === 'relatedCompanyIds' ? [] : '')]),
     );
+    if (kind === 'installations') {
+      const errors = installationBasicErrors(
+        current,
+        companyRequired,
+        isNew ? undefined : initialDraft.current,
+      );
+      for (const key of ['installedAt', 'patchedAt'] as const) {
+        const input = (event.currentTarget as HTMLFormElement).elements.namedItem(key);
+        if (input instanceof HTMLInputElement && input.validity.badInput)
+          errors[key] = '날짜를 완전히 입력하거나 비워 주세요.';
+      }
+      setBasicErrors(errors);
+      if (Object.keys(errors).length) return;
+    }
     const payload = businessFormPayload(
       current,
       isNew ? null : original,
@@ -1729,15 +1764,6 @@ function RecordForm({
     }
     if (kind === 'quotations' && !legacyLocked && calculate(draft.items || []).invalid) {
       setError('견적 금액이 처리 가능한 범위를 넘었습니다. 품목의 단가와 수량을 확인해 주세요.');
-      return;
-    }
-    if (
-      kind === 'installations' &&
-      draft.installedAt &&
-      draft.patchedAt &&
-      draft.patchedAt < draft.installedAt
-    ) {
-      setError('최근 패치일은 최초 설치일보다 빠를 수 없습니다.');
       return;
     }
     savingRequest.current = true;
@@ -1766,7 +1792,7 @@ function RecordForm({
       inline={inline}
       kind={kind}
       saving={saving}
-      onClose={onClose}
+      onClose={requestClose}
       onRestoreFocus={onRestoreFocus}
     >
       <div className="m-dialog-heading">
@@ -1793,59 +1819,62 @@ function RecordForm({
           type="button"
           className="icon-button"
           aria-label={t('{0} 입력 닫기', [t(config.singular)])}
-          onClick={onClose}
+          onClick={requestClose}
           disabled={saving}
         >
           <X size={20} />
         </button>
       </div>
-      <form autoComplete="off" spellCheck={false} onSubmit={save}>
+      <form
+        id={formId}
+        autoComplete="off"
+        spellCheck={false}
+        noValidate={kind === 'installations'}
+        onSubmit={save}
+        onKeyDown={(event) => {
+          if (
+            kind === 'installations' &&
+            !event.nativeEvent.isComposing &&
+            event.key === 'Enter' &&
+            (event.metaKey || event.ctrlKey)
+          ) {
+            event.preventDefault();
+            if (!saving) event.currentTarget.requestSubmit();
+          }
+        }}
+      >
         <div className="m-form-scroll">
+          {kind === 'installations' && (
+            <InstallationQuickFields
+              draft={draft}
+              original={initialDraft.current}
+              companies={companies}
+              versions={versions}
+              manual={manualCompany}
+              companyRequired={companyRequired}
+              disabled={saving}
+              errors={basicErrors}
+              onManual={setManualCompany}
+              onChange={(patch) => setDraft((previous) => ({ ...previous, ...patch }))}
+            />
+          )}
           <div className="form-grid">
-            <Field
-              label={record === 'new' || record.companyId || record.companyName ? t('고객사 *') : t('고객사')}
-              wide
-            >
-              <select
-                required={record === 'new' || Boolean(record.companyId || record.companyName)}
-                value={manualCompany ? '__manual_company__' : draft.companyId || ''}
-                onChange={(e) => {
-                  if (kind !== 'installations') {
-                    update('companyId', e.target.value);
-                    return;
-                  }
-                  const manual = e.target.value === '__manual_company__';
-                  setManualCompany(manual);
-                  setDraft((current) => ({
-                    ...current,
-                    companyId: manual ? '' : e.target.value,
-                    companyName: manual ? current.companyName || '' : '',
-                  }));
-                }}
-              >
-                <option value="">
-                  {record !== 'new' && !record.companyId ? t('고객사 연결 없음') : t('고객사를 선택하세요')}
-                </option>
-                {kind === 'installations' && (
-                  <option value="__manual_company__">{t('고객사명 직접 입력')}</option>
-                )}
-                {companies.map((company) => (
-                  <option key={company.id} value={company.id}>
-                    {company.name}
+            {kind !== 'installations' && (
+              <Field label={t(companyRequired ? '고객사 *' : '고객사')} wide>
+                <select
+                  required={companyRequired}
+                  value={draft.companyId || ''}
+                  onChange={(event) => update('companyId', event.target.value)}
+                >
+                  <option value="">
+                    {t(record !== 'new' && !record.companyId ? '고객사 연결 없음' : '고객사를 선택하세요')}
                   </option>
-                ))}
-              </select>
-            </Field>
-            {kind === 'installations' && manualCompany && (
-              <Field label={t('고객사명 *')} wide>
-                <input
-                  required
-                  maxLength={150}
-                  value={draft.companyName || ''}
-                  placeholder={t('고객사명을 입력하세요')}
-                  onChange={(event) => update('companyName', event.target.value)}
-                />
-                <small>{t('고객사 관리에 등록하지 않고 설치 정보에만 저장합니다.')}</small>
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.id}>
+                      {company.name}
+                    </option>
+                  ))}
+                </select>
               </Field>
             )}
             {kind === 'contacts' ? (
@@ -1947,37 +1976,7 @@ function RecordForm({
                   </Field>
                 )}
               </>
-            ) : kind === 'installations' ? (
-              <>
-                {input('systemCode', '시스템 코드', {
-                  required: true,
-                  maxLength: 80,
-                  placeholder: '예: YETA-CLOUD-001',
-                })}
-                {select('serviceVersion', '서비스', versions)}
-                {input('version', '설치 버전', { placeholder: '예: 2026.1.0', maxLength: 80 })}
-                {input('engineer', '담당 엔지니어', { maxLength: 100 })}
-                {input('installedAt', '최초 설치일', { type: 'date' })}
-                {input('patchedAt', '최근 패치일', { type: 'date' })}
-                {select('accessType', '접근 방식', ['알 수 없음', '바로 접근', '원격', '불가', 'VPN/VDI'])}
-                <div className="field">
-                  <span>{t('자동 업데이트')}</span>
-                  <label className="m-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(draft.autoUpdate)}
-                      onChange={(e) => update('autoUpdate', e.target.checked)}
-                    />
-                    {t('자동 업데이트 사용')}
-                  </label>
-                </div>
-                {input('domain', '서비스 도메인', {
-                  wide: true,
-                  placeholder: '예: service.example.com',
-                  maxLength: 253,
-                })}
-              </>
-            ) : (
+            ) : kind === 'installations' ? null : (
               <>
                 <Field label={t('활동 유형')}>
                   <select value={draft.type} onChange={(e) => update('type', e.target.value)}>
@@ -2240,7 +2239,7 @@ function RecordForm({
               />
             </Field>
           )}
-          {kind !== 'activities' && (
+          {kind !== 'activities' && kind !== 'installations' && (
             <Field label={t('관리 메모')} wide>
               <textarea
                 rows={3}
@@ -2257,16 +2256,49 @@ function RecordForm({
             </div>
           )}
         </div>
-        <div className="dialog-footer">
-          <button type="button" className="button" onClick={onClose} disabled={saving}>
-            {t('취소')}
-          </button>
-          <button type="submit" className="button primary" disabled={saving}>
-            {saving ? <RefreshCw size={16} /> : <Check size={16} />}
-            {saving ? t('저장 중…') : t('저장하기')}
-          </button>
-        </div>
+        {kind === 'installations' ? (
+          <InstallationEditorActions>
+            <div className="installation-editor-summary" aria-live="polite">
+              <strong>
+                {isNew
+                  ? t('필수 {0} / 2 입력', [
+                      Number(Boolean(draft.companyId || draft.companyName?.trim())) +
+                        Number(Boolean(draft.systemCode?.trim())),
+                    ])
+                  : basicChanges.length
+                    ? t('변경 {0}개 · 저장 전', [basicChanges.length])
+                    : t('변경된 내용이 없습니다.')}
+              </strong>
+              <span>{t('저장 범위 · 설치 기본 정보')}</span>
+            </div>
+            <button type="button" className="button" onClick={requestClose} disabled={saving}>
+              {t('취소')}
+            </button>
+            <button
+              type="submit"
+              form={formId}
+              className="button primary"
+              disabled={saving || (!isNew && !basicChanges.length)}
+            >
+              <Check size={16} />
+              {saving ? t('저장 중…') : isNew ? t('설치 등록') : t('변경사항 저장')}
+            </button>
+          </InstallationEditorActions>
+        ) : (
+          <div className="dialog-footer">
+            <button type="button" className="button" onClick={onClose} disabled={saving}>
+              {t('취소')}
+            </button>
+            <button type="submit" className="button primary" disabled={saving}>
+              {saving ? <RefreshCw size={16} /> : <Check size={16} />}
+              {saving ? t('저장 중…') : t('저장하기')}
+            </button>
+          </div>
+        )}
       </form>
+      {kind === 'installations' && !installationContext && (
+        <InstallationDiscardDialog open={discardOpen} onOpenChange={setDiscardOpen} onDiscard={onClose} />
+      )}
     </RecordFormFrame>
   );
 }

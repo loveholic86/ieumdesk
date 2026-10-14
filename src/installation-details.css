@@ -15,6 +15,8 @@
   border-radius: 12px;
   box-shadow: 0 24px 100px #112d4e30;
   overflow: hidden;
+  /* Hidden overflow is still programmatically scrollable; the dialog must stay fixed. */
+  overflow: clip;
   outline: none;
 }
 .installation-header {

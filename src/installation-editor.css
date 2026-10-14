@@ -1,0 +1,458 @@
+/* Registration and grouped editing share one action bar and the current theme. */
+.installation-dialog.is-editing .installation-header {
+  padding: 16px 24px;
+}
+.installation-dialog.is-editing .installation-header-icon {
+  width: 40px;
+  height: 40px;
+}
+.installation-dialog.is-editing .installation-header-title > span {
+  display: none;
+}
+.installation-dialog.is-editing .installation-header-title h2 {
+  font-size: 20px;
+}
+.installation-dialog.is-editing .installation-context {
+  padding: 10px 24px;
+}
+.installation-dialog.is-editing .installation-tab-panel {
+  padding: 16px;
+}
+.installation-tab-panel.is-group-editing > .installation-section-heading {
+  display: none;
+}
+.installation-section-editor .installation-inline-edit-header {
+  padding: 10px 20px;
+}
+.installation-section-editor .installation-inline-edit-header h3 {
+  font-size: 16px;
+}
+.dialog.m-record-dialog.m-form-dialog.m-installation-form {
+  width: min(980px, calc(100vw - 40px));
+  height: auto;
+  max-height: min(92dvh, 1000px);
+}
+.m-installation-form .m-dialog-heading {
+  padding: 20px 26px;
+}
+.m-installation-form .m-form-scroll {
+  padding: 22px 26px;
+}
+.m-installation-form .m-form-scroll > .form-grid:empty {
+  display: none;
+}
+.installation-quick-fields fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0 0 22px;
+  min-width: 0;
+}
+.installation-quick-fields legend {
+  padding: 0;
+  margin-bottom: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--theme-ink, #20344f);
+}
+.installation-quick-fields small {
+  font-size: 12px;
+  color: var(--theme-muted, #65768c);
+  line-height: 1.6;
+  font-weight: 400;
+}
+.installation-quick-fields legend small {
+  margin-left: 10px;
+}
+.installation-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 22px;
+}
+.installation-quick-grid .is-wide {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.installation-quick-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+.installation-quick-field em {
+  color: var(--theme-accent, #326bbe);
+  font-style: normal;
+}
+.installation-quick-field input:not([type='checkbox']),
+.installation-quick-field select,
+.installation-quick-field textarea,
+.installation-inline-editor select {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--theme-border, #d5dfec);
+  border-radius: 7px;
+  background: var(--theme-surface, #fff);
+  color: var(--theme-ink, #20344f);
+  font: inherit;
+}
+.installation-quick-field textarea {
+  resize: vertical;
+  min-height: 110px;
+  line-height: 1.7;
+}
+.installation-quick-field .m-checkbox {
+  height: 42px;
+}
+.installation-quick-field input[aria-invalid='true'],
+.installation-quick-field select[aria-invalid='true'] {
+  border-color: var(--theme-danger, #b93838);
+}
+.installation-quick-fields .installation-field-error {
+  color: var(--theme-danger, #b93838);
+}
+.installation-value-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.installation-value-modes button {
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--theme-border, #d5dfec);
+  border-radius: 6px;
+  color: var(--theme-text, #445b78);
+  background: var(--theme-surface, #fff);
+  font-size: 12px;
+}
+.installation-value-modes button[aria-pressed='true'],
+.installation-group-toolbar button[aria-pressed='true'] {
+  color: var(--theme-accent, #326bbe);
+  border-color: var(--theme-accent, #326bbe);
+  background: var(--theme-surface-raised, #edf4ff);
+}
+.installation-customer-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 10px;
+}
+.installation-customer-search {
+  position: relative;
+}
+.installation-customer-search svg {
+  position: absolute;
+  left: 11px;
+  top: 13px;
+  color: var(--theme-muted, #65768c);
+}
+.installation-customer-search input {
+  padding-left: 34px !important;
+}
+.installation-quick-extra {
+  border-top: 1px solid var(--theme-border, #d5dfec);
+  padding-top: 16px;
+}
+.installation-quick-extra summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  list-style: none;
+  cursor: pointer;
+  color: var(--theme-accent, #326bbe);
+  font-size: 14px;
+}
+.installation-quick-extra summary::-webkit-details-marker {
+  display: none;
+}
+.installation-quick-extra[open] summary {
+  margin-bottom: 18px;
+}
+.installation-quick-extra[open] summary svg {
+  transform: rotate(90deg);
+}
+.installation-editor-actions-host {
+  width: 100%;
+  min-width: 0;
+}
+.installation-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--theme-border, #d5dfec);
+  background: var(--theme-surface, #fff);
+  flex-shrink: 0;
+}
+.installation-editor-actions-host .installation-editor-actions {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+.installation-editor-actions .button {
+  min-height: 40px;
+}
+.installation-editor-summary {
+  margin-right: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.installation-editor-summary strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--theme-ink, #20344f);
+}
+.installation-editor-summary span {
+  font-size: 12px;
+  color: var(--theme-muted, #65768c);
+}
+.installation-inline-edit-save-actions {
+  display: flex;
+  gap: 8px;
+}
+.installation-group-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  background: var(--theme-surface, #fff);
+  border-bottom: 1px solid var(--theme-border, #d5dfec);
+}
+.installation-group-search {
+  display: flex;
+  position: relative;
+  flex: 1;
+  min-width: 200px;
+}
+.installation-group-search > svg {
+  position: absolute;
+  left: 12px;
+  top: 13px;
+  color: var(--theme-muted, #65768c);
+}
+.installation-group-search input {
+  padding-left: 36px;
+}
+.installation-group-layout {
+  display: grid;
+  grid-template-columns: 158px minmax(0, 1fr);
+}
+.installation-group-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 10px;
+  border-right: 1px solid var(--theme-border, #d5dfec);
+  align-self: start;
+  position: sticky;
+  top: 0;
+}
+.installation-group-nav button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  padding: 11px;
+  background: transparent;
+  color: var(--theme-text, #445b78);
+  font-size: 13px;
+}
+.installation-group-nav button[aria-pressed='true'] {
+  color: var(--theme-accent, #326bbe);
+  background: var(--theme-surface-raised, #edf4ff);
+  font-weight: 600;
+}
+.installation-group-count {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--theme-surface, #fff);
+  font-size: 11px;
+}
+.installation-group-content {
+  min-width: 0;
+  padding: 20px;
+  background: var(--theme-surface, #fff);
+}
+.installation-group-content h4 {
+  margin: 0 0 14px;
+  font-size: 15px;
+  color: var(--theme-ink, #20344f);
+}
+.installation-group-content .installation-section-edit-row {
+  margin: 0 0 20px;
+  border: 0;
+  padding: 0;
+}
+.installation-group-content .installation-section-edit-row legend {
+  margin-bottom: 12px;
+  padding: 0;
+  font-size: 13px;
+  color: var(--theme-muted, #65768c);
+}
+.installation-group-content .installation-inline-edit-fields {
+  padding: 0;
+  gap: 18px;
+}
+.installation-group-content .installation-inline-edit-field {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.installation-group-content .installation-inline-edit-field.is-changed {
+  background: transparent;
+}
+.installation-group-content .is-changed input,
+.installation-group-content .is-changed textarea,
+.installation-group-content .is-changed select {
+  border-color: var(--theme-accent, #326bbe);
+}
+.installation-group-content .installation-section-edit-title {
+  grid-template-columns: max-content minmax(0, 1fr) auto;
+  align-items: center;
+  font-size: 12px;
+  max-width: 500px;
+  margin-bottom: 12px;
+}
+.installation-field-tools {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.installation-field-tools .text-button {
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.installation-protected-input {
+  border: 1px solid var(--theme-border, #d5dfec);
+  padding: 12px;
+  border-radius: 7px;
+  background: var(--theme-surface-soft, #f5f8fc);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.installation-protected-input-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--theme-muted, #65768c);
+  font-size: 12px;
+}
+.installation-protected-input small {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--theme-muted, #65768c);
+}
+.installation-protected-input small.danger-text {
+  color: var(--theme-danger, #b93838);
+}
+.installation-field-definition {
+  margin-bottom: 12px;
+}
+.installation-field-definition summary {
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--theme-muted, #65768c);
+  margin-bottom: 10px;
+}
+.installation-review-record h5 {
+  margin: 14px 0;
+  color: var(--theme-muted, #65768c);
+  font-size: 13px;
+}
+.installation-change-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.4fr) minmax(0, 1fr);
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--theme-border, #d5dfec);
+}
+.installation-change-row dt {
+  font-size: 13px;
+  color: var(--theme-muted, #65768c);
+}
+.installation-change-row dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.installation-change-row del {
+  color: var(--theme-muted, #65768c);
+}
+.installation-change-row ins {
+  text-decoration: none;
+  color: var(--theme-accent, #326bbe);
+}
+.installation-change-row button {
+  display: block;
+  font-size: 12px;
+  margin-top: 8px;
+}
+.installation-editor-empty {
+  padding: 24px 0;
+  color: var(--theme-muted, #65768c);
+}
+@media (max-width: 760px) {
+  .dialog.m-record-dialog.m-form-dialog.m-installation-form {
+    width: calc(100vw - 20px);
+    max-height: calc(100dvh - 20px);
+  }
+  .m-installation-form .m-dialog-heading,
+  .m-installation-form .m-form-scroll {
+    padding: 16px;
+  }
+  .installation-quick-grid,
+  .installation-customer-picker {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .installation-group-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .installation-group-nav {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border: 0;
+    border-bottom: 1px solid var(--theme-border, #d5dfec);
+    padding: 12px;
+  }
+  .installation-group-toolbar,
+  .installation-group-content {
+    padding: 14px;
+  }
+  .installation-group-search {
+    flex-basis: 100%;
+  }
+  .installation-editor-actions {
+    padding: 14px 16px;
+  }
+  .installation-editor-summary {
+    flex-basis: 100%;
+  }
+  .installation-change-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+}
+@media (pointer: coarse) {
+  .installation-value-modes button,
+  .installation-group-nav button,
+  .installation-field-tools button {
+    min-height: 44px;
+  }
+}

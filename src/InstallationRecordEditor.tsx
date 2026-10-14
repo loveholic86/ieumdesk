@@ -15,6 +15,9 @@ import type {
 
 import { prepareInstallationRow, type RowDraftPayload } from './installation-client';
 import InstallationFieldInput from './InstallationFieldInput';
+import InstallationProtectedInput from './InstallationProtectedInput';
+import { InstallationEditorActions, useInstallationDirty } from './InstallationEditorLayout';
+import { focusInstallationField } from './installation-scroll';
 import './installation-record-editor.css';
 export type { RowDraftPayload } from './installation-client';
 
@@ -54,6 +57,7 @@ export default function InstallationRecordEditor({
   const [added, setAdded] = useState<AddedField[]>(
     row ? [] : templates[sectionId].map(([key, label], localId) => ({ localId, key, label, value: '' })),
   );
+  const initialAdded = useRef(added);
   const [localError, setLocalError] = useState('');
   const [query, setQuery] = useState('');
   const [changedOnly, setChangedOnly] = useState(false);
@@ -61,6 +65,7 @@ export default function InstallationRecordEditor({
   const [activeCard, setActiveCard] = useState<string | null>(null);
   const [lastAdded, setLastAdded] = useState<number | null>(null);
   const form = useRef<HTMLFormElement>(null);
+  const errorMessage = useRef<HTMLParagraphElement>(null);
   const editor = useRef<HTMLElement>(null);
   const returnFocus = useRef<string | null>(null);
   const previousScroll = useRef(0);
@@ -71,9 +76,13 @@ export default function InstallationRecordEditor({
     row?.fields.filter((field) => !removed.includes(field.key) && isChanged(field)).length ?? 0;
   const titleChanged = title.trim() !== (row?.title || sectionTitle);
   const hasChanges = !row || titleChanged || changedCount > 0 || removed.length > 0 || added.length > 0;
+  useInstallationDirty(
+    row ? hasChanges : titleChanged || JSON.stringify(added) !== JSON.stringify(initialAdded.current),
+  );
   const search = query.trim().toLocaleLowerCase();
   const matches = (label: string, key: string) =>
-    !search || `${label} ${key} ${installationFieldLabel({ key, label })}`.toLocaleLowerCase().includes(search);
+    !search ||
+    `${label} ${key} ${installationFieldLabel({ key, label })}`.toLocaleLowerCase().includes(search);
   const visibleFields =
     row?.fields.filter(
       (field) =>
@@ -96,16 +105,19 @@ export default function InstallationRecordEditor({
     editor.current?.focus({ preventScroll: true });
   }, []);
   useEffect(() => {
+    if (localError || error) focusInstallationField(errorMessage.current);
+  }, [localError, error]);
+  useEffect(() => {
     if (focused) {
       const input = document.getElementById(`${id}-focused-value`);
-      input?.focus({ preventScroll: true });
-      input?.scrollIntoView({ block: 'nearest' });
+      focusInstallationField(input);
     } else if (returnFocus.current) {
       const candidate = document.getElementById(returnFocus.current);
       const target = candidate?.matches(':disabled') ? null : candidate;
       const scroll = editor.current?.closest<HTMLElement>('.installation-content-scroll');
       if (scroll) scroll.scrollTop = previousScroll.current;
-      (target ?? document.getElementById(`${id}-search`))?.focus({ preventScroll: Boolean(target) });
+      if (target) target.focus({ preventScroll: true });
+      else focusInstallationField(document.getElementById(`${id}-search`));
       returnFocus.current = null;
     }
   }, [focused, id]);
@@ -118,8 +130,9 @@ export default function InstallationRecordEditor({
   useEffect(() => {
     if (lastAdded !== null) {
       const input = document.getElementById(`${id}-added-${lastAdded}-label`);
-      input?.focus();
-      input?.scrollIntoView({ block: 'nearest' });
+      const definition = input?.closest('details');
+      if (definition) definition.open = true;
+      focusInstallationField(input);
     }
   }, [lastAdded, id]);
   const updateAdded = (id: number, patch: Partial<AddedField>) =>
@@ -131,7 +144,13 @@ export default function InstallationRecordEditor({
     setQuery('');
     setChangedOnly(false);
     setFocused(null);
-    setAdded((current) => [...current, { localId: nextId, key: '', label: '', value: '' }]);
+    const used = new Set([
+      ...(row?.fields.map((field) => field.key) ?? []),
+      ...added.map((field) => field.key),
+    ]);
+    let key = 'custom_' + nextId;
+    while (used.has(key)) key += '_new';
+    setAdded((current) => [...current, { localId: nextId, key, label: '', value: '' }]);
     setLastAdded(nextId);
     setNextId(nextId + 1);
   };
@@ -177,16 +196,36 @@ export default function InstallationRecordEditor({
                   : ''}
           </span>
         </div>
-        <InstallationFieldInput
-          id={inputId}
-          fieldKey={field.key}
-          describedBy={`${inputId}-state`}
-          rows={expanded ? 16 : wide ? 6 : 2}
-          value={value}
-          onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))}
-          masked={field.masked || hidden}
-          disabled={busy || isRemoved || hidden}
-        />
+        {field.masked ? (
+          <InstallationProtectedInput
+            id={inputId}
+            fieldKey={field.key}
+            value={value}
+            touched={touched}
+            expanded={expanded}
+            rows={expanded ? 16 : wide ? 6 : 2}
+            disabled={busy || isRemoved || policyPending}
+            onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))}
+            onReset={() =>
+              setValues((current) =>
+                Object.fromEntries(Object.entries(current).filter(([key]) => key !== field.key)),
+              )
+            }
+          />
+        ) : (
+          <InstallationFieldInput
+            id={inputId}
+            fieldKey={field.key}
+            initialValue={field.value}
+            expanded={expanded}
+            describedBy={`${inputId}-state`}
+            rows={expanded ? 16 : wide ? 6 : 2}
+            value={value}
+            onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))}
+            masked={field.masked || hidden}
+            disabled={busy || isRemoved || hidden}
+          />
+        )}
         <div className="installation-inline-edit-value-meta">
           <span>{valueCount(value, Boolean(field.masked && !touched))}</span>
           {!expanded && (
@@ -215,15 +254,6 @@ export default function InstallationRecordEditor({
             >
               <RotateCcw size={14} />
               {t('입력 취소')}
-            </button>
-          )}
-          {!isRemoved && field.masked && !touched && (
-            <button
-              type="button"
-              disabled={busy || policyPending}
-              onClick={() => setValues((current) => ({ ...current, [field.key]: '' }))}
-            >
-              {t('값 비우기')}
             </button>
           )}
           {!isMetadata && (
@@ -259,35 +289,40 @@ export default function InstallationRecordEditor({
           {t('새 항목 ')}
           {added.indexOf(field) + 1}
         </legend>
-        <div className="installation-inline-new-field-definition">
-          <label htmlFor={`${id}-added-${field.localId}-label`}>
-            {t('항목 이름')}
-            <input
-              id={`${id}-added-${field.localId}-label`}
-              value={field.label}
-              maxLength={120}
-              onChange={(event) => updateAdded(field.localId, { label: event.target.value })}
-              disabled={busy}
-            />
-          </label>
-          <label>
-            {t('항목 키')}
-            <input
-              value={field.key}
-              maxLength={80}
-              placeholder={t('예: server_name')}
-              onChange={(event) => updateAdded(field.localId, { key: event.target.value })}
-              disabled={busy}
-              spellCheck={false}
-            />
-          </label>
-        </div>
+        <details className="installation-field-definition">
+          <summary>{t('항목 설정')}</summary>
+          <div className="installation-inline-new-field-definition">
+            <label htmlFor={`${id}-added-${field.localId}-label`}>
+              {t('항목 이름')}
+              <input
+                id={`${id}-added-${field.localId}-label`}
+                value={field.label}
+                maxLength={120}
+                onChange={(event) => updateAdded(field.localId, { label: event.target.value })}
+                disabled={busy}
+              />
+            </label>
+            <label>
+              {t('항목 키')}
+              <input
+                value={field.key}
+                maxLength={80}
+                placeholder={t('예: server_name')}
+                onChange={(event) => updateAdded(field.localId, { key: event.target.value })}
+                disabled={busy}
+                spellCheck={false}
+              />
+            </label>
+          </div>
+        </details>
         <label htmlFor={valueId} className="installation-inline-new-value-label">
-          {t('값')}
+          {field.label ? installationFieldLabel(field) : t('새 항목 이름을 설정하세요')}
         </label>
         <InstallationFieldInput
           id={valueId}
           fieldKey={field.key}
+          initialValue=""
+          expanded={expanded}
           value={value}
           rows={expanded ? 16 : longContent(field.label, field.key, value) ? 6 : 3}
           onChange={(value) => updateAdded(field.localId, { value })}
@@ -363,9 +398,7 @@ export default function InstallationRecordEditor({
     >
       <header className="installation-inline-edit-header">
         <div>
-          <h3 id={`${id}-heading`}>
-            {t(row ? '{0} 수정' : '{0} 추가', [t(sectionTitle)])}
-          </h3>
+          <h3 id={`${id}-heading`}>{t(row ? '{0} 수정' : '{0} 추가', [t(sectionTitle)])}</h3>
           <p id={`${id}-description`}>
             {t('이 기록의 항목을 수정하세요. 긴 내용도 이 영역에서 크게 펼쳐 편집할 수 있습니다.')}
           </p>
@@ -386,6 +419,7 @@ export default function InstallationRecordEditor({
         autoComplete="off"
         spellCheck={false}
         ref={form}
+        id={id + '-form'}
         onSubmit={submit}
         className="installation-inline-edit-form"
       >
@@ -517,7 +551,7 @@ export default function InstallationRecordEditor({
           )}
         </div>
         {(localError || error) && (
-          <p className="installation-inline-edit-error" role="alert">
+          <p ref={errorMessage} className="installation-inline-edit-error" role="alert" tabIndex={-1}>
             {t(localError) || t(error)}
           </p>
         )}
@@ -526,8 +560,8 @@ export default function InstallationRecordEditor({
             {t('보호 설정을 확인하고 있습니다.')}
           </p>
         )}
-        <footer className="installation-inline-edit-footer">
-          <div className="installation-inline-edit-save-summary" aria-live="polite">
+        <InstallationEditorActions>
+          <div className="installation-editor-summary" aria-live="polite">
             <strong>
               {hasChanges
                 ? [
@@ -546,11 +580,16 @@ export default function InstallationRecordEditor({
             <button type="button" className="button" onClick={onClose} disabled={busy}>
               {t('취소')}
             </button>
-            <button type="submit" className="button primary" disabled={busy || policyPending || !hasChanges}>
+            <button
+              type="submit"
+              form={id + '-form'}
+              className="button primary"
+              disabled={busy || policyPending || !hasChanges}
+            >
               {busy ? t('저장 중…') : t('저장')}
             </button>
           </div>
-        </footer>
+        </InstallationEditorActions>
       </form>
     </section>
   );
