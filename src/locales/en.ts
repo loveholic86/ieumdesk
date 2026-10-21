@@ -1653,6 +1653,7 @@ export const english: Record<string, string> = {
   '이관 원본 Address': 'Original address',
   '이관 원본 VPN': 'Original VPN',
   '이관 원본 접근 정보': 'Original access information',
+  '기존 접근 정보': 'Existing access information',
   '이관 원본 서버 정보': 'Original server information',
   '이관 원본 고객사 연결 {0}': 'Original company link {0}',
   '이관 원본 YETA 로그인 {0}': 'Original YETA login {0}',

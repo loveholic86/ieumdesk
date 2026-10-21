@@ -14,10 +14,21 @@ export interface InstallationDetailField {
   present: boolean;
 }
 
+/** Address, VPN, and access rows that came from one migrated source. */
+export type InstallationAccessOriginPart = 'address' | 'vpn' | 'access';
+
+export interface InstallationAccessOrigin {
+  /** Opaque id shared by those rows. Not a stored source key. */
+  group: string;
+  part: InstallationAccessOriginPart;
+}
+
 export interface InstallationDetailRow {
   id: string;
   title?: string;
   managed?: 'metadata';
+  /** Read-only. Present only on migrated access rows. */
+  origin?: InstallationAccessOrigin;
   fields: InstallationDetailField[];
 }
 
