@@ -1,4 +1,4 @@
-import { installationBooleanChoice } from './installation-client';
+import { installationBooleanChoice, installationComparableValue } from './installation-client';
 import type { InstallationSectionDraft } from './installation-client';
 import type {
   InstallationDetailField,
@@ -103,7 +103,10 @@ export function installationInputDefinition(key: string, original: string, expan
   return { type: 'text' as const };
 }
 export function installationFieldChanged(field: InstallationDetailField, values: Record<string, string>) {
-  return Object.hasOwn(values, field.id) && (field.masked || field.value !== values[field.id]);
+  return (
+    Object.hasOwn(values, field.id) &&
+    (field.masked || installationComparableValue(field) !== values[field.id])
+  );
 }
 export function installationSectionChangeCount(
   details: InstallationDetails,

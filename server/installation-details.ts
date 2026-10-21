@@ -14,6 +14,11 @@ import { ApiError, notFound } from './errors.ts';
 import { databaseConfig } from './config.ts';
 import { openLegacyVault, type LegacyVault, type LegacyVaultEnvelope } from './legacy-vault.ts';
 import { BusinessEncryption } from './business-encryption.ts';
+import {
+  installationCodeGroupForField,
+  installationCodeGroups,
+  normalizeInstallationOptionName,
+} from '../src/installation-code-options.ts';
 
 const SOURCE = 'CRM_OLD_DB:public:v1';
 const TABLES = [
@@ -98,7 +103,11 @@ const safeLabel = (value: string) =>
 const code =
   (group: string): Plain =>
   (value, _row, codes) =>
-    codes.get(`${group}\0${value}`) ?? identifier(value, _row, codes);
+    codes.get(`${group}\0${value}`) ??
+    identifier(value, _row, codes) ??
+    (installationCodeGroups.includes(group as (typeof installationCodeGroups)[number])
+      ? normalizeInstallationOptionName(value)
+      : undefined);
 const choice =
   (values: Record<string, string>): Plain =>
   (value) =>
@@ -268,11 +277,15 @@ export function installationWorkspaceField(
   // Configuration values need their complete row context; edits stay protected.
   const plain = key === 'set_value' ? undefined : definition?.plain?.(value, {}, new Map());
   const secret = value.length > 0 ? plain === undefined : !definition?.plain;
+  const optionGroup = installationCodeGroupForField(sectionId, key, label);
   return {
     id: `field-${opaque(rowId, key).slice(0, 32)}`,
     key,
     label,
     value: secret ? value : (plain ?? ''),
+    ...(optionGroup && !secret && value && value.length <= 100 && !value.includes('\0')
+      ? { optionValue: value }
+      : {}),
     secret,
     masked: false,
     present: value.length > 0,
@@ -421,6 +434,13 @@ export class InstallationDetailsService implements InstallationDetailsAccess {
           key: definition.key,
           label: definition.label,
           value: present ? (secret ? MASK : (plain ?? '')) : '',
+          ...(present &&
+          !secret &&
+          raw.length <= 100 &&
+          !raw.includes('\0') &&
+          installationCodeGroupForField(section, definition.key, definition.label)
+            ? { optionValue: raw }
+            : {}),
           secret,
           masked: secret && present,
           present,

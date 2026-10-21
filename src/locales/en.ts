@@ -22,8 +22,29 @@ export const english: Record<string, string> = {
   '새 항목 이름을 설정하세요': 'Set a name for the new field',
   '필요한 항목을 찾아 수정하세요. 저장 범위는 현재 탭입니다.':
     'Find and edit the fields you need. Saving applies to the current tab.',
+  '하단의 정보 수정에서 필요한 정보를 등록하세요.':
+    'Add the required information using Edit information below.',
   '변경 항목만': 'Changed fields only',
   '변경 내역 {0}': 'Changes {0}',
+  '기록 복원': 'Restore record',
+  '참고사항 추가': 'Add note',
+  '참고사항 삭제': 'Delete note',
+  '참고사항 복원': 'Restore note',
+  '새 기록 {0}': 'New record {0}',
+  '새 기록': 'New record',
+  '새 참고사항 {0}': 'New note {0}',
+  '기록 추가 예정': 'Record will be added',
+  '기록 삭제 예정': 'Record marked for deletion',
+  '항목 삭제 예정': 'Field marked for deletion',
+  '추가 예정': 'Will be added',
+  '{0}개 항목': '{0} fields',
+  '삭제할 기록과 항목을 확인했습니다.': 'I reviewed the records and fields marked for deletion.',
+  '저장 결과를 확인하지 못해 재시도하지 않았습니다. 최신 정보를 불러와 서버 반영 여부를 확인하세요.':
+    'The save result could not be confirmed, so it was not retried. Reload the latest information and check whether it was applied.',
+  '최신 정보 다시 불러오기': 'Reload latest information',
+  '이미 반영됨': 'Already applied',
+  '반영되지 않음을 확인하고 다시 시도': 'Confirmed not applied; retry',
+  '최신 정보를 확인한 뒤 다시 저장할 수 있습니다.': 'Reload the latest information before saving again.',
   '수정 항목 그룹': 'Field groups',
   '저장할 변경 내역': 'Changes to save',
   '변경 {0}개 · 저장 전': '{0} unsaved changes',
@@ -1733,6 +1754,57 @@ export const english: Record<string, string> = {
   '환경설정을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.':
     'Could not verify settings. Try again shortly.',
   '환경설정 저장': 'Save settings',
+  '선택지 검색': 'Search options',
+  '선택지 이름 검색': 'Search option names',
+  '기존 값': 'Existing value',
+  '공용 선택지 불러오는 중': 'Loading shared options',
+  '공용 선택지를 불러오고 있습니다.': 'Loading shared options.',
+  '공용 선택지 목록의 응답을 확인하지 못했습니다.': 'Could not verify the shared options response.',
+  '공용 선택지 목록을 불러오지 못했습니다.': 'Could not load shared options.',
+  '공용 선택지 추가': 'Add shared option',
+  '공용 선택지를 등록하고 선택했습니다.': 'Shared option added and selected.',
+  '이미 등록된 공용 선택지를 선택했습니다.': 'Selected an existing shared option.',
+  '공용 선택지를 등록하지 못했습니다.': 'Could not add the shared option.',
+  '등록 응답을 확인하지 못했습니다. 같은 요청을 다시 보내지 않고 목록에서 등록 여부를 확인해 주세요.':
+    'The registration response could not be confirmed. Check the list before sending the same request again.',
+  '목록 확인에 실패했습니다. 입력한 이름을 보존했습니다. 확인이 성공할 때까지 등록 재시도는 잠겨 있습니다.':
+    'The list could not be checked. Your entered name was preserved. Retry stays locked until a check succeeds.',
+  '현재 목록에서 찾지 못했습니다. 확인된 뒤에만 등록 재시도를 할 수 있습니다.':
+    'The option was not found in the current list. Registration can be retried only after this check.',
+  '등록된 선택지를 찾았습니다. 필드 값이 그대로일 때만 연결할 수 있습니다.':
+    'The registered option was found. It can be linked only if the field value is unchanged.',
+  '재등록을 완료했습니다. 필드 값이 그대로일 때만 연결할 수 있습니다.':
+    'The registration retry completed. It can be linked only if the field value is unchanged.',
+  '재등록이 거부되었습니다. 목록을 다시 확인한 뒤 필요한 경우에만 재시도해 주세요.':
+    'The retry was rejected. Check the list again before retrying if needed.',
+  '재등록 응답을 확인하지 못했습니다. 같은 요청을 다시 보내지 않고 목록에서 결과를 확인해 주세요.':
+    'The retry response could not be confirmed. Check the list before sending the same request again.',
+  '등록 결과를 확인해야 합니다. 입력한 이름은 보존했습니다.':
+    'The registration result needs to be checked. Your entered name was preserved.',
+  '공용 선택지를 등록했습니다. 필드 값이 변경되어 자동으로 선택하지 않았습니다. 목록에서 확인해 주세요.':
+    'The shared option was added. The field changed, so it was not selected automatically. Check the list.',
+  '공용 선택지 등록 확인': 'Shared option registration check',
+  '{0} 공용 선택지': 'Shared option: {0}',
+  '등록 여부 다시 확인': 'Check registration status',
+  '확인 후 등록 재시도': 'Retry registration after checking',
+  '확인했고 요청 정리': 'Confirmed absent; clear request',
+  '선택지 목록에 반영했습니다. 원래 값이 바뀌었으면 필드에서 직접 선택해 주세요.':
+    'The option is in the list. If the original field value changed, select it directly in the field.',
+  '확인 완료': 'Done',
+  '등록된 선택지를 이 항목에 선택': 'Select the registered option for this field',
+  '등록 확인 대기': 'Waiting for registration check',
+  '공용 선택지 등록 결과를 확인하지 못했습니다. 목록을 다시 불러와 확인해 주세요.':
+    'Could not confirm the shared option was added. Reload the list to check.',
+  '공용 선택지를 추가하려면 관리자 권한이 필요합니다.':
+    'Administrator access is required to add a shared option.',
+  '공용 선택지 이름은 안전한 분류명으로 80자 이내로 입력해 주세요.':
+    'Enter a safe category name of up to 80 characters.',
+  '이 선택지는 같은 공통 코드 그룹의 모든 설치 기록에서 사용할 수 있습니다. 등록 후 이 기록의 수정을 취소해도 공용 선택지는 유지됩니다.':
+    'This option will be available to all installation records in the same code group. It will remain even if you cancel this record edit.',
+  '기록 저장과 공용 선택지 등록은 별도 작업입니다. 민감정보, 계정, 주소, URL, 메모는 등록할 수 없습니다.':
+    'Saving the record and adding a shared option are separate actions. Sensitive data, accounts, addresses, URLs and notes are not allowed.',
+  '{0} 공용 선택지 이름': 'Shared {0} option name',
+  '추가 닫기': 'Close',
   '탈퇴한 사용자': 'Former user',
   '표시 언어': 'Display language',
   한국어: '한국어',

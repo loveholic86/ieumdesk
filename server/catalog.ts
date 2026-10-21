@@ -11,6 +11,13 @@ import { LegacyReader } from './legacy-reader.ts';
 import { BusinessEncryption } from './business-encryption.ts';
 import { openLegacyVault, type LegacyVault } from './legacy-vault.ts';
 import { DemoPrivateFile } from './demo-private-file.ts';
+import {
+  installationCodeGroupName,
+  installationCodeGroups,
+  installationOptionNameKey,
+  normalizeInstallationOptionName,
+  type InstallationCodeGroup,
+} from '../src/installation-code-options.ts';
 
 type Kind = 'products' | 'codes';
 const localQueues = new Map<string, Promise<unknown>>();
@@ -141,7 +148,7 @@ export class CatalogService {
     });
     return pending;
   }
-  async list(kind: Kind, includeInactive = false): Promise<CatalogItem[]> {
+  async list(kind: Kind, includeInactive = false, groups?: readonly string[]): Promise<CatalogItem[]> {
     const original = await this.legacy.read([kind === 'products' ? 'quotation_item_tb' : 'code_tb']);
     const mapped: CatalogItem[] = original.map(({ key, data }) => {
       if (kind === 'products') {
@@ -198,11 +205,83 @@ export class CatalogService {
     for (const item of edits) items.set(item.id, item);
     return [...items.values()]
       .filter((item) => includeInactive || item.active)
+      .filter((item) => kind !== 'codes' || !groups || groups.includes(scalar(item.group)))
       .sort(
         (a, b) =>
           scalar(a.group).localeCompare(scalar(b.group), 'ko') ||
           scalar(a.name).localeCompare(scalar(b.name), 'ko'),
       );
+  }
+  async addInstallationOption(
+    input: unknown,
+    actorId: string,
+  ): Promise<{ item: CatalogItem; created: boolean }> {
+    if (!input || typeof input !== 'object' || Array.isArray(input))
+      throw new ApiError(400, 'INSTALLATION_OPTION_INVALID', '공용 선택지 입력을 확인해 주세요.');
+    const request = input as Record<string, unknown>;
+    const group = request.group;
+    const name = normalizeInstallationOptionName(request.name);
+    if (
+      Object.keys(request).some((key) => !['group', 'name'].includes(key)) ||
+      typeof group !== 'string' ||
+      !installationCodeGroups.includes(group as InstallationCodeGroup) ||
+      !name
+    )
+      throw new ApiError(
+        400,
+        'INSTALLATION_OPTION_INVALID',
+        '공용 선택지는 허용된 설치 항목에서 80자 이내의 안전한 분류명으로 입력해 주세요.',
+      );
+
+    const installationGroup = group as InstallationCodeGroup;
+    const matches = () => this.list('codes', true, [installationGroup]);
+    const existing = (await matches()).filter(
+      (item) => installationOptionNameKey(scalar(item.name)) === installationOptionNameKey(name),
+    );
+    if (existing.length) {
+      const active = existing.filter((item) => item.active);
+      if (!active.length)
+        throw new ApiError(
+          409,
+          'INSTALLATION_OPTION_INACTIVE',
+          '같은 이름의 비활성화된 공용 선택지가 있습니다. 관리자에게 확인해 주세요.',
+        );
+      return { item: active.sort((a, b) => scalar(a.code).localeCompare(scalar(b.code)))[0], created: false };
+    }
+
+    // A deterministic code makes repeated or concurrent explicit submissions idempotent.
+    const code = `install-${createHash('sha256')
+      .update(`${installationGroup}\0${installationOptionNameKey(name)}`)
+      .digest('hex')
+      .slice(0, 40)}`;
+    try {
+      const item = await this.save(
+        'codes',
+        undefined,
+        {
+          group: installationGroup,
+          groupName: installationCodeGroupName(installationGroup),
+          code,
+          name,
+          parentCode: '',
+          numericValue: null,
+          active: true,
+        },
+        actorId,
+      );
+      return { item, created: true };
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'CODE_DUPLICATE') {
+        const recovered = (await matches()).find(
+          (item) =>
+            item.code === code &&
+            installationOptionNameKey(scalar(item.name)) === installationOptionNameKey(name) &&
+            item.active,
+        );
+        if (recovered) return { item: recovered, created: false };
+      }
+      throw error;
+    }
   }
   async save(kind: Kind, id: string | undefined, body: unknown, actorId: string) {
     const schema = kind === 'products' ? product : code;
@@ -320,18 +399,51 @@ export function createCatalogRouter(
     if (request.authUser?.role !== 'admin' || request.authUser.status !== 'active')
       throw new ApiError(403, 'ADMIN_REQUIRED', '관리자 권한이 필요합니다.');
   };
+  router.post(
+    '/codes/installation-options',
+    requireAdmin,
+    trackRequestWork(async (request, response) => {
+      await currentAdmin(request);
+      const result = await service.addInstallationOption(request.body, request.authUser!.id);
+      await security.send(
+        request,
+        response,
+        'codes',
+        { item: result.item, created: result.created },
+        result.created ? 201 : 200,
+        true,
+      );
+    }),
+  );
   for (const kind of ['products', 'codes'] as const) {
     router.get(
       `/${kind}`,
       trackRequestWork(async (request, response) => {
         const include = request.query.includeInactive === 'true';
+        let groups: string[] | undefined;
+        if (kind === 'codes' && request.query.groups !== undefined) {
+          const requested = request.query.groups;
+          const allowed = new Set<string>(installationCodeGroups);
+          if (typeof requested !== 'string' || requested.length > 200)
+            throw new ApiError(400, 'CATALOG_GROUPS_INVALID', '공용 선택지 그룹을 확인해 주세요.');
+          groups = [
+            ...new Set(
+              requested
+                .split(',')
+                .map((group) => group.trim())
+                .filter(Boolean),
+            ),
+          ];
+          if (groups.some((group) => !allowed.has(group)))
+            throw new ApiError(400, 'CATALOG_GROUPS_INVALID', '허용되지 않은 공용 선택지 그룹입니다.');
+        }
         if (include && request.authUser?.role !== 'admin')
           throw new ApiError(403, 'ADMIN_REQUIRED', '관리자 권한이 필요합니다.');
         await security.send(
           request,
           response,
           kind,
-          { items: await service.list(kind, include) },
+          { items: await service.list(kind, include, groups) },
           200,
           include,
         );

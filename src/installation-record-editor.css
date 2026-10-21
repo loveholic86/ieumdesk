@@ -567,12 +567,14 @@
 }
 .installation-section-edit-row {
   min-width: 0;
+  max-width: 100%;
   margin: 22px;
   padding: 18px;
   border: 1px solid var(--theme-border, #dce5f1);
   border-radius: 12px;
 }
 .installation-section-edit-row legend {
+  max-width: 100%;
   padding: 0 8px;
   font-size: 15px;
   font-weight: 700;
@@ -580,10 +582,36 @@
 }
 .installation-section-edit-title {
   display: grid;
+  min-width: 0;
+  max-width: 100%;
   gap: 8px;
   margin-bottom: 18px;
   font-size: 13px;
   font-weight: 600;
+}
+.installation-inline-editor .installation-inline-edit-field label,
+.installation-inline-editor .installation-section-edit-title,
+.installation-section-edit-row legend,
+.installation-section-edit-title label {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.installation-inline-editor input,
+.installation-inline-editor textarea {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+.installation-change-row dt {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.installation-change-row dd {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 .installation-section-edit-actions {
   display: flex;
@@ -597,4 +625,107 @@
 }
 @media (max-width: 760px) {
   .installation-section-edit-row { margin: 14px 8px; padding: 12px; }
+}
+
+.installation-inline-editor .installation-code-option-control {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+.installation-inline-editor .installation-code-option-search {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  color: var(--theme-text, #526b8b);
+  font-size: 12px;
+  font-weight: 600;
+}
+.installation-inline-editor .installation-code-option-actions,
+.installation-inline-editor .installation-code-option-add-actions,
+.installation-inline-editor .installation-code-option-load-error {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.installation-inline-editor .installation-code-option-add {
+  display: grid;
+  min-width: 0;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid var(--theme-border, #d5dfec);
+  border-radius: 8px;
+  background: var(--theme-surface-soft, #f8faff);
+}
+.installation-inline-editor .installation-code-option-add p,
+.installation-inline-editor .installation-code-option-add small,
+.installation-inline-editor .installation-code-option-status,
+.installation-inline-editor .installation-code-option-hint {
+  margin: 0;
+  color: var(--theme-text, #526b8b);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.installation-inline-editor .installation-code-option-add label {
+  font-size: 12px;
+}
+.installation-inline-editor .installation-code-option-add-actions .button {
+  min-height: 38px;
+}
+.installation-inline-editor .installation-code-option-status {
+  color: var(--theme-accent, #245b9f);
+}
+.installation-inline-editor .installation-code-option-registration {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--theme-border, #d5dfec);
+  border-radius: 8px;
+  background: var(--theme-surface-soft, #f8faff);
+}
+.installation-inline-editor .installation-code-option-registration-list {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+.installation-inline-editor .installation-code-option-registration-list strong {
+  overflow-wrap: anywhere;
+}
+.installation-inline-editor .installation-code-option-registration-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.installation-inline-editor .installation-code-option-registration p {
+  margin: 0;
+  color: var(--theme-text, #526b8b);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.installation-inline-editor .installation-code-option-load-error .installation-field-error {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 760px) {
+  .installation-inline-editor .installation-code-option-add {
+    padding: 10px;
+  }
+  .installation-inline-editor .installation-code-option-add-actions > * {
+    flex: 1 1 100%;
+  }
+  .installation-inline-editor .installation-code-option-registration > * {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+  .installation-inline-editor .installation-code-option-registration-actions > * {
+    flex: 1 1 100%;
+  }
 }

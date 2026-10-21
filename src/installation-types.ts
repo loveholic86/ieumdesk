@@ -7,6 +7,8 @@ export interface InstallationDetailField {
   key: string;
   label: string;
   value: string;
+  /** Safe canonical code value for a shared installation choice, when applicable. */
+  optionValue?: string;
   secret: boolean;
   masked: boolean;
   present: boolean;

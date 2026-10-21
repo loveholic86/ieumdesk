@@ -15,6 +15,9 @@ type Props = {
   expanded?: boolean;
   maxLength?: number;
   invalid?: boolean;
+  selectOptions?: readonly { value: string; label: string }[];
+  selectedValue?: string;
+  preservedLabel?: string;
 };
 
 export default function InstallationFieldInput({
@@ -30,6 +33,9 @@ export default function InstallationFieldInput({
   expanded = false,
   maxLength = 16384,
   invalid,
+  selectOptions,
+  selectedValue,
+  preservedLabel,
 }: Props) {
   const definition = installationInputDefinition(fieldKey, initialValue ?? value, expanded);
   const choice = masked ? null : installationBooleanChoice(fieldKey, value);
@@ -50,6 +56,30 @@ export default function InstallationFieldInput({
         <option value={choice.no}>{t('아니오')}</option>
       </select>
     );
+  if (!masked && selectOptions !== undefined) {
+    const selected = selectedValue ?? value;
+    const hasSelected = selectOptions.some((option) => option.value === selected);
+    return (
+      <select
+        id={id}
+        value={selected}
+        disabled={disabled}
+        aria-describedby={describedBy}
+        aria-invalid={invalid}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        <option value="">{t('미등록')}</option>
+        {selected && !hasSelected && (
+          <option value={selected}>{preservedLabel || value || t('기존 값')}</option>
+        )}
+        {selectOptions.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
   if (!masked && definition.type === 'select')
     return (
       <select
@@ -74,9 +104,7 @@ export default function InstallationFieldInput({
         id={id}
         type={
           masked
-            ? /pwd|password/i.test(fieldKey)
-              ? 'password'
-              : 'text'
+            ? 'password'
             : definition.type === 'boolean' || definition.type === 'select'
               ? 'text'
               : definition.type
@@ -113,6 +141,7 @@ export default function InstallationFieldInput({
       aria-invalid={invalid}
       autoComplete="off"
       spellCheck={false}
+      className={masked ? 'installation-masked-textarea' : undefined}
       placeholder={masked ? t('현재 값 유지 · 변경할 때만 입력') : t('내용을 입력하세요')}
       onChange={(event) => onChange(event.target.value)}
     />

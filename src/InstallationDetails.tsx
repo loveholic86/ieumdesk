@@ -3,7 +3,7 @@ import { canViewProtectedInformation } from './protection-policy';
 import { canManageBusiness } from './permissions';
 import { t } from './i18n';
 import { useLocale } from './use-locale';
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Tabs from '@radix-ui/react-tabs';
 import {
@@ -17,12 +17,10 @@ import {
   LockKeyhole,
   Network,
   Pencil,
-  Plus,
   RefreshCw,
   Server,
   Settings2,
   ShieldCheck,
-  Trash2,
   X,
 } from 'lucide-react';
 import { useAuth } from './auth';
@@ -35,17 +33,27 @@ import type {
   InstallationDetailSection,
   InstallationSectionId,
 } from './installation-types';
-import { installationRequest } from './installation-api';
+import { installationRequest, InstallationRequestError } from './installation-api';
+import {
+  installationCodeGroupForField,
+  installationCodeGroupsQuery,
+  installationOptionDisplayValue,
+  installationOptionNameKey,
+  InstallationOptionRegistrationController,
+  parseInstallationCodeOptions,
+  type InstallationOptionRegistrationTarget,
+  type InstallationCodeGroup,
+  type InstallationCodeOption,
+} from './installation-code-options';
+import { runInstallationSavePlan } from './installation-save-flow';
 import {
   validateInstallationDetails,
   installationFieldMasked,
-  installationRowCanDelete,
   visibleInstallationSection,
-  prepareInstallationSection,
+  prepareInstallationSectionOperations,
   type InstallationSectionDraft,
-  type InstallationSectionChange,
+  type InstallationSectionOperation,
 } from './installation-client';
-import InstallationRecordEditor, { type RowDraftPayload } from './InstallationRecordEditor';
 import InstallationFiles from './InstallationFiles';
 import InstallationSectionEditor from './InstallationSectionEditor';
 import { InstallationDiscardDialog, InstallationEditorContext } from './InstallationEditorLayout';
@@ -53,6 +61,16 @@ import InstallationAccessNotes from './InstallationAccessNotes';
 import { scrollInstallationContent } from './installation-scroll';
 import { ArchiveButton } from './ArchivedPage';
 import './installation-details.css';
+
+async function loadInstallationCodeOptions(signal?: AbortSignal) {
+  const response = await installationRequest<unknown>(
+    `/catalog/codes?groups=${encodeURIComponent(installationCodeGroupsQuery)}`,
+    { signal },
+  );
+  const options = parseInstallationCodeOptions(response);
+  if (!options) throw new Error('공용 선택지 목록의 응답을 확인하지 못했습니다.');
+  return options;
+}
 
 type InstallationRecord = {
   id: string;
@@ -78,14 +96,6 @@ type Props = {
   onBasicCancel?: () => void;
 };
 type VersionedDetails = InstallationDetailsDto & { revision: number };
-type EditTarget = {
-  scopeKey: string;
-  revision: number;
-  metadataRevision?: string;
-  sectionId: InstallationSectionId;
-  sectionTitle: string;
-  row?: InstallationDetailRow;
-};
 const sectionConfig = [
   {
     id: 'installation',
@@ -131,7 +141,17 @@ const sectionConfig = [
   },
 ] as const;
 
-function DataValue({ field, policyPending }: { field: InstallationDetailField; policyPending: boolean }) {
+function DataValue({
+  sectionId,
+  field,
+  policyPending,
+  codeOptions,
+}: {
+  sectionId: InstallationSectionId;
+  field: InstallationDetailField;
+  policyPending: boolean;
+  codeOptions: readonly InstallationCodeOption[];
+}) {
   useLocale();
   if (!field.present) return <span className="installation-missing">{t('미등록')}</span>;
   if (installationFieldMasked(field, policyPending))
@@ -146,73 +166,26 @@ function DataValue({ field, policyPending }: { field: InstallationDetailField; p
     );
   return (
     <span className={`installation-field-value ${/[\n\r]/.test(field.value) ? 'multiline' : ''}`}>
-      {installationFieldValue(field) || <span className="installation-missing">{t('미등록')}</span>}
+      {installationOptionDisplayValue(
+        codeOptions,
+        installationCodeGroupForField(sectionId, field.key, field.label),
+        installationFieldValue(field),
+        field.optionValue,
+      ) || <span className="installation-missing">{t('미등록')}</span>}
     </span>
-  );
-}
-
-function RowActions({
-  row,
-  canManage,
-  disabled,
-  onEdit,
-  onDelete,
-}: {
-  row: InstallationDetailRow;
-  canManage: boolean;
-  disabled: boolean;
-  onEdit: (row: InstallationDetailRow) => void;
-  onDelete: (row: InstallationDetailRow) => void;
-}) {
-  useLocale();
-  if (!canManage) return null;
-  return (
-    <div className="installation-row-actions">
-      <button
-        type="button"
-        className="button"
-        aria-label={t('{0} 수정', [installationRowTitle(row) || t('기록')])}
-        onClick={() => onEdit(row)}
-        disabled={disabled}
-      >
-        <Pencil size={13} />
-        {t('수정')}
-      </button>
-      {installationRowCanDelete(row) && (
-        <button
-          type="button"
-          className="icon-button danger-text"
-          aria-label={t('{0} 삭제', [installationRowTitle(row) || t('기록')])}
-          onClick={() => onDelete(row)}
-          disabled={disabled}
-        >
-          <Trash2 size={15} />
-        </button>
-      )}
-    </div>
   );
 }
 
 function SectionRows({
   section,
   policyPending,
-  canManage,
-  busy,
-  onEdit,
-  onDelete,
   accessNotes,
-  editingRowId,
-  editor,
+  codeOptions,
 }: {
   section: InstallationDetailSection;
   policyPending: boolean;
-  canManage: boolean;
-  busy: boolean;
-  onEdit: (row: InstallationDetailRow) => void;
-  onDelete: (row: InstallationDetailRow) => void;
   accessNotes?: ReactNode;
-  editingRowId?: string;
-  editor?: ReactNode;
+  codeOptions: readonly InstallationCodeOption[];
 }) {
   useLocale();
   const notesAnchor = accessNotes
@@ -258,49 +231,26 @@ function SectionRows({
                     {installationFieldLabel({ key, label })}
                   </th>
                 ))}
-                {canManage && <th scope="col">{t('관리')}</th>}
               </tr>
             </thead>
             <tbody>
               {section.rows.map((row) => (
                 <tr key={row.id} data-installation-row={row.id}>
-                  {editingRowId === row.id && editor ? (
-                    <td
-                      colSpan={columns.length + (canManage ? 1 : 0) + (credentials ? 1 : 0)}
-                      className="installation-inline-table-cell"
-                    >
-                      {editor}
+                  {credentials && <td className="installation-record-title">{installationRowTitle(row)}</td>}
+                  {columns.map(([key]) => (
+                    <td key={key}>
+                      {row.fields.find((field) => field.key === key) ? (
+                        <DataValue
+                          sectionId={section.id}
+                          field={row.fields.find((field) => field.key === key)!}
+                          policyPending={policyPending}
+                          codeOptions={codeOptions}
+                        />
+                      ) : (
+                        <span className="installation-missing">{t('미등록')}</span>
+                      )}
                     </td>
-                  ) : (
-                    <>
-                      {credentials && (
-                        <td className="installation-record-title">{installationRowTitle(row)}</td>
-                      )}
-                      {columns.map(([key]) => (
-                        <td key={key}>
-                          {row.fields.find((field) => field.key === key) ? (
-                            <DataValue
-                              field={row.fields.find((field) => field.key === key)!}
-                              policyPending={policyPending}
-                            />
-                          ) : (
-                            <span className="installation-missing">{t('미등록')}</span>
-                          )}
-                        </td>
-                      ))}
-                      {canManage && (
-                        <td>
-                          <RowActions
-                            row={row}
-                            canManage
-                            disabled={busy || policyPending}
-                            onEdit={onEdit}
-                            onDelete={onDelete}
-                          />
-                        </td>
-                      )}
-                    </>
-                  )}
+                  ))}
                 </tr>
               ))}
             </tbody>
@@ -312,11 +262,7 @@ function SectionRows({
   return (
     <div className="installation-cards">
       {section.rows.map((row, index) => (
-        <section
-          className={`installation-data-card${editingRowId === row.id ? ' is-editing' : ''}`}
-          key={row.id}
-          data-installation-row={row.id}
-        >
+        <section className="installation-data-card" key={row.id} data-installation-row={row.id}>
           <header className="installation-card-heading">
             <span className="installation-small-icon">
               {section.id === 'server' ? (
@@ -336,22 +282,8 @@ function SectionRows({
             <span className="installation-count">
               {section.rows.length > 1 ? `${index + 1} / ${section.rows.length}` : ''}
             </span>
-            <RowActions
-              row={row}
-              canManage={canManage}
-              disabled={busy || policyPending}
-              onEdit={onEdit}
-              onDelete={onDelete}
-            />
           </header>
-          {editingRowId === row.id && editor ? (
-            <>
-              {editor}
-              {notesAnchor?.row.id === row.id && (
-                <div className="installation-reference-field">{accessNotes}</div>
-              )}
-            </>
-          ) : row.fields.length ? (
+          {row.fields.length ? (
             <dl className="installation-fields">
               {row.fields.map((field) => (
                 <Fragment key={field.id}>
@@ -369,7 +301,12 @@ function SectionRows({
                       {(field.secret || field.masked) && <LockKeyhole size={12} aria-hidden="true" />}
                     </dt>
                     <dd>
-                      <DataValue field={field} policyPending={policyPending} />
+                      <DataValue
+                        sectionId={section.id}
+                        field={field}
+                        policyPending={policyPending}
+                        codeOptions={codeOptions}
+                      />
                     </dd>
                   </div>
                   {notesAnchor?.row.id === row.id && notesAnchor.field.id === field.id && (
@@ -424,17 +361,23 @@ export default function InstallationDetails({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
+  const [codeOptions, setCodeOptions] = useState<InstallationCodeOption[]>([]);
+  const [codeOptionsLoading, setCodeOptionsLoading] = useState(false);
+  const [codeOptionsError, setCodeOptionsError] = useState('');
+  const [codeOptionsRetry, setCodeOptionsRetry] = useState(0);
+  const optionRegistrationsController = useRef<InstallationOptionRegistrationController | null>(null);
+  if (!optionRegistrationsController.current)
+    optionRegistrationsController.current = new InstallationOptionRegistrationController();
+  const optionRegistrations = useSyncExternalStore(
+    optionRegistrationsController.current.subscribe,
+    optionRegistrationsController.current.getSnapshot,
+    optionRegistrationsController.current.getSnapshot,
+  );
   const [tab, setTab] = useState<InstallationSectionId>('installation');
-  const [editing, setEditing] = useState<EditTarget | null>(null);
   const [sectionEditing, setSectionEditing] = useState<{
     scopeKey: string;
     sectionId: InstallationSectionId;
     details: VersionedDetails;
-  } | null>(null);
-  const [deleting, setDeleting] = useState<{
-    scopeKey: string;
-    revision: number;
-    row: InstallationDetailRow;
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState('');
@@ -449,35 +392,19 @@ export default function InstallationDetails({
   const contentScroll = useRef<HTMLDivElement | null>(null);
   const visibleDetails = cached?.scopeKey === scopeKey ? cached.details : null;
   const visibleSectionEditing = sectionEditing?.scopeKey === scopeKey && canManage ? sectionEditing : null;
-  const visibleEditing = editing?.scopeKey === scopeKey && canManage ? editing : null;
-  const visibleDeleting =
-    deleting?.scopeKey === scopeKey && canManage && installationRowCanDelete(deleting.row) ? deleting : null;
   const base = `/records/installations/${encodeURIComponent(record?.id ?? '')}`;
-  const editingActive = Boolean(visibleEditing || visibleSectionEditing || basicEditor);
+  const editingActive = Boolean(visibleSectionEditing || basicEditor);
   const interactionBusy = busy || basicBusy;
-  const returnToRow = useRef<string | null>(null);
   const previousEditing = useRef('');
   const basicEditButton = useRef<HTMLButtonElement>(null);
-  const editingFocusKey = visibleSectionEditing
-    ? 'section'
-    : visibleEditing
-      ? `${visibleEditing.sectionId}:${visibleEditing.row?.id ?? 'new'}`
-      : basicEditor
-        ? 'basic'
-        : '';
+  const editingFocusKey = visibleSectionEditing ? 'section' : basicEditor ? 'basic' : '';
   useEffect(() => {
     const previous = previousEditing.current;
     previousEditing.current = editingFocusKey;
     if (!editingFocusKey) {
       if (previous)
         requestAnimationFrame(() => {
-          if (previous === 'basic' || previous === 'section')
-            basicEditButton.current?.focus({ preventScroll: true });
-          else
-            Array.from(contentScroll.current?.querySelectorAll<HTMLElement>('[data-installation-row]') ?? [])
-              .find((element) => element.dataset.installationRow === returnToRow.current)
-              ?.querySelector<HTMLButtonElement>('button:not(:disabled)')
-              ?.focus({ preventScroll: true });
+          basicEditButton.current?.focus({ preventScroll: true });
         });
       return;
     }
@@ -495,7 +422,6 @@ export default function InstallationDetails({
     if (interactionBusy) return;
     setDiscardOpen(false);
     setEditingDirty(false);
-    setEditing(null);
     setSectionEditing(null);
     setActionError('');
     if (basicEditor) onBasicCancel?.();
@@ -513,9 +439,7 @@ export default function InstallationDetails({
   useEffect(() => {
     ++generation.current;
     operation.current?.abort();
-    setEditing(null);
     setSectionEditing(null);
-    setDeleting(null);
     setActionError('');
     setStatus('');
     setBusy(false);
@@ -552,13 +476,37 @@ export default function InstallationDetails({
     };
   }, [base, record?.id, record?.updatedAt, scopeKey, policyPending, retry]);
   useEffect(() => {
+    if (!record?.id) return;
+    const controller = new AbortController();
+    let active = true;
+    setCodeOptionsLoading(true);
+    setCodeOptionsError('');
+    setCodeOptions([]);
+    void loadInstallationCodeOptions(controller.signal)
+      .then((items) => {
+        if (active && identity.current.scopeKey === scopeKey) setCodeOptions(items);
+      })
+      .catch((reason) => {
+        if (active && !controller.signal.aborted) {
+          setCodeOptionsError(
+            reason instanceof Error ? reason.message : '공용 선택지 목록을 불러오지 못했습니다.',
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setCodeOptionsLoading(false);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [record?.id, scopeKey, codeOptionsRetry]);
+  useEffect(() => {
     const clear = () => {
       ++generation.current;
       operation.current?.abort();
       setCached(null);
-      setEditing(null);
       setSectionEditing(null);
-      setDeleting(null);
       setBusy(false);
       setDiscardOpen(false);
       setEditingDirty(false);
@@ -571,13 +519,75 @@ export default function InstallationDetails({
     };
   }, []);
 
+  const canAddSharedOptions = user?.role === 'admin' && user.status === 'active';
+  const createSharedInstallationOption = async (group: InstallationCodeGroup, name: string) => {
+    const response = await installationRequest<{ item: unknown; created: boolean }>(
+      '/catalog/codes/installation-options',
+      {
+        method: 'POST',
+        body: JSON.stringify({ group, name }),
+        preserveDraftOnPermissionDenied: true,
+      },
+    );
+    const parsed = parseInstallationCodeOptions({ items: [response.item] });
+    const created = parsed?.[0];
+    if (
+      !created ||
+      created.group !== group ||
+      installationOptionNameKey(created.name) !== installationOptionNameKey(name)
+    )
+      throw new InstallationRequestError('공용 선택지 응답을 확인하지 못했습니다.', 'uncertain');
+    return created;
+  };
+  const addSharedInstallationOption = async (
+    group: InstallationCodeGroup,
+    name: string,
+    target: InstallationOptionRegistrationTarget,
+  ) => {
+    if (!canAddSharedOptions) throw new Error('공용 선택지를 추가하려면 관리자 권한이 필요합니다.');
+    const option = await optionRegistrationsController.current!.register({
+      group,
+      name,
+      draftName: name,
+      target,
+      create: () => createSharedInstallationOption(group, name),
+      isDefiniteFailure: (reason) =>
+        reason instanceof InstallationRequestError && reason.outcome === 'rejected',
+    });
+    if (option) {
+      setCodeOptions((current) => [
+        ...current.filter((item) => !(item.group === option.group && item.code === option.code)),
+        option,
+      ]);
+    }
+    return option;
+  };
+  const confirmSharedInstallationOption = (id: string) => {
+    void optionRegistrationsController.current!.confirm(id, loadInstallationCodeOptions, (options) =>
+      setCodeOptions([...options]),
+    );
+  };
+  const retrySharedInstallationOption = (id: string) => {
+    void optionRegistrationsController.current!.retry(
+      id,
+      createSharedInstallationOption,
+      (reason) => reason instanceof InstallationRequestError && reason.outcome === 'rejected',
+      (option) =>
+        setCodeOptions((current) => [
+          ...current.filter((item) => !(item.group === option.group && item.code === option.code)),
+          option,
+        ]),
+    );
+  };
+  const dismissSharedInstallationOption = (id: string, target: InstallationOptionRegistrationTarget) => {
+    optionRegistrationsController.current!.dismissTarget(id, target);
+  };
+
   const close = () => {
     ++generation.current;
     operation.current?.abort();
     setCached(null);
-    setEditing(null);
     setSectionEditing(null);
-    setDeleting(null);
     setDiscardOpen(false);
     setEditingDirty(false);
     onClose();
@@ -617,9 +627,7 @@ export default function InstallationDetails({
       // A settings poll may be in flight; fetch again under the confirmed policy instead of reusing its response.
       if (!identity.current.policyPending) setCached({ scopeKey, details: result });
       else setRetry((value) => value + 1);
-      setEditing(null);
       setSectionEditing(null);
-      setDeleting(null);
       setStatus(success);
       onChanged?.();
       return true;
@@ -637,8 +645,15 @@ export default function InstallationDetails({
 
   const saveSection = async (
     draft: InstallationSectionDraft,
-    committed: (change: InstallationSectionChange) => void,
-  ) => {
+    committed: (
+      change: InstallationSectionOperation,
+      latest: InstallationDetailsDto,
+      previous: InstallationDetailsDto,
+    ) => void,
+  ): Promise<{
+    uncertain?: InstallationSectionOperation;
+    confirmedDetails?: InstallationDetailsDto;
+  } | void> => {
     if (
       !visibleSectionEditing ||
       !canManage ||
@@ -648,9 +663,9 @@ export default function InstallationDetails({
       (operation.current && !operation.current.signal.aborted)
     )
       return;
-    let changes: InstallationSectionChange[];
+    let changes: InstallationSectionOperation[];
     try {
-      changes = prepareInstallationSection(
+      changes = prepareInstallationSectionOperations(
         visibleSectionEditing.details,
         visibleSectionEditing.sectionId,
         draft,
@@ -669,38 +684,98 @@ export default function InstallationDetails({
     let latest = visibleSectionEditing.details;
     let saved = 0;
     try {
-      // Keep the existing per-record permissions and compare-and-swap contract.
-      // A failure retains remaining drafts; only acknowledged records are cleared.
-      for (const change of changes) {
-        if (
-          token !== generation.current ||
-          identity.current.scopeKey !== scopeKey ||
-          identity.current.policyPending
-        )
-          throw new Error('보호 설정을 확인한 뒤 다시 저장해 주세요.');
-        const path = change.kind === 'note' ? 'access-notes' : 'rows';
-        const result = await installationRequest<VersionedDetails>(
-          `${base}/${path}/${encodeURIComponent(change.id)}`,
-          {
-            method: 'PATCH',
-            signal: controller.signal,
-            body: JSON.stringify({
-              ...change.body,
-              revision: latest.revision,
-              ...(change.metadata ? { metadataRevision: latest.metadataRevision } : {}),
-            }),
-          },
+      const flow = await runInstallationSavePlan(
+        changes,
+        latest,
+        async (change, current) => {
+          if (
+            token !== generation.current ||
+            identity.current.scopeKey !== scopeKey ||
+            identity.current.policyPending
+          )
+            throw new InstallationRequestError('보호 설정을 확인한 뒤 다시 저장해 주세요.', 'rejected');
+          let path = '';
+          let method = '';
+          let body: Record<string, unknown> = { revision: current.revision };
+          switch (change.kind) {
+            case 'row-create':
+              path = `${base}/rows`;
+              method = 'POST';
+              body = { ...change.body, revision: current.revision };
+              break;
+            case 'row-update':
+              path = `${base}/rows/${encodeURIComponent(change.id)}`;
+              method = 'PATCH';
+              body = {
+                ...change.body,
+                revision: current.revision,
+                ...(change.metadata ? { metadataRevision: current.metadataRevision } : {}),
+              };
+              break;
+            case 'row-delete':
+              path = `${base}/rows/${encodeURIComponent(change.id)}`;
+              method = 'DELETE';
+              break;
+            case 'note-create':
+              path = `${base}/access-notes`;
+              method = 'POST';
+              body = { revision: current.revision, content: change.content };
+              break;
+            case 'note-update':
+              path = `${base}/access-notes/${encodeURIComponent(change.id)}`;
+              method = 'PATCH';
+              body = { revision: current.revision, content: change.content };
+              break;
+            case 'note-delete':
+              path = `${base}/access-notes/${encodeURIComponent(change.id)}`;
+              method = 'DELETE';
+              break;
+          }
+          let result: VersionedDetails;
+          try {
+            result = await installationRequest<VersionedDetails>(path, {
+              method,
+              signal: controller.signal,
+              body: JSON.stringify(body),
+            });
+          } catch (reason) {
+            throw reason;
+          }
+          if (!validateInstallationDetails(result, record.id))
+            throw new InstallationRequestError(
+              '저장 응답을 확인하지 못했습니다. 다시 불러와 확인해 주세요.',
+              'uncertain',
+            );
+          if (token !== generation.current || identity.current.scopeKey !== scopeKey)
+            throw new InstallationRequestError('현재 설치를 확인한 뒤 다시 진행해 주세요.', 'rejected');
+          return result;
+        },
+        (change, result, previous) => {
+          latest = result as VersionedDetails;
+          saved++;
+          committed(change, result, previous);
+          setSectionEditing((current) =>
+            current?.scopeKey === scopeKey ? { ...current, details: latest } : current,
+          );
+          if (!identity.current.policyPending) setCached({ scopeKey, details: latest });
+        },
+        (reason) => !(reason instanceof InstallationRequestError) || reason.outcome === 'uncertain',
+      );
+      latest = flow.latest as VersionedDetails;
+      saved = flow.saved;
+      if (flow.failure) {
+        const message =
+          flow.failure.error instanceof Error
+            ? flow.failure.error.message
+            : '저장하지 못했습니다. 다시 확인해 주세요.';
+        setActionError(
+          saved
+            ? `${t('일부 기록은 저장되었습니다. 나머지 입력 내용은 유지됩니다.')} ${t(message)}`
+            : message,
         );
-        if (!validateInstallationDetails(result, record.id))
-          throw new Error('저장 응답을 확인하지 못했습니다. 다시 불러온 뒤 확인해 주세요.');
-        if (token !== generation.current || identity.current.scopeKey !== scopeKey) return;
-        latest = result;
-        saved++;
-        committed(change);
-        setSectionEditing((current) =>
-          current?.scopeKey === scopeKey ? { ...current, details: result } : current,
-        );
-        if (!identity.current.policyPending) setCached({ scopeKey, details: result });
+        if (flow.failure.uncertain)
+          return { uncertain: flow.failure.operation, confirmedDetails: flow.latest };
+        return;
       }
       setSectionEditing(null);
       setStatus('현재 탭의 정보를 저장했습니다.');
@@ -722,35 +797,35 @@ export default function InstallationDetails({
     }
   };
 
+  const refreshSection = async () => {
+    if (!visibleSectionEditing || !record || busy || policyPending) return false;
+    const token = ++generation.current;
+    const controller = new AbortController();
+    setBusy(true);
+    setActionError('');
+    try {
+      const result = await installationRequest<VersionedDetails>(`${base}/details`, {
+        signal: controller.signal,
+      });
+      if (!validateInstallationDetails(result, record.id))
+        throw new Error('설치 상세 정보를 확인하지 못했습니다.');
+      if (token !== generation.current || identity.current.scopeKey !== scopeKey) return false;
+      setSectionEditing((current) =>
+        current?.scopeKey === scopeKey ? { ...current, details: result } : current,
+      );
+      setCached({ scopeKey, details: result });
+      onChanged?.();
+      return true;
+    } catch (reason) {
+      if (token === generation.current && !controller.signal.aborted)
+        setActionError(reason instanceof Error ? reason.message : '최신 정보를 불러오지 못했습니다.');
+      return false;
+    } finally {
+      if (token === generation.current) setBusy(false);
+    }
+  };
+
   if (!record) return null;
-  const activeConfig = sectionConfig.find((config) => config.id === tab)!;
-  const editor = visibleEditing ? (
-    <InstallationRecordEditor
-      key={`${scopeKey}:${visibleEditing.row?.id || 'new'}:${visibleEditing.sectionId}`}
-      sectionId={visibleEditing.sectionId}
-      sectionTitle={visibleEditing.sectionTitle}
-      row={visibleEditing.row}
-      busy={busy}
-      error={actionError}
-      policyPending={policyPending}
-      onClose={cancelEditing}
-      onSave={(payload: RowDraftPayload) =>
-        void mutate(
-          visibleEditing.row ? `${base}/rows/${encodeURIComponent(visibleEditing.row.id)}` : `${base}/rows`,
-          visibleEditing.row ? 'PATCH' : 'POST',
-          {
-            ...payload,
-            ...(!visibleEditing.row ? { sectionId: visibleEditing.sectionId } : {}),
-            ...(visibleEditing.row?.managed === 'metadata'
-              ? { metadataRevision: visibleEditing.metadataRevision }
-              : {}),
-          },
-          `${visibleEditing.sectionTitle} 기록을 저장했습니다.`,
-          visibleEditing.revision,
-        )
-      }
-    />
-  ) : undefined;
   let content: ReactNode;
   if (!settings && settingsError && !settingsLoading)
     content = (
@@ -799,7 +874,7 @@ export default function InstallationDetails({
             key={scopeKey}
             notes={visibleDetails!.accessNotes ?? []}
             revision={visibleDetails!.revision}
-            canManage={canManage}
+            canManage={false}
             busy={busy || editingActive}
             policyPending={policyPending}
             onCreate={(value, revision) =>
@@ -851,25 +926,6 @@ export default function InstallationDetails({
                     {t('개 기록')}
                   </span>
                 )}
-                {canManage && (
-                  <button
-                    type="button"
-                    className="button primary"
-                    disabled={busy || policyPending || editingActive}
-                    onClick={() => {
-                      setActionError('');
-                      setEditing({
-                        scopeKey,
-                        revision: visibleDetails!.revision,
-                        sectionId: config.id,
-                        sectionTitle: config.title,
-                      });
-                    }}
-                  >
-                    <Plus size={15} />
-                    {t('기록 추가')}
-                  </button>
-                )}
               </div>
             )}
           </div>
@@ -891,39 +947,30 @@ export default function InstallationDetails({
               sectionId={config.id}
               busy={busy}
               policyPending={policyPending}
+              protectionEnabled={protectionEnabled}
               error={actionError}
+              codeOptions={codeOptions}
+              codeOptionsLoading={codeOptionsLoading}
+              codeOptionsError={codeOptionsError}
+              canAddSharedOptions={canAddSharedOptions}
+              optionRegistrations={optionRegistrations}
               onClose={cancelEditing}
+              onRetryOptions={() => setCodeOptionsRetry((value) => value + 1)}
+              onAddSharedOption={addSharedInstallationOption}
+              onConfirmOptionRegistration={confirmSharedInstallationOption}
+              onRetryOptionRegistration={retrySharedInstallationOption}
+              onDismissOptionRegistration={dismissSharedInstallationOption}
               onSave={saveSection}
+              onRefresh={refreshSection}
             />
           ) : (
             <>
-              {visibleEditing?.sectionId === config.id && !visibleEditing.row && editor}
               {section.rows.length ? (
                 <SectionRows
                   section={section}
                   policyPending={policyPending}
-                  canManage={canManage}
-                  busy={busy || editingActive}
                   accessNotes={accessNotes}
-                  editingRowId={visibleEditing?.row?.id}
-                  editor={editor}
-                  onEdit={(row) => {
-                    setActionError('');
-                    returnToRow.current = row.id;
-                    setEditing({
-                      scopeKey,
-                      revision: visibleDetails!.revision,
-                      metadataRevision: visibleDetails!.metadataRevision,
-                      sectionId: config.id,
-                      sectionTitle: config.title,
-                      row,
-                    });
-                  }}
-                  onDelete={(row) => {
-                    if (!installationRowCanDelete(row)) return;
-                    setActionError('');
-                    setDeleting({ scopeKey, revision: visibleDetails!.revision, row });
-                  }}
+                  codeOptions={codeOptions}
                 />
               ) : (
                 <div className="installation-empty">
@@ -937,7 +984,7 @@ export default function InstallationDetails({
                   </h3>
                   <p>
                     {canManage
-                      ? t('기록 추가를 눌러 필요한 정보를 등록하세요.')
+                      ? t('하단의 정보 수정에서 필요한 정보를 등록하세요.')
                       : t('등록된 정보가 있으면 이곳에 표시됩니다.')}
                   </p>
                 </div>
@@ -1169,56 +1216,6 @@ export default function InstallationDetails({
                 </>
               )}
             </footer>
-            {visibleDeleting && (
-              <Dialog.Root
-                open
-                onOpenChange={(open) => {
-                  if (!open && !busy) setDeleting(null);
-                }}
-              >
-                <Dialog.Portal>
-                  <Dialog.Overlay className="installation-edit-overlay" />
-                  <Dialog.Content
-                    className="installation-confirm-dialog"
-                    onEscapeKeyDown={(event) => {
-                      if (busy) event.preventDefault();
-                    }}
-                    onInteractOutside={(event) => event.preventDefault()}
-                  >
-                    <Dialog.Title>{t('기록 삭제')}</Dialog.Title>
-                    <Dialog.Description>
-                      <strong>{installationRowTitle(visibleDeleting.row) || t(activeConfig.title)}</strong>
-                      {t(' 기록을 삭제하시겠습니까?')}
-                    </Dialog.Description>
-                    {actionError && (
-                      <p className="installation-action-error" role="alert">
-                        {t(actionError)}
-                      </p>
-                    )}
-                    <div>
-                      <button className="button" disabled={busy} onClick={() => setDeleting(null)}>
-                        {t('취소')}
-                      </button>
-                      <button
-                        className="button danger"
-                        disabled={busy || policyPending}
-                        onClick={() =>
-                          void mutate(
-                            `${base}/rows/${encodeURIComponent(visibleDeleting.row.id)}`,
-                            'DELETE',
-                            {},
-                            '기록을 삭제했습니다.',
-                            visibleDeleting.revision,
-                          )
-                        }
-                      >
-                        {busy ? t('삭제 중…') : t('기록 삭제')}
-                      </button>
-                    </div>
-                  </Dialog.Content>
-                </Dialog.Portal>
-              </Dialog.Root>
-            )}
             <InstallationDiscardDialog
               open={discardOpen && editingActive && !policyPending}
               onOpenChange={setDiscardOpen}

@@ -18,10 +18,29 @@ export function installationBooleanChoice(key: string, value: string) {
   return { checked, yes: key === 'autoUpdate' ? 'true' : 'Y', no: key === 'autoUpdate' ? 'false' : 'N' };
 }
 
+export function installationComparableValue(
+  field: Pick<InstallationDetailField, 'key' | 'value' | 'optionValue'>,
+) {
+  if (field.optionValue !== undefined) return field.optionValue;
+  if (!field.value.trim()) return '';
+  const choice = installationBooleanChoice(field.key, field.value);
+  return choice ? (choice.checked ? choice.yes : choice.no) : field.value;
+}
+
 export type InstallationSectionDraft = {
   values: Record<string, string>;
   titles: Record<string, string>;
   notes: Record<string, string>;
+  addedRows?: Array<{
+    localId: string;
+    title: string;
+    fields: Array<NewInstallationField & { localId?: string }>;
+  }>;
+  removedRows?: string[];
+  addedFields?: Record<string, Array<{ localId: string; key: string; label: string; value: string }>>;
+  removedFields?: Record<string, string[]>;
+  addedNotes?: Array<{ localId: string; content: string }>;
+  removedNotes?: string[];
 };
 export type InstallationSectionChange = {
   kind: 'row' | 'note';
@@ -30,6 +49,123 @@ export type InstallationSectionChange = {
   metadata: boolean;
   fieldIds: string[];
 };
+
+export type InstallationSectionOperation =
+  | {
+      kind: 'row-create';
+      localId: string;
+      fieldLocalIds: string[];
+      body: { sectionId: InstallationSectionId; title: string; fields: NewInstallationField[] };
+    }
+  | { kind: 'row-update'; id: string; body: RowDraftPayload; addFieldLocalIds: string[]; metadata?: boolean }
+  | { kind: 'row-delete'; id: string }
+  | { kind: 'note-create'; localId: string; content: string }
+  | { kind: 'note-update'; id: string; content: string }
+  | { kind: 'note-delete'; id: string };
+
+const validLongText = (value: string) =>
+  value.trim().length > 0 &&
+  value.length <= 16384 &&
+  !value.includes('\0') &&
+  !/[\uD800-\uDFFF]/u.test(value);
+
+/** Build a validated, ordered save plan for the existing section editor. */
+export function prepareInstallationSectionOperations(
+  details: InstallationDetails,
+  sectionId: InstallationSectionId,
+  draft: InstallationSectionDraft,
+): InstallationSectionOperation[] {
+  const section = details.sections.find((item) => item.id === sectionId);
+  if (!section) throw new Error('설치 상세 정보를 다시 불러와 주세요.');
+  const visible = visibleInstallationSection(section);
+  const removedRows = new Set(draft.removedRows ?? []);
+  const operations: InstallationSectionOperation[] = [];
+  for (const row of visible.rows) {
+    const additions = draft.addedFields?.[row.id] ?? [];
+    const removed = draft.removedFields?.[row.id] ?? [];
+    const draftedTitle = draft.titles[row.id];
+    if (
+      row.managed === 'metadata' &&
+      (removedRows.has(row.id) ||
+        removed.length > 0 ||
+        additions.length > 0 ||
+        (draftedTitle !== undefined && draftedTitle !== (row.title ?? section.title)))
+    )
+      throw new Error('기본 정보의 이름과 항목 구성은 변경할 수 없습니다. 항목 값만 수정해 주세요.');
+    if (removedRows.has(row.id)) {
+      if (row.managed === 'metadata') throw new Error('기본 정보는 삭제할 수 없습니다.');
+      operations.push({ kind: 'row-delete', id: row.id });
+      continue;
+    }
+    const title = draft.titles[row.id] ?? row.title ?? section.title;
+    const values = Object.fromEntries(
+      row.fields
+        .filter((field) => Object.hasOwn(draft.values, field.id))
+        .map((field) => [field.key, draft.values[field.id]]),
+    );
+    if (row.managed === 'metadata') {
+      const changed = Object.fromEntries(
+        Object.entries(values).filter(([key, value]) => {
+          const field = row.fields.find((candidate) => candidate.key === key);
+          return field && (field.masked || installationComparableValue(field) !== value);
+        }),
+      );
+      if (!Object.keys(changed).length) continue;
+      const payload = prepareInstallationRow(row, title, changed, [], []);
+      operations.push({
+        kind: 'row-update',
+        id: row.id,
+        body: payload,
+        addFieldLocalIds: [],
+        metadata: true,
+      });
+      continue;
+    }
+    const payload = prepareInstallationRow(row, title, values, removed, additions);
+    const changed = Boolean(
+      payload.title !== row.title ||
+      (payload.values && Object.keys(payload.values).length) ||
+      payload.removeFields?.length ||
+      payload.addFields?.length,
+    );
+    if (changed)
+      operations.push({
+        kind: 'row-update',
+        id: row.id,
+        body: payload,
+        addFieldLocalIds: additions.map((field) => field.localId),
+        metadata: false,
+      });
+  }
+  for (const row of draft.addedRows ?? []) {
+    const body = prepareInstallationRow(undefined, row.title, {}, [], row.fields);
+    operations.push({
+      kind: 'row-create',
+      localId: row.localId,
+      fieldLocalIds: row.fields.map((field) => field.localId ?? ''),
+      body: { sectionId, title: body.title!, fields: body.fields! },
+    });
+  }
+  if (sectionId === 'access') {
+    for (const note of details.accessNotes ?? []) {
+      if ((draft.removedNotes ?? []).includes(note.id)) operations.push({ kind: 'note-delete', id: note.id });
+      else if (
+        Object.hasOwn(draft.notes, note.id) &&
+        (note.masked || draft.notes[note.id] !== note.content)
+      ) {
+        if (!validLongText(draft.notes[note.id]))
+          throw new Error('참고사항은 빈 값이나 잘못된 문자 없이 16,384자 이내로 입력해 주세요.');
+        operations.push({ kind: 'note-update', id: note.id, content: draft.notes[note.id] });
+      }
+    }
+    for (const note of draft.addedNotes ?? []) {
+      if (!validLongText(note.content))
+        throw new Error('참고사항은 빈 값이나 잘못된 문자 없이 16,384자 이내로 입력해 주세요.');
+      operations.push({ kind: 'note-create', localId: note.localId, content: note.content });
+    }
+  }
+  return operations;
+}
 
 /** Validate the entire tab before sending any mutation; untouched masked values are omitted. */
 export function prepareInstallationSection(
@@ -192,6 +328,10 @@ export function validateInstallationDetails(
             keys.has(field.key) ||
             typeof field.label !== 'string' ||
             typeof field.value !== 'string' ||
+            (field.optionValue !== undefined &&
+              (typeof field.optionValue !== 'string' ||
+                field.optionValue.length > 100 ||
+                field.optionValue.includes('\0'))) ||
             typeof field.secret !== 'boolean' ||
             typeof field.masked !== 'boolean' ||
             typeof field.present !== 'boolean'
@@ -270,7 +410,11 @@ export function prepareInstallationRow(
   const changed = Object.fromEntries(
     Object.entries(values).filter(([key, value]) => {
       const original = row?.fields.find((field) => field.key === key);
-      return original && !removed.includes(key) && (original.masked || original.value !== value);
+      return (
+        original &&
+        !removed.includes(key) &&
+        (original.masked || installationComparableValue(original) !== value)
+      );
     }),
   );
   if (

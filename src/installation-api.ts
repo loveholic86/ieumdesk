@@ -1,22 +1,44 @@
 import { privateFetch, publicErrorMessage } from './client-security';
 
-export async function installationRequest<T>(path: string, options?: RequestInit): Promise<T> {
+export class InstallationRequestError extends Error {
+  constructor(
+    message: string,
+    readonly outcome: 'rejected' | 'uncertain',
+  ) {
+    super(message);
+    this.name = 'InstallationRequestError';
+  }
+}
+
+export type InstallationRequestOptions = RequestInit & { preserveDraftOnPermissionDenied?: boolean };
+
+export async function installationRequest<T>(path: string, options?: InstallationRequestOptions): Promise<T> {
+  const { preserveDraftOnPermissionDenied = false, ...requestOptions } = options ?? {};
   const response = await privateFetch(`/api${path}`, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...requestOptions,
+    headers: { 'Content-Type': 'application/json', ...requestOptions.headers },
   });
-  await assertInstallationResponse(response);
+  await assertInstallationResponse(response, preserveDraftOnPermissionDenied);
   if (response.status === 204) return undefined as T;
   try {
     return (await response.json()) as T;
   } catch {
-    throw new Error('서버 응답을 확인하지 못했습니다. 다시 불러온 뒤 확인해 주세요.');
+    throw new InstallationRequestError(
+      '서버 응답을 확인하지 못했습니다. 다시 불러온 뒤 확인해 주세요.',
+      'uncertain',
+    );
   }
 }
 
-async function assertInstallationResponse(response: Response): Promise<void> {
+async function assertInstallationResponse(
+  response: Response,
+  preserveDraftOnPermissionDenied = false,
+): Promise<void> {
   if (response.ok) return;
-  if (typeof window !== 'undefined' && (response.status === 401 || response.status === 403))
+  if (
+    typeof window !== 'undefined' &&
+    (response.status === 401 || (response.status === 403 && !preserveDraftOnPermissionDenied))
+  )
     window.dispatchEvent(new Event(response.status === 401 ? 'crm:unauthorized' : 'crm:permissions-changed'));
   let message = '요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.';
   try {
@@ -25,7 +47,7 @@ async function assertInstallationResponse(response: Response): Promise<void> {
   } catch {
     /* Keep the local error for non-JSON failures. */
   }
-  throw new Error(message);
+  throw new InstallationRequestError(message, response.status >= 500 ? 'uncertain' : 'rejected');
 }
 
 export async function downloadInstallationFile(

@@ -60,7 +60,11 @@ id_ed25519*
 /STYLESEED.md
 
 # Local regression fixtures, verification and one-off legacy work
-/tests/
+/tests/*
+!/tests/installation-editor.test.ts
+!/tests/installation-save-flow.test.ts
+!/tests/installation-draft-reconcile.test.ts
+!/tests/installation-code-options.test.ts
 /server/*.test.ts
 /deploy/
 /scripts/cloud-*.ts

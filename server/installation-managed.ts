@@ -16,6 +16,7 @@ import type {
   InstallationDetailRow,
   InstallationSectionId,
 } from '../src/installation-types.ts';
+import { installationCodeGroupForField } from '../src/installation-code-options.ts';
 
 const sectionId = z.enum(['installation', 'access', 'server', 'yeta', 'sap', 'settings', 'files']);
 export const installationAccessNoteIdSchema = z
@@ -350,6 +351,12 @@ export function managedInstallationDetails(
             key: field.key,
             label: field.label,
             value: raw ? field.value : field.displayValue,
+            ...(installationCodeGroupForField(section.id, field.key, field.label) &&
+            !field.secret &&
+            field.value.length <= 100 &&
+            !field.value.includes('\0')
+              ? { optionValue: field.value }
+              : {}),
             secret: field.secret,
             masked: false,
             present: field.value.length > 0,
