@@ -2026,3 +2026,204 @@
     margin-left: auto;
   }
 }
+
+.installation-card-variant {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: -6px 0 18px;
+  padding: 7px 10px;
+  border: 1px dashed var(--theme-border, #d5e0ee);
+  border-radius: 8px;
+  background: var(--theme-surface, #fff);
+}
+.installation-card-variant > small {
+  color: var(--theme-muted, #8b9db4);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.installation-card-variant > div {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+.installation-card-variant button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--theme-border, #d5e0ee);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--theme-text, #486587);
+  font-size: 12px;
+  font-weight: 650;
+}
+.installation-card-variant button[aria-pressed='true'] {
+  background: var(--theme-surface-raised, #edf4ff);
+  border-color: var(--theme-accent, #427bc6);
+  color: var(--theme-ink, #1c3553);
+}
+.installation-option-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 18px 28px 26px;
+}
+.installation-empty-toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  color: var(--theme-muted, #6d89ac);
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.installation-empty-toggle > span {
+  text-decoration: none;
+  font-weight: 600;
+}
+.installation-option-group-title {
+  margin: 0 0 8px;
+  color: var(--theme-text, #5c7290);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+}
+.installation-option-a .installation-option-group-title {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--theme-border, #e6edf6);
+}
+.installation-option-a .installation-option-row {
+  display: grid;
+  grid-template-columns: minmax(8.5rem, 13rem) minmax(0, 1fr);
+  column-gap: 28px;
+  align-items: baseline;
+  padding: 13px 2px;
+}
+.installation-option-a .installation-option-row dt,
+.installation-option-b .installation-option-tile dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  color: var(--theme-muted, #8b9db4);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.installation-option-a .installation-option-row dt > svg,
+.installation-option-b .installation-option-tile dt > svg {
+  flex-shrink: 0;
+  color: var(--theme-muted, #a4b2c5);
+}
+.installation-option-a .installation-option-row dd,
+.installation-option-b .installation-option-tile dd {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  color: var(--theme-ink, #1c3553);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+.installation-option-b .installation-option-groups {
+  gap: 14px;
+  padding: 16px;
+}
+.installation-option-b .installation-option-group {
+  padding: 14px 16px 16px;
+  border-radius: 12px;
+  background: var(--theme-surface-raised, #f3f6fb);
+}
+.installation-option-b .installation-option-group-title {
+  margin-bottom: 12px;
+}
+.installation-option-b .installation-option-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px 18px;
+}
+.installation-option-b .installation-option-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.installation-option-b .installation-option-tile.is-wide {
+  grid-column: 1 / -1;
+}
+.installation-option-b .installation-option-tile dt {
+  font-size: 11px;
+}
+.installation-option-badge {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+  padding: 3px 10px;
+  border: 1px solid var(--theme-border, #d5e4f6);
+  border-radius: 999px;
+  background: var(--theme-surface, #fff);
+  color: var(--theme-ink, #1c3553);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.installation-option-b .installation-option-tile dd {
+  font-size: 15px;
+}
+.installation-copy-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin-top: -2px;
+  border: 1px solid var(--theme-border, #d5e0ee);
+  border-radius: 6px;
+  background: var(--theme-surface, #fff);
+  color: var(--theme-muted, #6d89ac);
+}
+.installation-copy-button:hover {
+  border-color: var(--theme-accent, #427bc6);
+  color: var(--theme-accent, #427bc6);
+}
+.installation-option-notes {
+  margin-top: 12px;
+  min-width: 0;
+}
+@media (max-width: 1100px) {
+  .installation-option-b .installation-option-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  .installation-card-variant {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .installation-card-variant > div {
+    margin-left: 0;
+  }
+  .installation-option-groups {
+    padding: 14px 16px 18px;
+    gap: 22px;
+  }
+  .installation-option-a .installation-option-row {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 4px;
+    padding: 12px 0;
+  }
+  .installation-option-b .installation-option-tiles {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
