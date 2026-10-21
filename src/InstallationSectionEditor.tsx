@@ -3,6 +3,7 @@ import { Check, LockKeyhole, Maximize2, Plus, RotateCcw, Search, Trash2 } from '
 import { t } from './i18n';
 import { useLocale } from './use-locale';
 import {
+  accessOriginGroupLabel,
   installationFieldLabel,
   installationFieldTemplates,
   installationRowTitle,
@@ -181,7 +182,7 @@ export default function InstallationSectionEditor({
   const noteChanged = (note: NonNullable<InstallationDetails['accessNotes']>[number]) =>
     Object.hasOwn(notes, note.id) && (note.masked || notes[note.id] !== note.content);
   const titleChanged = (row: (typeof section.rows)[number]) =>
-    Object.hasOwn(titles, row.id) && titles[row.id] !== (row.title ?? section.title);
+    !row.origin && Object.hasOwn(titles, row.id) && titles[row.id] !== (row.title ?? section.title);
   const matches = (field: InstallationDetailField) =>
     (!search ||
       [field.label, field.key, installationFieldLabel(field)]
@@ -912,7 +913,12 @@ export default function InstallationSectionEditor({
                       disabled={busy || policyPending}
                     >
                       <legend>{installationRowTitle(row) || t('{0} 기록', [index + 1])}</legend>
-                      {row.managed !== 'metadata' && (
+                      {row.origin ? (
+                        <div className="installation-section-edit-title">
+                          <span>{t('구분명')}</span>
+                          <strong>{accessOriginGroupLabel(row)}</strong>
+                        </div>
+                      ) : row.managed !== 'metadata' && (
                         <label className="installation-section-edit-title">
                           {t('구분명')}
                           <input

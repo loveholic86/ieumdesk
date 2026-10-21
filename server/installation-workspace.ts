@@ -431,16 +431,18 @@ export class InstallationWorkspaceService {
       if (error instanceof ApiError && error.status === 503) return;
       throw error;
     }
-    const origins = new Map(
+    const sources = new Map(
       (base.sections.find((section) => section.id === 'access')?.rows ?? []).flatMap((row) =>
-        row.origin ? ([[row.id, row.origin]] as const) : [],
+        row.origin ? ([[row.id, row]] as const) : [],
       ),
     );
     const section = details.sections.find((item) => item.id === 'access');
     if (!section) return;
     for (const row of section.rows) {
-      const origin = origins.get(row.id);
-      if (origin) row.origin = { group: origin.group, part: origin.part };
+      const source = sources.get(row.id);
+      if (!source?.origin) continue;
+      row.origin = { group: source.origin.group, part: source.origin.part };
+      if (source.title) row.title = source.title;
     }
   }
   async details(id: string, options: { protected?: boolean; raw?: boolean } = {}) {

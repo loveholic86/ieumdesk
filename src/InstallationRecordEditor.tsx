@@ -1,4 +1,5 @@
 import {
+  accessOriginGroupLabel,
   installationFieldTemplates as templates,
   installationFieldLabel,
   installationRowTitle,
@@ -50,6 +51,7 @@ export default function InstallationRecordEditor({
 }: Props) {
   useLocale();
   const isMetadata = row?.managed === 'metadata';
+  const originLabel = accessOriginGroupLabel(row ?? {});
   const [title, setTitle] = useState(row?.title || sectionTitle);
   const [values, setValues] = useState<Record<string, string>>({});
   const [removed, setRemoved] = useState<string[]>([]);
@@ -74,7 +76,7 @@ export default function InstallationRecordEditor({
     Object.hasOwn(values, field.key) && (field.masked || values[field.key] !== field.value);
   const changedCount =
     row?.fields.filter((field) => !removed.includes(field.key) && isChanged(field)).length ?? 0;
-  const titleChanged = title.trim() !== (row?.title || sectionTitle);
+  const titleChanged = !originLabel && title.trim() !== (row?.title || sectionTitle);
   const hasChanges = !row || titleChanged || changedCount > 0 || removed.length > 0 || added.length > 0;
   useInstallationDirty(
     row ? hasChanges : titleChanged || JSON.stringify(added) !== JSON.stringify(initialAdded.current),
@@ -426,10 +428,10 @@ export default function InstallationRecordEditor({
         {!inFocus && (
           <div className="installation-inline-edit-toolbar">
             <div className="installation-inline-edit-toolbar-top">
-              {isMetadata ? (
+              {isMetadata || originLabel ? (
                 <div className="installation-inline-edit-title">
                   <span>{t('구분명')}</span>
-                  <strong>{row ? installationRowTitle(row) : title}</strong>
+                  <strong>{originLabel || (row ? installationRowTitle(row) : title)}</strong>
                 </div>
               ) : (
                 <label className="installation-inline-edit-title">
