@@ -136,6 +136,7 @@ export const english: Record<string, string> = {
   '{0} 기록': 'Record {0}',
   '참고사항 {0}': 'Reference note {0}',
   '현재 탭의 정보를 저장했습니다.': 'Saved the information in this tab.',
+  '접근 정보를 저장했습니다.': 'Saved the access record.',
   '일부 기록은 저장되었습니다. 나머지 입력 내용은 유지됩니다.':
     'Some records were saved. Your remaining changes are still in the form.',
   '참고사항은 빈 값이나 잘못된 문자 없이 16,384자 이내로 입력해 주세요.':
