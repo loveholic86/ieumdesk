@@ -183,22 +183,67 @@ function passwordField(field: { key: string; label: string }) {
   return /pwd|password|passwd|비밀번호|비번|패스워드/i.test(`${field.key} ${field.label}`);
 }
 
-/** Priority: access_url, then domainurl, then external_ip, internal_ip, vpnsv_ip, gateway, hostname, address. */
-function accessListAddress(fields: readonly InstallationDetailField[]) {
-  const pick = (key: string) => {
-    const field = fields.find((item) => item.key === key);
-    return field && !passwordField(field) ? field : undefined;
-  };
-  return (
-    pick('access_url') ??
-    pick('domainurl') ??
-    pick('external_ip') ??
-    pick('internal_ip') ??
-    pick('vpnsv_ip') ??
-    pick('gateway') ??
-    pick('hostname') ??
-    pick('address')
-  );
+const accessAddressKeys = [
+  'access_url',
+  'domainurl',
+  'external_ip',
+  'internal_ip',
+  'vpnsv_ip',
+  'gateway',
+  'hostname',
+  'address',
+] as const;
+const accessPartOrder: Record<string, number> = { address: 0, vpn: 1, access: 2 };
+
+type AccessRecordItem = { id: string; rows: InstallationDetailRow[] };
+
+/** One migrated source is one item. Priority: access_url, then domainurl, then external_ip, internal_ip, vpnsv_ip, gateway, hostname, address. */
+function accessRecordItems(rows: readonly InstallationDetailRow[]): AccessRecordItem[] {
+  const items: AccessRecordItem[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const group = row.origin?.group;
+    if (!group) {
+      items.push({ id: row.id, rows: [row] });
+      continue;
+    }
+    if (seen.has(group)) continue;
+    seen.add(group);
+    items.push({
+      id: group,
+      rows: rows
+        .filter((item) => item.origin?.group === group)
+        .slice()
+        .sort(
+          (left, right) =>
+            (accessPartOrder[left.origin?.part ?? ''] ?? 9) - (accessPartOrder[right.origin?.part ?? ''] ?? 9),
+        ),
+    });
+  }
+  return items;
+}
+
+function accessField(rows: readonly InstallationDetailRow[], key: string) {
+  for (const row of rows) {
+    const field = row.fields.find((item) => item.key === key);
+    if (field) return field;
+  }
+  return undefined;
+}
+
+function accessListAddress(rows: readonly InstallationDetailRow[]) {
+  for (const key of accessAddressKeys)
+    for (const row of rows) {
+      const field = row.fields.find((item) => item.key === key);
+      if (field && !passwordField(field)) return field;
+    }
+  return undefined;
+}
+
+function accessItemTitle(item: AccessRecordItem) {
+  return item.rows.some((row) => row.origin)
+    ? t('기존 접근 정보')
+    : installationRowTitle(item.rows[0]) || t('미등록');
 }
 
 function AccessListCell({
@@ -217,8 +262,7 @@ function AccessListCell({
 }
 
 function AccessRecordList({
-  rows,
-  sourceRows,
+  items,
   selectedId,
   policyPending,
   codeOptions,
@@ -227,8 +271,7 @@ function AccessRecordList({
   onSelect,
   onAdd,
 }: {
-  rows: InstallationDetailRow[];
-  sourceRows: InstallationDetailRow[];
+  items: AccessRecordItem[];
   selectedId: string;
   policyPending: boolean;
   codeOptions: readonly InstallationCodeOption[];
@@ -238,8 +281,6 @@ function AccessRecordList({
   onAdd: () => void;
 }) {
   useLocale();
-  const source = new Map(sourceRows.map((row) => [row.id, row]));
-  const fieldsOf = (row: InstallationDetailRow) => source.get(row.id)?.fields ?? row.fields;
   const spoken = (field: InstallationDetailField | undefined) => {
     if (!field || !field.present || passwordField(field)) return t('미등록');
     if (installationFieldMasked(field, policyPending)) return t('보호됨');
@@ -260,7 +301,7 @@ function AccessRecordList({
         </span>
         <h3>{t('접근 정보')}</h3>
         <span className="installation-count">
-          {rows.length}
+          {items.length}
           {t('건')}
         </span>
         {canManage && (
@@ -287,12 +328,11 @@ function AccessRecordList({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => {
-              const fields = fieldsOf(row);
-              const typeField = fields.find((field) => field.key === 'access_type');
-              const addressField = accessListAddress(fields);
-              const endField = fields.find((field) => field.key === 'access_reqst_enddate');
-              const title = installationRowTitle(row) || t('미등록');
+            {items.map((item) => {
+              const typeField = accessField(item.rows, 'access_type');
+              const addressField = accessListAddress(item.rows);
+              const endField = accessField(item.rows, 'access_reqst_enddate');
+              const title = accessItemTitle(item);
               const label = [
                 `${t('구분명')} ${title}`,
                 `${t('접근 유형')} ${spoken(typeField)}`,
@@ -301,17 +341,17 @@ function AccessRecordList({
               ].join(', ');
               return (
                 <tr
-                  key={row.id}
+                  key={item.id}
                   role="row"
                   tabIndex={0}
-                  aria-selected={row.id === selectedId}
+                  aria-selected={item.id === selectedId}
                   aria-label={label}
-                  className={row.id === selectedId ? 'is-selected' : undefined}
-                  onClick={() => onSelect(row.id)}
+                  className={item.id === selectedId ? 'is-selected' : undefined}
+                  onClick={() => onSelect(item.id)}
                   onKeyDown={(event) => {
                     if (event.key !== 'Enter' && event.key !== ' ') return;
                     event.preventDefault();
-                    onSelect(row.id);
+                    onSelect(item.id);
                   }}
                 >
                   <td>{title}</td>
@@ -1107,7 +1147,12 @@ export default function InstallationDetails({
     content = sectionConfig.map((config) => {
       const sourceSection = visibleDetails!.sections.find((item) => item.id === config.id)!;
       const section = visibleInstallationSection(sourceSection);
-      const selectedAccessRow = section.rows.find((row) => row.id === accessRowId) ?? section.rows[0];
+      const accessItems = config.id === 'access' ? accessRecordItems(sourceSection.rows) : [];
+      const selectedAccessItem = accessItems.find((item) => item.id === accessRowId) ?? accessItems[0];
+      const selectedAccessRows = (selectedAccessItem?.rows ?? [])
+        .map((row) => section.rows.find((item) => item.id === row.id))
+        .filter((row): row is InstallationDetailRow => Boolean(row));
+      const recordCount = config.id === 'access' ? accessItems.length : section.rows.length;
       const editingAccessRow =
         config.id === 'access' && accessEdit?.mode === 'edit'
           ? section.rows.find((row) => row.id === accessEdit.rowId)
@@ -1178,9 +1223,9 @@ export default function InstallationDetails({
             </div>
             {config.id !== 'files' && (
               <div className="installation-section-actions">
-                {section.rows.length > 0 && (
+                {recordCount > 0 && (
                   <span className="installation-section-count">
-                    {section.rows.length}
+                    {recordCount}
                     {t('개 기록')}
                   </span>
                 )}
@@ -1223,13 +1268,12 @@ export default function InstallationDetails({
             />
           ) : (
             <>
-              {section.rows.length ? (
-                config.id === 'access' && section.rows.length > 1 && selectedAccessRow ? (
+              {recordCount ? (
+                config.id === 'access' && accessItems.length > 1 && selectedAccessItem ? (
                   <div className="installation-access-browser">
                     <AccessRecordList
-                      rows={section.rows}
-                      sourceRows={sourceSection.rows}
-                      selectedId={selectedAccessRow.id}
+                      items={accessItems}
+                      selectedId={selectedAccessItem.id}
                       policyPending={policyPending}
                       codeOptions={codeOptions}
                       canManage={canManage}
@@ -1254,17 +1298,19 @@ export default function InstallationDetails({
                       />
                     ) : (
                       <SectionRows
-                        section={{ ...section, rows: [selectedAccessRow] }}
+                        section={{ ...section, rows: selectedAccessRows }}
                         policyPending={policyPending}
                         accessNotes={accessNotes}
                         codeOptions={codeOptions}
                         actions={
-                          canManage ? (
+                          canManage && selectedAccessRows.length === 1 ? (
                             <button
                               type="button"
                               className="button"
                               disabled={interactionBusy || policyPending}
-                              onClick={() => beginAccessRecord({ mode: 'edit', rowId: selectedAccessRow.id })}
+                              onClick={() =>
+                                beginAccessRecord({ mode: 'edit', rowId: selectedAccessRows[0].id })
+                              }
                             >
                               <Pencil size={14} />
                               {t('{0} 수정', [t(section.title)])}
@@ -1276,7 +1322,11 @@ export default function InstallationDetails({
                   </div>
                 ) : (
                   <SectionRows
-                    section={section}
+                    section={
+                      config.id === 'access'
+                        ? { ...section, rows: selectedAccessRows.length ? selectedAccessRows : section.rows }
+                        : section
+                    }
                     policyPending={policyPending}
                     accessNotes={accessNotes}
                     codeOptions={codeOptions}
@@ -1299,7 +1349,7 @@ export default function InstallationDetails({
                   </p>
                 </div>
               )}
-              {!section.rows.length && accessNotes}
+              {!recordCount && accessNotes}
             </>
           )}
         </Tabs.Content>

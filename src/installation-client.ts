@@ -247,6 +247,23 @@ function validServerTimestamp(value: unknown): boolean {
   return Number.isFinite(date.getTime()) && date.toISOString() === value;
 }
 
+const accessOriginParts = new Set(['address', 'vpn', 'access']);
+
+function validAccessOrigin(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!object(value)) return false;
+  const keys = Object.keys(value);
+  return (
+    keys.length === 2 &&
+    keys.includes('group') &&
+    keys.includes('part') &&
+    typeof value.group === 'string' &&
+    /^[a-f0-9]{64}$/.test(value.group) &&
+    typeof value.part === 'string' &&
+    accessOriginParts.has(value.part)
+  );
+}
+
 function validAccessNotes(value: unknown): boolean {
   // Older detail responses do not include notes. Keep this type guard non-mutating.
   if (value === undefined) return true;
@@ -313,6 +330,7 @@ export function validateInstallationDetails(
           rowIds.has(row.id) ||
           (row.managed !== undefined && row.managed !== 'metadata') ||
           (row.managed === 'metadata' && !value.metadataRevision) ||
+          !validAccessOrigin(row.origin) ||
           !Array.isArray(row.fields)
         )
           return false;

@@ -70,6 +70,7 @@ export function createInstallationWorkspace(options: InstallationWorkspaceRouter
   const access = new InstallationWorkspaceService(options.details, repository, {
     vault: options.vault,
     metadata: options.metadata,
+    mode: options.mode,
   });
   const attachments = options.attachments ?? createInstallationAttachmentStore({ vault: options.vault });
   router.use((request, response, next) => {
