@@ -2041,3 +2041,115 @@
     margin-left: auto;
   }
 }
+
+.installation-option-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 18px 28px 26px;
+}
+.installation-empty-toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  color: var(--theme-muted, #6d89ac);
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.installation-empty-toggle > span {
+  text-decoration: none;
+  font-weight: 600;
+}
+.installation-option-group-title {
+  margin: 0 0 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--theme-border, #e6edf6);
+  color: var(--theme-text, #5c7290);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+}
+.installation-option-rows {
+  margin: 0;
+}
+.installation-option-a .installation-option-row {
+  display: grid;
+  grid-template-columns: minmax(8.5rem, 13rem) minmax(0, 1fr);
+  column-gap: 28px;
+  align-items: baseline;
+  padding: 13px 2px;
+}
+.installation-option-a .installation-option-row dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  color: var(--theme-muted, #8b9db4);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.installation-option-a .installation-option-row dt > svg {
+  flex-shrink: 0;
+  color: var(--theme-muted, #a4b2c5);
+}
+.installation-option-a .installation-option-row dd {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  color: var(--theme-ink, #1c3553);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+.installation-copy-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin-top: -2px;
+  border: 1px solid var(--theme-border, #d5e0ee);
+  border-radius: 6px;
+  background: var(--theme-surface, #fff);
+  color: var(--theme-muted, #6d89ac);
+}
+.installation-copy-button.is-copied {
+  width: auto;
+  padding: 0 8px;
+  gap: 4px;
+  color: var(--theme-accent, #427bc6);
+}
+.installation-copy-button span {
+  font-size: 12px;
+  font-weight: 650;
+}
+.installation-copy-button:hover {
+  border-color: var(--theme-accent, #427bc6);
+  color: var(--theme-accent, #427bc6);
+}
+.installation-option-notes {
+  margin-top: 12px;
+  min-width: 0;
+}
+@media (max-width: 760px) {
+  .installation-option-groups {
+    padding: 14px 16px 18px;
+    gap: 22px;
+  }
+  .installation-option-a .installation-option-row {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 4px;
+    padding: 12px 0;
+  }
+}
