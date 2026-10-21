@@ -428,15 +428,16 @@ export default function InstallationRecordEditor({
             <div className="installation-inline-edit-toolbar-top">
               {isMetadata ? (
                 <div className="installation-inline-edit-title">
-                  <span>{t('기록 이름')}</span>
+                  <span>{t('구분명')}</span>
                   <strong>{row ? installationRowTitle(row) : title}</strong>
                 </div>
               ) : (
                 <label className="installation-inline-edit-title">
-                  {t('기록 이름')}
+                  {t('구분명')}
                   <input
                     value={title}
                     maxLength={120}
+                    placeholder={t('예: 운영 1호기, QA 도메인')}
                     onChange={(event) => setTitle(event.target.value)}
                     disabled={busy}
                   />

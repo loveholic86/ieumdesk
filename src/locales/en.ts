@@ -997,7 +997,8 @@ export const english: Record<string, string> = {
   '입력한 항목을 확인해 주세요.': 'Check the fields you entered.',
   '이 기록의 항목을 수정하세요. 긴 내용도 이 영역에서 크게 펼쳐 편집할 수 있습니다.':
     'Edit the fields in this record. Expand the editor for longer content.',
-  '기록 이름': 'Record name',
+  구분명: 'Label',
+  '예: 운영 1호기, QA 도메인': 'e.g. Prod unit 1, QA domain',
   '수정 항목 검색': 'Search fields',
   '항목 이름·키로 찾기': 'Find by field name or key',
   '· {0}개 표시': '· {0} shown',
@@ -1497,8 +1498,8 @@ export const english: Record<string, string> = {
   '파일 내용을 읽지 못했습니다. 다시 선택해 주세요.': 'Could not read the file. Select it again.',
   '기본 정보의 이름과 항목 구성은 변경할 수 없습니다. 항목 값을 수정해 주세요.':
     'Basic field names and structure cannot be changed. Edit the field values instead.',
-  '기록 이름을 제어문자 없이 120자 이내로 입력해 주세요.':
-    'Use a record name of up to 120 characters without control characters.',
+  '구분명을 제어문자 없이 120자 이내로 입력해 주세요.':
+    'Use a label of up to 120 characters without control characters.',
   '한 기록에는 항목을 1~80개 등록할 수 있습니다.': 'A record must contain 1–80 fields.',
   '새 항목의 이름과 키를 확인해 주세요. 이름은 120자, 키는 영문자로 시작하는 영문·숫자·밑줄·점·하이픈 80자 이내입니다.':
     'Check new field names and keys. Names allow 120 characters. Keys allow 80 letters, numbers, underscores, dots or hyphens and must start with a letter.',

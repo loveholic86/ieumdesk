@@ -386,7 +386,7 @@ export function prepareInstallationRow(
   )
     throw new Error('기본 정보의 이름과 항목 구성은 변경할 수 없습니다. 항목 값을 수정해 주세요.');
   if (!normalizedTitle || normalizedTitle.length > 120 || /[\u0000-\u001f\u007f]/.test(normalizedTitle))
-    throw new Error('기록 이름을 제어문자 없이 120자 이내로 입력해 주세요.');
+    throw new Error('구분명을 제어문자 없이 120자 이내로 입력해 주세요.');
   const fields = added.map(({ key, label, value }) => ({ key: key.trim(), label: label.trim(), value }));
   const remaining =
     row?.fields.filter((field) => !removed.includes(field.key)).map((field) => field.key) ?? [];

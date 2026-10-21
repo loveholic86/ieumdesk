@@ -773,7 +773,7 @@ export default function InstallationSectionEditor({
                       )}
                       <dl>
                         {titleChanged(row) &&
-                          diff(t('기록 이름'), row.title ?? section.title, titles[row.id], false, () =>
+                          diff(t('구분명'), row.title ?? section.title, titles[row.id], false, () =>
                             setTitles((current) => omit(current, [row.id])),
                           )}
                         {fields.map((field) => (
@@ -914,10 +914,11 @@ export default function InstallationSectionEditor({
                       <legend>{installationRowTitle(row) || t('{0} 기록', [index + 1])}</legend>
                       {row.managed !== 'metadata' && (
                         <label className="installation-section-edit-title">
-                          {t('기록 이름')}
+                          {t('구분명')}
                           <input
                             value={titles[row.id] ?? row.title ?? section.title}
                             maxLength={120}
+                            placeholder={t('예: 운영 1호기, QA 도메인')}
                             disabled={deleting}
                             onChange={(event) =>
                               setTitles((current) => ({ ...current, [row.id]: event.target.value }))
@@ -993,10 +994,11 @@ export default function InstallationSectionEditor({
                   >
                     <legend>{t('새 기록 {0}', [index + 1])}</legend>
                     <label className="installation-section-edit-title">
-                      {t('기록 이름')}
+                      {t('구분명')}
                       <input
                         value={row.title}
                         maxLength={120}
+                        placeholder={t('예: 운영 1호기, QA 도메인')}
                         onChange={(event) => updateAddedRow(row.localId, { title: event.target.value })}
                       />
                       <button
