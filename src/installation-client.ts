@@ -123,7 +123,7 @@ export function prepareInstallationSectionOperations(
     }
     const payload = prepareInstallationRow(row, title, values, removed, additions);
     const changed = Boolean(
-      payload.title !== row.title ||
+      (payload.title !== undefined && payload.title !== row.title) ||
       (payload.values && Object.keys(payload.values).length) ||
       payload.removeFields?.length ||
       payload.addFields?.length,
@@ -215,13 +215,7 @@ export function prepareInstallationSection(
   return changes;
 }
 
-const unusedAccessFields = new Set([
-  'access_reqst_date',
-  'access_reqst_enddate',
-  'access_url',
-  'access_id',
-  'access_pwd',
-]);
+const unusedAccessFields = new Set(['access_reqst_date', 'access_id', 'access_pwd']);
 
 /** Hide retired controls in both reading and editing without deleting stored values. */
 export function visibleInstallationSection(section: InstallationDetailSection): InstallationDetailSection {
@@ -445,7 +439,7 @@ export function prepareInstallationRow(
     if (Object.keys(changed).length === 0) throw new Error('변경한 기본 정보가 없습니다.');
     return { values: changed };
   }
-  return row
-    ? { title: normalizedTitle, values: changed, removeFields: [...new Set(removed)], addFields: fields }
-    : { title: normalizedTitle, fields };
+  const patch = { values: changed, removeFields: [...new Set(removed)], addFields: fields };
+  // Origin titles stay as stored. The editor shows a fixed label and must not PATCH title.
+  return row?.origin ? patch : row ? { title: normalizedTitle, ...patch } : { title: normalizedTitle, fields };
 }
