@@ -2075,13 +2075,20 @@
   letter-spacing: 0.04em;
   line-height: 1.4;
 }
+.installation-option-group > div + div {
+  margin-top: 28px;
+}
 .installation-origin-part-title {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 4px;
+  margin: 0 0 16px;
+  padding-bottom: 0;
+  border-bottom: 0;
   color: var(--theme-ink, #1c3553);
-  font-size: 15px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0;
 }
 .installation-origin-part-title .button {
   margin-left: auto;
