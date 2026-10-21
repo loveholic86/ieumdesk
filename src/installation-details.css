@@ -2075,6 +2075,17 @@
   letter-spacing: 0.04em;
   line-height: 1.4;
 }
+.installation-origin-part-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+  color: var(--theme-ink, #1c3553);
+  font-size: 15px;
+}
+.installation-origin-part-title .button {
+  margin-left: auto;
+}
 .installation-option-rows {
   margin: 0;
 }

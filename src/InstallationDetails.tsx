@@ -248,6 +248,13 @@ function accessItemTitle(item: AccessRecordItem) {
     : installationRowTitle(item.rows[0]) || t('미등록');
 }
 
+function accessOriginTitle(row: InstallationDetailRow | undefined) {
+  if (row?.origin?.part === 'address') return 'Address';
+  if (row?.origin?.part === 'vpn') return 'VPN';
+  if (row?.origin?.part === 'access') return '접근 정보';
+  return '';
+}
+
 function AccessListCell({
   field,
   policyPending,
@@ -546,6 +553,94 @@ function OptionField({
         )}
       </dd>
     </div>
+  );
+}
+
+function MigratedAccessDetail({
+  rows,
+  policyPending,
+  codeOptions,
+  accessNotes,
+  canManage,
+  locked,
+  onEdit,
+}: {
+  rows: InstallationDetailRow[];
+  policyPending: boolean;
+  codeOptions: readonly InstallationCodeOption[];
+  accessNotes?: ReactNode;
+  canManage: boolean;
+  locked: boolean;
+  onEdit: (rowId: string) => void;
+}) {
+  useLocale();
+  const [showEmpty, setShowEmpty] = useState(false);
+  const emptyCount = rows.reduce((count, row) => count + row.fields.filter((field) => !field.present).length, 0);
+  return (
+    <section className="installation-data-card installation-option-a">
+      <header className="installation-card-heading">
+        <span className="installation-small-icon">
+          <Network size={17} />
+        </span>
+        <h3>{t('기존 접근 정보')}</h3>
+      </header>
+      <div className="installation-option-groups">
+        {emptyCount > 0 && (
+          <button
+            type="button"
+            className="installation-empty-toggle"
+            aria-expanded={showEmpty}
+            onClick={() => setShowEmpty((open) => !open)}
+          >
+            {showEmpty ? t('빈 항목 접기') : t('빈 항목 보기')}
+            {!showEmpty && <span>{emptyCount}</span>}
+          </button>
+        )}
+        {rows.map((row) => {
+          const label = accessOriginTitle(row) || t('접근 정보');
+          const groups = fieldsByGroup('access', row.fields);
+          return (
+            <section key={row.id} className="installation-option-group" data-installation-row={row.id} data-origin-part={row.origin?.part}>
+              <h4 className="installation-option-group-title installation-origin-part-title">
+                <span>{t(label)}</span>
+                {canManage && (
+                  <button
+                    type="button"
+                    className="button"
+                    disabled={locked}
+                    onClick={() => onEdit(row.id)}
+                  >
+                    <Pencil size={14} />
+                    {t('{0} 수정', [t(label)])}
+                  </button>
+                )}
+              </h4>
+              {groups.map((group) => {
+                const visible = group.fields.filter((field) => field.present || showEmpty);
+                if (!visible.length) return null;
+                return (
+                  <div key={group.id}>
+                    <h5 className="installation-option-group-title">{t(group.title)}</h5>
+                    <dl className="installation-option-rows">
+                      {visible.map((field) => (
+                        <OptionField
+                          key={field.id}
+                          sectionId="access"
+                          field={field}
+                          policyPending={policyPending}
+                          codeOptions={codeOptions}
+                        />
+                      ))}
+                    </dl>
+                  </div>
+                );
+              })}
+            </section>
+          );
+        })}
+        {accessNotes}
+      </div>
+    </section>
   );
 }
 
@@ -1405,6 +1500,52 @@ export default function InstallationDetails({
             error={actionError}
           />
         ) : undefined;
+      const bundleDetail = selectedAccessRows.length > 0 && selectedAccessRows.every((row) => row.origin);
+      const accessEditor = (
+        <InstallationRecordEditor
+          key={accessEdit?.mode === 'create' ? 'create' : editingAccessRow?.id}
+          sectionId="access"
+          sectionTitle={accessOriginTitle(editingAccessRow) || section.title}
+          row={editingAccessRow}
+          busy={busy}
+          error={actionError}
+          policyPending={policyPending}
+          onClose={cancelEditing}
+          onSave={(payload) => void saveAccessRecord(payload)}
+        />
+      );
+      const accessRead = bundleDetail ? (
+        <MigratedAccessDetail
+          rows={selectedAccessRows}
+          policyPending={policyPending}
+          codeOptions={codeOptions}
+          accessNotes={accessNotes}
+          canManage={canManage}
+          locked={interactionBusy || policyPending}
+          onEdit={(rowId) => beginAccessRecord({ mode: 'edit', rowId })}
+        />
+      ) : (
+        <SectionRows
+          section={{ ...section, rows: selectedAccessRows }}
+          policyPending={policyPending}
+          accessNotes={accessNotes}
+          codeOptions={codeOptions}
+          actions={
+            canManage && selectedAccessRows.length === 1 ? (
+              <button
+                type="button"
+                className="button"
+                disabled={interactionBusy || policyPending}
+                onClick={() => beginAccessRecord({ mode: 'edit', rowId: selectedAccessRows[0].id })}
+              >
+                <Pencil size={14} />
+                {t('{0} 수정', [t(section.title)])}
+              </button>
+            ) : undefined
+          }
+        />
+      );
+      const editingAccess = accessEditActive && (accessEdit?.mode === 'create' || editingAccessRow);
       return (
         <Tabs.Content
           key={config.id}
@@ -1487,49 +1628,15 @@ export default function InstallationDetails({
                       }}
                       onAdd={() => beginAccessRecord({ mode: 'create' })}
                     />
-                    {accessEditActive && (accessEdit?.mode === 'create' || editingAccessRow) ? (
-                      <InstallationRecordEditor
-                        key={accessEdit?.mode === 'create' ? 'create' : editingAccessRow?.id}
-                        sectionId="access"
-                        sectionTitle={section.title}
-                        row={editingAccessRow}
-                        busy={busy}
-                        error={actionError}
-                        policyPending={policyPending}
-                        onClose={cancelEditing}
-                        onSave={(payload) => void saveAccessRecord(payload)}
-                      />
-                    ) : (
-                      <SectionRows
-                        section={{ ...section, rows: selectedAccessRows }}
-                        policyPending={policyPending}
-                        accessNotes={accessNotes}
-                        codeOptions={codeOptions}
-                        actions={
-                          canManage && selectedAccessRows.length === 1 ? (
-                            <button
-                              type="button"
-                              className="button"
-                              disabled={interactionBusy || policyPending}
-                              onClick={() =>
-                                beginAccessRecord({ mode: 'edit', rowId: selectedAccessRows[0].id })
-                              }
-                            >
-                              <Pencil size={14} />
-                              {t('{0} 수정', [t(section.title)])}
-                            </button>
-                          ) : undefined
-                        }
-                      />
-                    )}
+                    {editingAccess ? accessEditor : accessRead}
                   </div>
+                ) : config.id === 'access' && editingAccess ? (
+                  accessEditor
+                ) : config.id === 'access' && bundleDetail ? (
+                  accessRead
                 ) : (
                   <SectionRows
-                    section={
-                      config.id === 'access'
-                        ? { ...section, rows: selectedAccessRows.length ? selectedAccessRows : section.rows }
-                        : section
-                    }
+                    section={section}
                     policyPending={policyPending}
                     accessNotes={accessNotes}
                     codeOptions={codeOptions}
