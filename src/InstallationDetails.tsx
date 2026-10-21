@@ -183,12 +183,22 @@ function passwordField(field: { key: string; label: string }) {
   return /pwd|password|passwd|비밀번호|비번|패스워드/i.test(`${field.key} ${field.label}`);
 }
 
-/** Prefer access_url. Workspace rows omit it, so use domainurl, the access section's URL field. */
+/** Priority: access_url, then domainurl, then external_ip, internal_ip, vpnsv_ip, gateway, hostname, address. */
 function accessListAddress(fields: readonly InstallationDetailField[]) {
-  const url = fields.find((field) => field.key === 'access_url');
-  if (url) return passwordField(url) ? undefined : url;
-  const domain = fields.find((field) => field.key === 'domainurl');
-  return domain && !passwordField(domain) ? domain : undefined;
+  const pick = (key: string) => {
+    const field = fields.find((item) => item.key === key);
+    return field && !passwordField(field) ? field : undefined;
+  };
+  return (
+    pick('access_url') ??
+    pick('domainurl') ??
+    pick('external_ip') ??
+    pick('internal_ip') ??
+    pick('vpnsv_ip') ??
+    pick('gateway') ??
+    pick('hostname') ??
+    pick('address')
+  );
 }
 
 function AccessListCell({
