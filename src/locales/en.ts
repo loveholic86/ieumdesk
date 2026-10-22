@@ -22,6 +22,8 @@ export const english: Record<string, string> = {
   '새 항목 이름을 설정하세요': 'Set a name for the new field',
   '필요한 항목을 찾아 수정하세요. 저장 범위는 현재 탭입니다.':
     'Find and edit the fields you need. Saving applies to the current tab.',
+  '필요한 항목을 찾아 수정하세요. 저장 범위는 선택한 기록입니다.':
+    'Find and edit the fields you need. Saving applies to the selected record.',
   '하단의 정보 수정에서 필요한 정보를 등록하세요.':
     'Add the required information using Edit information below.',
   '변경 항목만': 'Changed fields only',

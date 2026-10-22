@@ -53,6 +53,16 @@ const groups: Record<InstallationSectionId, Group[]> = {
 const other: Group = { id: 'other', title: '기타 항목', keys: [] };
 export const installationFieldGroup = (section: InstallationSectionId, key: string) =>
   groups[section].find((item) => item.keys.includes(key)) ?? other;
+
+/** Left-menu visibility. A search crosses groups. Origin rows use this same rule. */
+export function installationEditorGroupVisible(
+  sectionId: InstallationSectionId,
+  key: string,
+  groupId: string,
+  search = '',
+) {
+  return Boolean(search.trim()) || installationFieldGroup(sectionId, key).id === groupId;
+}
 export function installationEditorGroups(section: InstallationSectionId, keys: string[], notes = false) {
   const present = new Set(keys.map((key) => installationFieldGroup(section, key).id));
   if (section === 'access' && notes) present.add('notes');

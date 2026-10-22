@@ -19,6 +19,7 @@ import {
   installationReviewValue,
 } from './installation-draft-reconcile';
 import {
+  installationEditorGroupVisible,
   installationEditorGroups,
   installationFieldChanged,
   installationFieldGroup,
@@ -79,6 +80,7 @@ type Props = {
     ) => void,
   ) => Promise<{ uncertain?: InstallationSectionOperation; confirmedDetails?: InstallationDetails } | void>;
   onRefresh: () => Promise<boolean>;
+  recordTitle?: string;
 };
 const omit = (values: Record<string, string>, keys: string[]) =>
   Object.fromEntries(Object.entries(values).filter(([key]) => !keys.includes(key)));
@@ -103,6 +105,7 @@ export default function InstallationSectionEditor({
   onDismissOptionRegistration,
   onSave,
   onRefresh,
+  recordTitle,
 }: Props) {
   useLocale();
   const id = useId();
@@ -183,13 +186,13 @@ export default function InstallationSectionEditor({
     Object.hasOwn(notes, note.id) && (note.masked || notes[note.id] !== note.content);
   const titleChanged = (row: (typeof section.rows)[number]) =>
     !row.origin && Object.hasOwn(titles, row.id) && titles[row.id] !== (row.title ?? section.title);
-  const matches = (field: InstallationDetailField, origin = false) =>
+  const matches = (field: InstallationDetailField) =>
     (!search ||
       [field.label, field.key, installationFieldLabel(field)]
         .join(' ')
         .toLocaleLowerCase()
         .includes(search)) &&
-    (Boolean(search) || origin || installationFieldGroup(sectionId, field.key).id === groupId) &&
+    installationEditorGroupVisible(sectionId, field.key, groupId || '', search) &&
     (!changedOnly || installationFieldChanged(field, values) || active === field.id);
   const showNotes =
     sectionId === 'access' &&
@@ -560,7 +563,7 @@ export default function InstallationSectionEditor({
     <section
       className="installation-inline-editor installation-section-editor"
       tabIndex={-1}
-      aria-label={t('정보 수정')}
+      aria-label={recordTitle ? t('{0} 수정', [recordTitle]) : t('정보 수정')}
       aria-busy={busy}
       onKeyDown={(event) => {
         if (event.nativeEvent.isComposing || event.keyCode === 229) return;
@@ -578,8 +581,14 @@ export default function InstallationSectionEditor({
     >
       <header className="installation-inline-edit-header">
         <div>
-          <h3>{t('{0} 수정', [t(section.title)])}</h3>
-          <p>{t('필요한 항목을 찾아 수정하세요. 저장 범위는 현재 탭입니다.')}</p>
+          <h3>{t('{0} 수정', [recordTitle || t(section.title)])}</h3>
+          <p>
+            {t(
+              recordTitle
+                ? '필요한 항목을 찾아 수정하세요. 저장 범위는 선택한 기록입니다.'
+                : '필요한 항목을 찾아 수정하세요. 저장 범위는 현재 탭입니다.',
+            )}
+          </p>
         </div>
       </header>
       <form
@@ -900,9 +909,7 @@ export default function InstallationSectionEditor({
               <>
                 {section.rows.map((row, index) => {
                   const fields = row.fields.filter(
-                    (field) =>
-                      matches(field, Boolean(row.origin)) ||
-                      (removedFields[row.id] ?? []).includes(field.key),
+                    (field) => matches(field) || (removedFields[row.id] ?? []).includes(field.key),
                   );
                   const showTitle = titleChanged(row) && changedOnly && !search;
                   const deleting = removedRows.includes(row.id);
@@ -1229,9 +1236,7 @@ export default function InstallationSectionEditor({
                   </fieldset>
                 ))}
                 {!section.rows.some(
-                  (row) =>
-                    row.fields.some((field) => matches(field, Boolean(row.origin))) ||
-                    (titleChanged(row) && changedOnly && !search),
+                  (row) => row.fields.some(matches) || (titleChanged(row) && changedOnly && !search),
                 ) &&
                   !addedRows.length &&
                   !addedNotes.length &&
