@@ -2043,20 +2043,20 @@
 }
 
 @font-face {
-  font-family: "Pretendard Card";
+  font-family: 'Pretendard Card';
   font-style: normal;
   font-weight: 400 700;
   font-display: swap;
-  src: url("./fonts/PretendardVariable.woff2") format("woff2");
+  src: url('./fonts/PretendardVariable.woff2') format('woff2');
 }
 .installation-option-a {
   font-family:
-    "Pretendard Card",
+    'Pretendard Card',
     Pretendard,
     -apple-system,
     BlinkMacSystemFont,
-    "Apple SD Gothic Neo",
-    "Noto Sans KR",
+    'Apple SD Gothic Neo',
+    'Noto Sans KR',
     sans-serif;
 }
 .installation-option-groups {
@@ -2107,9 +2107,6 @@
   font-weight: 700;
   letter-spacing: 0;
 }
-.installation-origin-part-title .button {
-  margin-left: auto;
-}
 .installation-option-rows {
   margin: 0;
 }
@@ -2152,11 +2149,11 @@
   font-weight: 400;
 }
 .installation-option-a dd.is-mono .installation-field-value {
-  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, "JetBrains Mono", monospace;
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, 'JetBrains Mono', monospace;
   font-size: 15px;
   font-weight: 400;
   font-variant-numeric: slashed-zero;
-  font-feature-settings: "zero" 1;
+  font-feature-settings: 'zero' 1;
 }
 @media screen {
   :root[data-theme='dark'] .installation-option-a .installation-option-row dt {

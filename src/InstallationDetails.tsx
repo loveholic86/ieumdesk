@@ -218,7 +218,8 @@ function accessRecordItems(rows: readonly InstallationDetailRow[]): AccessRecord
         .slice()
         .sort(
           (left, right) =>
-            (accessPartOrder[left.origin?.part ?? ''] ?? 9) - (accessPartOrder[right.origin?.part ?? ''] ?? 9),
+            (accessPartOrder[left.origin?.part ?? ''] ?? 9) -
+            (accessPartOrder[right.origin?.part ?? ''] ?? 9),
         ),
     });
   }
@@ -403,13 +404,21 @@ const cardGroup = (id: string, title: string, keys: string): CardGroup => ({
 });
 const cardGroups: Record<InstallationSectionId, readonly CardGroup[]> = {
   installation: [
-    cardGroup('basic', '기본 정보', 'systemCode serviceVersion sv_version setup_cd setup_year sys_cd ct_cd mng_cd'),
+    cardGroup(
+      'basic',
+      '기본 정보',
+      'systemCode serviceVersion sv_version setup_cd setup_year sys_cd ct_cd mng_cd',
+    ),
     cardGroup(
       'history',
       '설치 이력',
       'version installedAt patchedAt engineer setup_date last_setup_date setup_engineer yeta_version',
     ),
-    cardGroup('operation', '운영 정보', 'accessType autoUpdate domain autoupdate_yn bonding_yn sys_member sys_com_count'),
+    cardGroup(
+      'operation',
+      '운영 정보',
+      'accessType autoUpdate domain autoupdate_yn bonding_yn sys_member sys_com_count',
+    ),
     cardGroup('notes', '비고', 'note ct_etc setup_etc'),
   ],
   access: [
@@ -557,9 +566,7 @@ function OptionField({
           policyPending={policyPending}
           codeOptions={codeOptions}
         />
-        {copyableField(field, policyPending) && shown && (
-          <CopyValueButton value={shown} label={label} />
-        )}
+        {copyableField(field, policyPending) && shown && <CopyValueButton value={shown} label={label} />}
       </dd>
     </div>
   );
@@ -570,21 +577,18 @@ function MigratedAccessDetail({
   policyPending,
   codeOptions,
   accessNotes,
-  canManage,
-  locked,
-  onEdit,
 }: {
   rows: InstallationDetailRow[];
   policyPending: boolean;
   codeOptions: readonly InstallationCodeOption[];
   accessNotes?: ReactNode;
-  canManage: boolean;
-  locked: boolean;
-  onEdit: (rowId: string) => void;
 }) {
   useLocale();
   const [showEmpty, setShowEmpty] = useState(false);
-  const emptyCount = rows.reduce((count, row) => count + row.fields.filter((field) => !field.present).length, 0);
+  const emptyCount = rows.reduce(
+    (count, row) => count + row.fields.filter((field) => !field.present).length,
+    0,
+  );
   return (
     <section className="installation-data-card installation-option-a">
       <header className="installation-card-heading">
@@ -609,20 +613,14 @@ function MigratedAccessDetail({
           const label = accessOriginTitle(row) || t('접근 정보');
           const groups = fieldsByGroup('access', row.fields);
           return (
-            <section key={row.id} className="installation-option-group" data-installation-row={row.id} data-origin-part={row.origin?.part}>
+            <section
+              key={row.id}
+              className="installation-option-group"
+              data-installation-row={row.id}
+              data-origin-part={row.origin?.part}
+            >
               <h4 className="installation-option-group-title installation-origin-part-title">
                 <span>{t(label)}</span>
-                {canManage && (
-                  <button
-                    type="button"
-                    className="button"
-                    disabled={locked}
-                    onClick={() => onEdit(row.id)}
-                  >
-                    <Pencil size={14} />
-                    {t('{0} 수정', [t(label)])}
-                  </button>
-                )}
               </h4>
               {groups.map((group) => {
                 const visible = group.fields.filter((field) => field.present || showEmpty);
@@ -660,7 +658,6 @@ function GroupedInstallationCard({
   policyPending,
   codeOptions,
   accessNotes,
-  actions,
 }: {
   section: InstallationDetailSection;
   row: InstallationDetailRow;
@@ -668,7 +665,6 @@ function GroupedInstallationCard({
   policyPending: boolean;
   codeOptions: readonly InstallationCodeOption[];
   accessNotes?: ReactNode;
-  actions?: ReactNode;
 }) {
   useLocale();
   const [showEmpty, setShowEmpty] = useState(false);
@@ -696,7 +692,6 @@ function GroupedInstallationCard({
         <span className="installation-count">
           {section.rows.length > 1 ? `${index + 1} / ${section.rows.length}` : ''}
         </span>
-        {actions && <div className="installation-row-actions">{actions}</div>}
       </header>
       {row.fields.length ? (
         <div className="installation-option-groups">
@@ -749,13 +744,11 @@ function SectionRows({
   policyPending,
   accessNotes,
   codeOptions,
-  actions,
 }: {
   section: InstallationDetailSection;
   policyPending: boolean;
   accessNotes?: ReactNode;
   codeOptions: readonly InstallationCodeOption[];
-  actions?: ReactNode;
 }) {
   useLocale();
   const notesAnchor = accessNotes
@@ -840,7 +833,6 @@ function SectionRows({
           policyPending={policyPending}
           codeOptions={codeOptions}
           accessNotes={notesAnchor?.row.id === row.id ? accessNotes : undefined}
-          actions={actions}
         />
       ))}
       {accessNotes && !notesAnchor && accessNotes}
@@ -899,9 +891,7 @@ export default function InstallationDetails({
     sectionId: InstallationSectionId;
     details: VersionedDetails;
   } | null>(null);
-  const [accessRecordEdit, setAccessRecordEdit] = useState<
-    { scopeKey: string; mode: 'create' } | { scopeKey: string; mode: 'edit'; rowId: string } | null
-  >(null);
+  const [accessRecordEdit, setAccessRecordEdit] = useState<{ scopeKey: string; mode: 'create' } | null>(null);
   const [accessRowId, setAccessRowId] = useState('');
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState('');
@@ -918,16 +908,7 @@ export default function InstallationDetails({
   const visibleSectionEditing = sectionEditing?.scopeKey === scopeKey && canManage ? sectionEditing : null;
   const base = `/records/installations/${encodeURIComponent(record?.id ?? '')}`;
   const accessEdit = accessRecordEdit?.scopeKey === scopeKey && canManage ? accessRecordEdit : null;
-  const accessEditRowId = accessEdit?.mode === 'edit' ? accessEdit.rowId : '';
-  const accessEditActive = Boolean(
-    accessEdit &&
-    (accessEdit.mode === 'create' ||
-      visibleDetails?.sections.some(
-        (item) =>
-          item.id === 'access' &&
-          visibleInstallationSection(item).rows.some((row) => row.id === accessEditRowId),
-      )),
-  );
+  const accessEditActive = accessEdit?.mode === 'create';
   const editingActive = Boolean(visibleSectionEditing || basicEditor || accessEditActive);
   const interactionBusy = busy || basicBusy;
   const previousEditing = useRef('');
@@ -1194,40 +1175,25 @@ export default function InstallationDetails({
     const previousIds = new Set(
       visibleDetails.sections.find((item) => item.id === 'access')?.rows.map((row) => row.id) ?? [],
     );
-    const saved =
-      accessEdit.mode === 'create'
-        ? await mutate(
-            `${base}/rows`,
-            'POST',
-            { sectionId: 'access', title: payload.title, fields: payload.fields ?? [] },
-            '접근 정보를 저장했습니다.',
-            revision,
-          )
-        : await mutate(
-            `${base}/rows/${encodeURIComponent(accessEdit.rowId)}`,
-            'PATCH',
-            {
-              title: payload.title,
-              values: payload.values,
-              removeFields: payload.removeFields,
-              addFields: payload.addFields,
-            },
-            '접근 정보를 저장했습니다.',
-            revision,
-          );
+    const saved = await mutate(
+      `${base}/rows`,
+      'POST',
+      { sectionId: 'access', title: payload.title, fields: payload.fields ?? [] },
+      '접근 정보를 저장했습니다.',
+      revision,
+    );
     if (!saved) return;
     setAccessRecordEdit(null);
-    if (accessEdit.mode !== 'create') return;
     const created = saved.sections
       .find((item) => item.id === 'access')
       ?.rows.find((row) => !previousIds.has(row.id));
     if (created) setAccessRowId(created.id);
   };
-  const beginAccessRecord = (next: { mode: 'create' } | { mode: 'edit'; rowId: string }) => {
+  const beginAccessRecord = () => {
     if (!canManage || interactionBusy || policyPending || editingActive) return;
     setActionError('');
     setStatus('');
-    setAccessRecordEdit({ scopeKey, ...next });
+    setAccessRecordEdit({ scopeKey, mode: 'create' });
   };
 
   const saveSection = async (
@@ -1460,10 +1426,6 @@ export default function InstallationDetails({
         .map((row) => section.rows.find((item) => item.id === row.id))
         .filter((row): row is InstallationDetailRow => Boolean(row));
       const recordCount = config.id === 'access' ? accessItems.length : section.rows.length;
-      const editingAccessRow =
-        config.id === 'access' && accessEdit?.mode === 'edit'
-          ? section.rows.find((row) => row.id === accessEdit.rowId)
-          : undefined;
       const accessNotes =
         config.id === 'access' ? (
           <InstallationAccessNotes
@@ -1510,28 +1472,24 @@ export default function InstallationDetails({
           />
         ) : undefined;
       const bundleDetail = selectedAccessRows.length > 0 && selectedAccessRows.every((row) => row.origin);
-      const accessEditor = (
+      const accessCreate = accessEditActive ? (
         <InstallationRecordEditor
-          key={accessEdit?.mode === 'create' ? 'create' : editingAccessRow?.id}
+          key="create"
           sectionId="access"
-          sectionTitle={accessOriginTitle(editingAccessRow) || section.title}
-          row={editingAccessRow}
+          sectionTitle={section.title}
           busy={busy}
           error={actionError}
           policyPending={policyPending}
           onClose={cancelEditing}
           onSave={(payload) => void saveAccessRecord(payload)}
         />
-      );
+      ) : null;
       const accessRead = bundleDetail ? (
         <MigratedAccessDetail
           rows={selectedAccessRows}
           policyPending={policyPending}
           codeOptions={codeOptions}
           accessNotes={accessNotes}
-          canManage={canManage}
-          locked={interactionBusy || policyPending}
-          onEdit={(rowId) => beginAccessRecord({ mode: 'edit', rowId })}
         />
       ) : (
         <SectionRows
@@ -1539,22 +1497,8 @@ export default function InstallationDetails({
           policyPending={policyPending}
           accessNotes={accessNotes}
           codeOptions={codeOptions}
-          actions={
-            canManage && selectedAccessRows.length === 1 ? (
-              <button
-                type="button"
-                className="button"
-                disabled={interactionBusy || policyPending}
-                onClick={() => beginAccessRecord({ mode: 'edit', rowId: selectedAccessRows[0].id })}
-              >
-                <Pencil size={14} />
-                {t('{0} 수정', [t(section.title)])}
-              </button>
-            ) : undefined
-          }
         />
       );
-      const editingAccess = accessEditActive && (accessEdit?.mode === 'create' || editingAccessRow);
       return (
         <Tabs.Content
           key={config.id}
@@ -1635,12 +1579,12 @@ export default function InstallationDetails({
                         if (interactionBusy || editingActive) return;
                         setAccessRowId(id);
                       }}
-                      onAdd={() => beginAccessRecord({ mode: 'create' })}
+                      onAdd={() => beginAccessRecord()}
                     />
-                    {editingAccess ? accessEditor : accessRead}
+                    {accessCreate ?? accessRead}
                   </div>
-                ) : config.id === 'access' && editingAccess ? (
-                  accessEditor
+                ) : config.id === 'access' && accessEditActive ? (
+                  accessCreate
                 ) : config.id === 'access' && bundleDetail ? (
                   accessRead
                 ) : (
