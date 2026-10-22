@@ -2093,13 +2093,13 @@
   background: transparent;
 }
 .installation-option-group-title {
-  margin: 0 0 6px;
+  margin: 0 0 8px;
   padding-bottom: 0;
   border-bottom: 0;
-  color: var(--theme-text, #5c7290);
-  font-size: 12px;
+  color: #3e4f63;
+  font-size: 14px;
   font-weight: 650;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   line-height: 1.4;
 }
 .installation-option-group > div + div {
@@ -2117,39 +2117,57 @@
   font-weight: 700;
   letter-spacing: 0;
 }
+.installation-option-b .installation-kv {
+  container: kv / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border: 1px solid #d5e0ec;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #d5e0ec;
+}
 .installation-option-b .installation-option-rows {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px 18px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
   margin: 0;
-  padding: 10px 12px 12px;
-  border-radius: 12px;
-  background: var(--theme-surface-raised, #f3f6fb);
+  padding: 0;
+  background: transparent;
+}
+.installation-option-b .installation-option-rows.is-span {
+  grid-template-columns: minmax(0, 1fr);
 }
 .installation-option-b .installation-option-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  column-gap: 10px;
-  row-gap: 2px;
+  display: grid;
+  grid-template-columns: minmax(7rem, 42%) minmax(0, 1fr);
+  gap: 1px;
+  align-items: stretch;
+  min-height: 44px;
   min-width: 0;
-  max-width: 100%;
+  background: #d5e0ec;
 }
 .installation-option-b .installation-option-row.is-wide {
   grid-column: 1 / -1;
+  grid-template-columns: 9.25rem minmax(0, 1fr);
+}
+.installation-option-b .installation-option-row.is-pad {
+  display: none;
 }
 .installation-option-b .installation-option-row dt {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 4px;
-  flex: 0 1 auto;
-  max-width: 100%;
   min-width: 0;
   margin: 0;
+  padding: 10px 12px;
+  background: #f3f6fb;
   color: #3e4f63;
   font-size: 14px;
   font-weight: 500;
   line-height: 24px;
+  text-align: left;
   overflow-wrap: anywhere;
 }
 .installation-option-b .installation-option-row dt > span {
@@ -2162,25 +2180,36 @@
 }
 .installation-option-b .installation-option-row dd {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: flex-end;
   gap: 8px;
-  flex: 0 1 auto;
   min-width: 0;
-  max-width: 100%;
   margin: 0;
+  padding: 10px 12px;
+  background: #fff;
   color: var(--theme-ink, #101828);
   font-size: 15px;
   font-weight: 400;
   line-height: 24px;
+  text-align: right;
+}
+.installation-option-b .installation-option-row.is-wide dd {
+  justify-content: flex-start;
+  text-align: left;
 }
 .installation-option-b .installation-option-row dd > .installation-field-value,
 .installation-option-b .installation-option-row dd > .installation-protected-value,
 .installation-option-b .installation-option-row dd > .installation-missing {
   min-width: 0;
+  flex: 0 1 auto;
   overflow-wrap: anywhere;
 }
 .installation-option-b .installation-field-value {
   line-height: 24px;
+  font-weight: 400;
+}
+.installation-option-b .installation-missing {
+  font-size: 15px;
   font-weight: 400;
 }
 .installation-option-b .installation-copy-button {
@@ -2194,9 +2223,51 @@
   font-variant-numeric: slashed-zero;
   font-feature-settings: 'zero' 1;
 }
+@container kv (min-width: 560px) and (max-width: 839.98px) {
+  .installation-option-b .installation-option-rows:not(.is-span) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .installation-option-b .installation-option-row:not(.is-pad):nth-child(odd of .installation-option-row:not(.is-pad)):nth-last-child(4) + .installation-option-row.is-pad {
+    display: grid;
+  }
+}
+@container kv (min-width: 840px) and (max-width: 1119.98px) {
+  .installation-option-b .installation-option-rows:not(.is-span) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .installation-option-b .installation-option-row:not(.is-pad):nth-child(3n + 1 of .installation-option-row:not(.is-pad)):nth-last-child(4) + .installation-option-row.is-pad,
+  .installation-option-b .installation-option-row:not(.is-pad):nth-child(3n + 1 of .installation-option-row:not(.is-pad)):nth-last-child(4) + .installation-option-row.is-pad + .installation-option-row.is-pad,
+  .installation-option-b .installation-option-row:not(.is-pad):nth-child(3n + 2 of .installation-option-row:not(.is-pad)):nth-last-child(4) + .installation-option-row.is-pad {
+    display: grid;
+  }
+}
+@container kv (min-width: 1120px) {
+  .installation-option-b .installation-option-rows:not(.is-span) {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .installation-option-b .installation-option-row:not(.is-pad):nth-child(4n + 1 of .installation-option-row:not(.is-pad)):nth-last-child(4) ~ .installation-option-row.is-pad,
+  .installation-option-b .installation-option-row:not(.is-pad):nth-child(4n + 2 of .installation-option-row:not(.is-pad)):nth-last-child(4) + .installation-option-row.is-pad,
+  .installation-option-b .installation-option-row:not(.is-pad):nth-child(4n + 2 of .installation-option-row:not(.is-pad)):nth-last-child(4) + .installation-option-row.is-pad + .installation-option-row.is-pad,
+  .installation-option-b .installation-option-row:not(.is-pad):nth-child(4n + 3 of .installation-option-row:not(.is-pad)):nth-last-child(4) + .installation-option-row.is-pad {
+    display: grid;
+  }
+}
 @media screen {
+  :root[data-theme='dark'] .installation-option-group-title {
+    color: #d5deea;
+  }
+  :root[data-theme='dark'] .installation-option-b .installation-kv,
+  :root[data-theme='dark'] .installation-option-b .installation-option-row {
+    border-color: #38475c;
+    background: #38475c;
+  }
   :root[data-theme='dark'] .installation-option-b .installation-option-row dt {
-    color: #aab7c9;
+    background: #253449;
+    color: #d5deea;
+  }
+  :root[data-theme='dark'] .installation-option-b .installation-option-row dd {
+    background: #192331;
+    color: #e7edf6;
   }
 }
 .installation-copy-button {
@@ -2229,14 +2300,4 @@
 .installation-option-notes {
   margin-top: 12px;
   min-width: 0;
-}
-@media (max-width: 1100px) {
-  .installation-option-b .installation-option-rows {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-@media (max-width: 720px) {
-  .installation-option-b .installation-option-rows {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }

@@ -518,9 +518,79 @@ function wideOptionField(field: InstallationDetailField) {
     field.key === 'note' ||
     field.key === 'address' ||
     field.key === 'rootpath' ||
+    field.key === 'domain' ||
+    field.key === 'domainurl' ||
+    field.key === 'access_url' ||
     field.key.endsWith('_etc') ||
     field.value.length > 80 ||
-    /[\n\r]/.test(field.value)
+    /[\n\r]/.test(field.value) ||
+    /^https?:\/\//i.test(field.value) ||
+    /^www\./i.test(field.value)
+  );
+}
+
+function OptionTable({
+  fields,
+  sectionId,
+  policyPending,
+  codeOptions,
+}: {
+  fields: readonly InstallationDetailField[];
+  sectionId: InstallationSectionId;
+  policyPending: boolean;
+  codeOptions: readonly InstallationCodeOption[];
+}) {
+  const blocks: Array<
+    | { key: string; wide: false; fields: InstallationDetailField[] }
+    | { key: string; wide: true; field: InstallationDetailField }
+  > = [];
+  let compact: InstallationDetailField[] = [];
+  const flush = () => {
+    if (!compact.length) return;
+    blocks.push({ key: compact[0].id, wide: false, fields: compact });
+    compact = [];
+  };
+  for (const field of fields) {
+    if (wideOptionField(field)) {
+      flush();
+      blocks.push({ key: field.id, wide: true, field });
+    } else compact.push(field);
+  }
+  flush();
+  if (!blocks.length) return null;
+  return (
+    <div className="installation-kv">
+      {blocks.map((block) =>
+        block.wide ? (
+          <dl key={block.key} className="installation-option-rows is-span">
+            <OptionField
+              field={block.field}
+              sectionId={sectionId}
+              policyPending={policyPending}
+              codeOptions={codeOptions}
+            />
+          </dl>
+        ) : (
+          <dl key={block.key} className="installation-option-rows">
+            {block.fields.map((field) => (
+              <OptionField
+                key={field.id}
+                field={field}
+                sectionId={sectionId}
+                policyPending={policyPending}
+                codeOptions={codeOptions}
+              />
+            ))}
+            {[0, 1, 2].map((pad) => (
+              <div key={pad} className="installation-option-row is-pad" aria-hidden="true">
+                <dt />
+                <dd />
+              </div>
+            ))}
+          </dl>
+        ),
+      )}
+    </div>
   );
 }
 
@@ -617,17 +687,12 @@ function MigratedAccessDetail({
                     {subtitle !== partTitle && (
                       <h5 className="installation-option-group-title">{subtitle}</h5>
                     )}
-                    <dl className="installation-option-rows">
-                      {visible.map((field) => (
-                        <OptionField
-                          key={field.id}
-                          sectionId="access"
-                          field={field}
-                          policyPending={policyPending}
-                          codeOptions={codeOptions}
-                        />
-                      ))}
-                    </dl>
+                    <OptionTable
+                      fields={visible}
+                      sectionId="access"
+                      policyPending={policyPending}
+                      codeOptions={codeOptions}
+                    />
                   </div>
                 );
               })}
@@ -703,17 +768,12 @@ function GroupedInstallationCard({
               <section key={group.id} className="installation-option-group">
                 <h4 className="installation-option-group-title">{t(group.title)}</h4>
                 {visible.length > 0 && (
-                  <dl className="installation-option-rows">
-                    {visible.map((field) => (
-                      <OptionField
-                        key={field.id}
-                        sectionId={section.id}
-                        field={field}
-                        policyPending={policyPending}
-                        codeOptions={codeOptions}
-                      />
-                    ))}
-                  </dl>
+                  <OptionTable
+                    fields={visible}
+                    sectionId={section.id}
+                    policyPending={policyPending}
+                    codeOptions={codeOptions}
+                  />
                 )}
                 {notesHere && <div className="installation-option-notes">{accessNotes}</div>}
               </section>
