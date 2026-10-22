@@ -183,13 +183,13 @@ export default function InstallationSectionEditor({
     Object.hasOwn(notes, note.id) && (note.masked || notes[note.id] !== note.content);
   const titleChanged = (row: (typeof section.rows)[number]) =>
     !row.origin && Object.hasOwn(titles, row.id) && titles[row.id] !== (row.title ?? section.title);
-  const matches = (field: InstallationDetailField) =>
+  const matches = (field: InstallationDetailField, origin = false) =>
     (!search ||
       [field.label, field.key, installationFieldLabel(field)]
         .join(' ')
         .toLocaleLowerCase()
         .includes(search)) &&
-    (Boolean(search) || installationFieldGroup(sectionId, field.key).id === groupId) &&
+    (Boolean(search) || origin || installationFieldGroup(sectionId, field.key).id === groupId) &&
     (!changedOnly || installationFieldChanged(field, values) || active === field.id);
   const showNotes =
     sectionId === 'access' &&
@@ -900,7 +900,9 @@ export default function InstallationSectionEditor({
               <>
                 {section.rows.map((row, index) => {
                   const fields = row.fields.filter(
-                    (field) => matches(field) || (removedFields[row.id] ?? []).includes(field.key),
+                    (field) =>
+                      matches(field, Boolean(row.origin)) ||
+                      (removedFields[row.id] ?? []).includes(field.key),
                   );
                   const showTitle = titleChanged(row) && changedOnly && !search;
                   const deleting = removedRows.includes(row.id);
@@ -918,43 +920,45 @@ export default function InstallationSectionEditor({
                           <span>{t('구분명')}</span>
                           <strong>{accessOriginGroupLabel(row)}</strong>
                         </div>
-                      ) : row.managed !== 'metadata' && (
-                        <label className="installation-section-edit-title">
-                          {t('구분명')}
-                          <input
-                            value={titles[row.id] ?? row.title ?? section.title}
-                            maxLength={120}
-                            placeholder={t('예: 운영 1호기, QA 도메인')}
-                            disabled={deleting}
-                            onChange={(event) =>
-                              setTitles((current) => ({ ...current, [row.id]: event.target.value }))
-                            }
-                          />
-                          {titleChanged(row) && (
+                      ) : (
+                        row.managed !== 'metadata' && (
+                          <label className="installation-section-edit-title">
+                            {t('구분명')}
+                            <input
+                              value={titles[row.id] ?? row.title ?? section.title}
+                              maxLength={120}
+                              placeholder={t('예: 운영 1호기, QA 도메인')}
+                              disabled={deleting}
+                              onChange={(event) =>
+                                setTitles((current) => ({ ...current, [row.id]: event.target.value }))
+                              }
+                            />
+                            {titleChanged(row) && (
+                              <button
+                                type="button"
+                                className="text-button"
+                                onClick={() => setTitles((current) => omit(current, [row.id]))}
+                              >
+                                {t('입력 취소')}
+                              </button>
+                            )}
                             <button
                               type="button"
-                              className="text-button"
-                              onClick={() => setTitles((current) => omit(current, [row.id]))}
+                              className="text-button danger-text"
+                              disabled={busy}
+                              onClick={() => {
+                                setDeleteConfirmed(false);
+                                setRemovedRows((current) =>
+                                  deleting ? current.filter((id) => id !== row.id) : [...current, row.id],
+                                );
+                                setReview(false);
+                              }}
                             >
-                              {t('입력 취소')}
+                              {deleting ? <RotateCcw size={13} /> : <Trash2 size={13} />}
+                              {t(deleting ? '기록 복원' : '기록 삭제')}
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            className="text-button danger-text"
-                            disabled={busy}
-                            onClick={() => {
-                              setDeleteConfirmed(false);
-                              setRemovedRows((current) =>
-                                deleting ? current.filter((id) => id !== row.id) : [...current, row.id],
-                              );
-                              setReview(false);
-                            }}
-                          >
-                            {deleting ? <RotateCcw size={13} /> : <Trash2 size={13} />}
-                            {t(deleting ? '기록 복원' : '기록 삭제')}
-                          </button>
-                        </label>
+                          </label>
+                        )
                       )}
                       <div className="installation-inline-edit-fields">
                         {fields.map((field) => renderField(field, row.id, deleting))}
@@ -1225,7 +1229,9 @@ export default function InstallationSectionEditor({
                   </fieldset>
                 ))}
                 {!section.rows.some(
-                  (row) => row.fields.some(matches) || (titleChanged(row) && changedOnly && !search),
+                  (row) =>
+                    row.fields.some((field) => matches(field, Boolean(row.origin))) ||
+                    (titleChanged(row) && changedOnly && !search),
                 ) &&
                   !addedRows.length &&
                   !addedNotes.length &&
