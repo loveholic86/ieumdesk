@@ -464,6 +464,15 @@ function fieldsByGroup(sectionId: InstallationSectionId, fields: readonly Instal
   return groups;
 }
 
+function monoField(field: { key: string; label: string }) {
+  return (
+    passwordField(field) ||
+    addressKeys.has(field.key) ||
+    /(?:^|_)id$/i.test(field.key) ||
+    field.key === 'rootpath'
+  );
+}
+
 function copyableField(field: InstallationDetailField, policyPending: boolean) {
   return (
     field.present &&
@@ -541,7 +550,7 @@ function OptionField({
         {label}
         {(field.secret || field.masked) && <LockKeyhole size={12} aria-hidden="true" />}
       </dt>
-      <dd>
+      <dd className={monoField(field) ? 'is-mono' : undefined}>
         <DataValue
           sectionId={sectionId}
           field={field}

@@ -315,6 +315,7 @@ function demoMigratedAccessRow(): Row {
     domainurl: 'legacy.example.com',
     external_ip: '203.0.113.10',
     vpnsv_ip: '203.0.113.20',
+    vpnsv_pwd: 'Il1|0O%!',
     ssl_apply_yn: 'Y',
     access_type: '방문 접속',
     access_reqst_enddate: '2026-12-31',
