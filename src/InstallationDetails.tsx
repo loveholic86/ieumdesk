@@ -621,6 +621,43 @@ function OptionField({
   );
 }
 
+const migratedViewMerge = new Set(['address', 'vpn']);
+
+/** View-only. Address and VPN share one list; full-width fields stay last. */
+export function migratedAccessViewBlocks(rows: readonly InstallationDetailRow[], showEmpty: boolean) {
+  const blocks: { key: string; titles: string[]; parts: string[]; rows: InstallationDetailRow[] }[] = [];
+  for (const row of rows) {
+    const part = row.origin?.part ?? '';
+    const last = blocks[blocks.length - 1];
+    if (part && migratedViewMerge.has(part) && last && last.parts.every((item) => migratedViewMerge.has(item))) {
+      last.parts.push(part);
+      last.rows.push(row);
+      continue;
+    }
+    blocks.push({ key: row.id, titles: [], parts: part ? [part] : [], rows: [row] });
+  }
+  return blocks
+    .map((block) => {
+      const ordered = block.rows.flatMap((row) =>
+        fieldsByGroup('access', row.fields).flatMap((group) =>
+          group.fields.filter((field) => field.present || showEmpty),
+        ),
+      );
+      return {
+        key: block.key,
+        parts: block.parts,
+        titles: block.rows
+          .map((row) => accessOriginTitle(row) || '접근 정보')
+          .filter((title, index, all) => all.indexOf(title) === index),
+        fields: [
+          ...ordered.filter((field) => !wideOptionField(field)),
+          ...ordered.filter((field) => wideOptionField(field)),
+        ],
+      };
+    })
+    .filter((block) => block.fields.length > 0);
+}
+
 function MigratedAccessDetail({
   rows,
   policyPending,
@@ -658,41 +695,23 @@ function MigratedAccessDetail({
             {!showEmpty && <span>{emptyCount}</span>}
           </button>
         )}
-        {rows.map((row) => {
-          const label = accessOriginTitle(row) || t('접근 정보');
-          const partTitle = t(label);
-          const groups = fieldsByGroup('access', row.fields);
-          return (
-            <section
-              key={row.id}
-              className="installation-option-group"
-              data-installation-row={row.id}
-              data-origin-part={row.origin?.part}
-            >
-              <h4 className="installation-option-group-title installation-origin-part-title">
-                <span>{partTitle}</span>
-              </h4>
-              {groups.map((group) => {
-                const visible = group.fields.filter((field) => field.present || showEmpty);
-                if (!visible.length) return null;
-                const subtitle = t(group.title);
-                return (
-                  <div key={group.id}>
-                    {subtitle !== partTitle && (
-                      <h5 className="installation-option-group-title">{subtitle}</h5>
-                    )}
-                    <OptionTable
-                      fields={visible}
-                      sectionId="access"
-                      policyPending={policyPending}
-                      codeOptions={codeOptions}
-                    />
-                  </div>
-                );
-              })}
-            </section>
-          );
-        })}
+        {migratedAccessViewBlocks(rows, showEmpty).map((block) => (
+          <section
+            key={block.key}
+            className="installation-option-group"
+            data-origin-part={block.parts.join(' ')}
+          >
+            <h4 className="installation-option-group-title installation-origin-part-title">
+              <span>{block.titles.map((title) => t(title)).join(' · ')}</span>
+            </h4>
+            <OptionTable
+              fields={block.fields}
+              sectionId="access"
+              policyPending={policyPending}
+              codeOptions={codeOptions}
+            />
+          </section>
+        ))}
         {accessNotes}
       </div>
     </section>

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { register } from 'node:module';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { InstallationDetailField } from '../src/installation-types.ts';
+import type { InstallationAccessOriginPart, InstallationDetailField, InstallationDetailRow } from '../src/installation-types.ts';
 
 register('./css-stub.mjs', import.meta.url);
 
@@ -49,4 +49,48 @@ test('option rows render one cell per field and no pad cells', async () => {
   );
   assert.equal((single.match(/class="installation-option-row(?: |")/g) ?? []).length, 1);
   assert.equal(single.includes('is-pad'), false);
+});
+
+function originRow(part: InstallationAccessOriginPart, fields: InstallationDetailField[]): InstallationDetailRow {
+  return { id: part, origin: { group: 'a'.repeat(64), part }, fields };
+}
+
+test('migrated access view packs Address and VPN together and keeps wide rows last', async () => {
+  const { migratedAccessViewBlocks } = await import('../src/InstallationDetails.tsx');
+  const address = originRow('address', [
+    field('domainurl', 'legacy.example'),
+    field('external_ip', '203.0.113.10'),
+    field('ssl_apply_yn', '예'),
+    { ...field('ssh_port', ''), present: false },
+  ]);
+  const vpn = originRow('vpn', [
+    field('vpnsv_ip', '203.0.113.20'),
+    field('vpnsv_id', 'ops'),
+    field('vpnsv_pwd', '값'),
+  ]);
+  const access = originRow('access', [
+    field('access_type', '원격'),
+    field('access_url', 'https://example.test/gate'),
+    field('rootpath', '/var/app'),
+    field('access_reqst_enddate', '2026-12-31'),
+  ]);
+  const before = address.fields.map((item) => item.key);
+  const blocks = migratedAccessViewBlocks([address, vpn, access], false);
+  assert.deepEqual(before, address.fields.map((item) => item.key));
+  assert.deepEqual(
+    blocks.map((block) => block.titles),
+    [['Address', 'VPN'], ['접근 정보']],
+  );
+  assert.deepEqual(
+    blocks[0].fields.map((item) => item.key),
+    ['external_ip', 'ssl_apply_yn', 'vpnsv_ip', 'vpnsv_id', 'vpnsv_pwd', 'domainurl'],
+  );
+  assert.deepEqual(
+    blocks[1].fields.map((item) => item.key),
+    ['access_type', 'access_reqst_enddate', 'access_url', 'rootpath'],
+  );
+  assert.deepEqual(
+    migratedAccessViewBlocks([address], true)[0].fields.map((item) => item.key),
+    ['ssh_port', 'external_ip', 'ssl_apply_yn', 'domainurl'],
+  );
 });
