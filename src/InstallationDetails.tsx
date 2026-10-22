@@ -48,6 +48,9 @@ import {
 } from './installation-code-options';
 import { runInstallationSavePlan } from './installation-save-flow';
 import {
+  accessRecordItems,
+  installationAccessEditingDetails,
+  installationDetailsForAccessEdit,
   validateInstallationDetails,
   installationFieldMasked,
   visibleInstallationSection,
@@ -193,36 +196,7 @@ const accessAddressKeys = [
   'hostname',
   'address',
 ] as const;
-const accessPartOrder: Record<string, number> = { address: 0, vpn: 1, access: 2 };
-
-type AccessRecordItem = { id: string; rows: InstallationDetailRow[] };
-
-/** One migrated source is one item. Priority: access_url, then domainurl, then external_ip, internal_ip, vpnsv_ip, gateway, hostname, address. */
-function accessRecordItems(rows: readonly InstallationDetailRow[]): AccessRecordItem[] {
-  const items: AccessRecordItem[] = [];
-  const seen = new Set<string>();
-  for (const row of rows) {
-    const group = row.origin?.group;
-    if (!group) {
-      items.push({ id: row.id, rows: [row] });
-      continue;
-    }
-    if (seen.has(group)) continue;
-    seen.add(group);
-    items.push({
-      id: group,
-      rows: rows
-        .filter((item) => item.origin?.group === group)
-        .slice()
-        .sort(
-          (left, right) =>
-            (accessPartOrder[left.origin?.part ?? ''] ?? 9) -
-            (accessPartOrder[right.origin?.part ?? ''] ?? 9),
-        ),
-    });
-  }
-  return items;
-}
+type AccessRecordItem = ReturnType<typeof accessRecordItems>[number];
 
 function accessField(rows: readonly InstallationDetailRow[], key: string) {
   for (const row of rows) {
@@ -589,6 +563,9 @@ export default function InstallationDetails({
     scopeKey: string;
     sectionId: InstallationSectionId;
     details: VersionedDetails;
+    recordTitle?: string;
+    rowIds?: readonly string[];
+    baselineIds?: readonly string[];
   } | null>(null);
   const [accessRecordEdit, setAccessRecordEdit] = useState<{ scopeKey: string; mode: 'create' } | null>(null);
   const [accessRowId, setAccessRowId] = useState('');
@@ -1007,7 +984,12 @@ export default function InstallationDetails({
           saved++;
           committed(change, result, previous);
           setSectionEditing((current) =>
-            current?.scopeKey === scopeKey ? { ...current, details: latest } : current,
+            current?.scopeKey === scopeKey
+              ? {
+                  ...current,
+                  details: installationAccessEditingDetails(latest, current.rowIds, current.baselineIds),
+                }
+              : current,
           );
           if (!identity.current.policyPending) setCached({ scopeKey, details: latest });
         },
@@ -1063,7 +1045,12 @@ export default function InstallationDetails({
         throw new Error('설치 상세 정보를 확인하지 못했습니다.');
       if (token !== generation.current || identity.current.scopeKey !== scopeKey) return false;
       setSectionEditing((current) =>
-        current?.scopeKey === scopeKey ? { ...current, details: result } : current,
+        current?.scopeKey === scopeKey
+          ? {
+              ...current,
+              details: installationAccessEditingDetails(result, current.rowIds, current.baselineIds),
+            }
+          : current,
       );
       setCached({ scopeKey, details: result });
       onChanged?.();
@@ -1215,6 +1202,7 @@ export default function InstallationDetails({
             <InstallationSectionEditor
               key={`${scopeKey}:${config.id}`}
               details={visibleSectionEditing.details}
+              recordTitle={visibleSectionEditing.recordTitle}
               sectionId={config.id}
               busy={busy}
               policyPending={policyPending}
@@ -1513,11 +1501,32 @@ export default function InstallationDetails({
                           (!canManage && tab !== 'installation')
                         }
                         onClick={() => {
-                          if (canManage && visibleDetails) {
-                            setActionError('');
-                            setStatus('');
+                          if (!(canManage && visibleDetails)) {
+                            onEdit();
+                            return;
+                          }
+                          setActionError('');
+                          setStatus('');
+                          if (tab !== 'access') {
                             setSectionEditing({ scopeKey, sectionId: tab, details: visibleDetails });
-                          } else onEdit();
+                            return;
+                          }
+                          const rows =
+                            visibleDetails.sections.find((item) => item.id === 'access')?.rows ?? [];
+                          const items = accessRecordItems(rows);
+                          const selected = items.find((item) => item.id === accessRowId) ?? items[0];
+                          const many = items.length > 1 && Boolean(selected);
+                          setSectionEditing({
+                            scopeKey,
+                            sectionId: tab,
+                            details:
+                              many && selected
+                                ? installationDetailsForAccessEdit(visibleDetails, selected.id)
+                                : visibleDetails,
+                            recordTitle: many && selected ? accessItemTitle(selected) : undefined,
+                            rowIds: many && selected ? selected.rows.map((row) => row.id) : undefined,
+                            baselineIds: many ? rows.map((row) => row.id) : undefined,
+                          });
                         }}
                       >
                         <Pencil size={15} />

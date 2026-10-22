@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   installationBasicChanges,
   installationBasicErrors,
+  installationEditorGroupVisible,
   installationEditorGroups,
   installationFieldGroup,
   installationInputDefinition,
@@ -29,6 +30,21 @@ test('every existing or custom field remains reachable and reference notes have 
   );
   assert.equal(installationFieldGroup('access', 'access_etc').id, 'notes');
   assert.equal(installationFieldGroup('access', 'os_login_etc').id, 'os');
+});
+
+test('the left menu shows only the chosen group for installation, normal access, and migrated keys', () => {
+  const shown = (section: InstallationSectionId, keys: string[], groupId: string) =>
+    keys.filter((key) => installationEditorGroupVisible(section, key, groupId));
+  assert.deepEqual(shown('installation', ['systemCode', 'setup_date', 'note'], 'basic'), ['systemCode']);
+  assert.deepEqual(shown('installation', ['systemCode', 'setup_date', 'note'], 'history'), ['setup_date']);
+  assert.deepEqual(shown('installation', ['systemCode', 'setup_date', 'note'], 'notes'), ['note']);
+  const accessKeys = ['domainurl', 'ssl_apply_yn', 'vpnsv_id', 'vpnsv_pwd', 'os_root_id', 'access_url'];
+  assert.deepEqual(shown('access', accessKeys, 'network'), ['domainurl']);
+  assert.deepEqual(shown('access', accessKeys, 'vpn'), ['vpnsv_id', 'vpnsv_pwd']);
+  assert.deepEqual(shown('access', accessKeys, 'os'), ['os_root_id']);
+  assert.equal(installationEditorGroupVisible('access', 'domainurl', 'vpn', 'domain'), true);
+  assert.equal(installationEditorGroupVisible('server', 'hostname', 'device'), true);
+  assert.equal(installationEditorGroupVisible('server', 'hostname', 'location'), false);
 });
 
 test('typed inputs do not coerce imported dates, numbers, unknown flags or custom fields', () => {

@@ -215,6 +215,73 @@ export function prepareInstallationSection(
   return changes;
 }
 
+const accessPartOrder: Record<string, number> = { address: 0, vpn: 1, access: 2 };
+
+/** One migrated source is one list item. Other rows stay individual items. */
+export function accessRecordItems(rows: readonly InstallationDetailRow[]) {
+  const items: { id: string; rows: InstallationDetailRow[] }[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const group = row.origin?.group;
+    if (!group) {
+      items.push({ id: row.id, rows: [row] });
+      continue;
+    }
+    if (seen.has(group)) continue;
+    seen.add(group);
+    items.push({
+      id: group,
+      rows: rows
+        .filter((item) => item.origin?.group === group)
+        .slice()
+        .sort(
+          (left, right) =>
+            (accessPartOrder[left.origin?.part ?? ''] ?? 9) -
+            (accessPartOrder[right.origin?.part ?? ''] ?? 9),
+        ),
+    });
+  }
+  return items;
+}
+
+/** Keep the selected access rows, plus rows created after editing started. One record, or any other tab, stays whole. */
+export function installationAccessEditingDetails<T extends InstallationDetails>(
+  details: T,
+  selectedIds: readonly string[] | undefined,
+  baselineIds: readonly string[] | undefined,
+): T {
+  if (!selectedIds) return details;
+  const selected = new Set(selectedIds);
+  const baseline = new Set(baselineIds ?? selectedIds);
+  return {
+    ...details,
+    sections: details.sections.map((section) =>
+      section.id === 'access'
+        ? {
+            ...section,
+            rows: section.rows.filter((row) => selected.has(row.id) || !baseline.has(row.id)),
+          }
+        : section,
+    ),
+  };
+}
+
+export function installationDetailsForAccessEdit<T extends InstallationDetails>(
+  details: T,
+  selectedId: string,
+): T {
+  const section = details.sections.find((item) => item.id === 'access');
+  if (!section) return details;
+  const items = accessRecordItems(section.rows);
+  if (items.length <= 1) return details;
+  const selected = items.find((item) => item.id === selectedId) ?? items[0];
+  return installationAccessEditingDetails(
+    details,
+    selected.rows.map((row) => row.id),
+    section.rows.map((row) => row.id),
+  );
+}
+
 const unusedAccessFields = new Set(['access_reqst_date', 'access_id', 'access_pwd']);
 
 /** Hide retired controls in both reading and editing without deleting stored values. */
@@ -441,5 +508,9 @@ export function prepareInstallationRow(
   }
   const patch = { values: changed, removeFields: [...new Set(removed)], addFields: fields };
   // Origin titles stay as stored. The editor shows a fixed label and must not PATCH title.
-  return row?.origin ? patch : row ? { title: normalizedTitle, ...patch } : { title: normalizedTitle, fields };
+  return row?.origin
+    ? patch
+    : row
+      ? { title: normalizedTitle, ...patch }
+      : { title: normalizedTitle, fields };
 }
