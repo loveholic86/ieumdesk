@@ -2067,8 +2067,8 @@
 .installation-option-groups {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 16px;
+  gap: 10px;
+  padding: 12px;
 }
 .installation-empty-toggle {
   align-self: flex-start;
@@ -2089,12 +2089,12 @@
 }
 .installation-option-b .installation-option-group {
   min-width: 0;
-  padding: 14px 16px 16px;
+  padding: 10px 12px 12px;
   border-radius: 12px;
   background: var(--theme-surface-raised, #f3f6fb);
 }
 .installation-option-group-title {
-  margin: 0 0 12px;
+  margin: 0 0 8px;
   padding-bottom: 0;
   border-bottom: 0;
   color: var(--theme-text, #5c7290);
@@ -2104,13 +2104,13 @@
   line-height: 1.4;
 }
 .installation-option-group > div + div {
-  margin-top: 16px;
+  margin-top: 10px;
 }
 .installation-origin-part-title {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 0 0 16px;
+  margin: 0 0 10px;
   padding-bottom: 0;
   border-bottom: 0;
   color: var(--theme-ink, #101828);
@@ -2118,28 +2118,36 @@
   font-weight: 700;
   letter-spacing: 0;
 }
-.installation-option-rows {
+.installation-option-b .installation-option-rows {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px 18px;
   margin: 0;
 }
 .installation-option-b .installation-option-row {
-  display: grid;
-  grid-template-columns: 13rem minmax(0, 1fr);
-  column-gap: 28px;
-  align-items: start;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  column-gap: 10px;
+  row-gap: 2px;
   min-width: 0;
-  padding: 8px 0;
+  max-width: 100%;
+}
+.installation-option-b .installation-option-row.is-wide {
+  grid-column: 1 / -1;
 }
 .installation-option-b .installation-option-row dt {
   display: flex;
-  align-items: flex-start;
-  gap: 6px;
+  align-items: center;
+  gap: 4px;
+  flex: 0 1 auto;
+  max-width: 100%;
   min-width: 0;
-  min-height: 28px;
   margin: 0;
   color: #3e4f63;
   font-size: 14px;
   font-weight: 500;
-  line-height: 28px;
+  line-height: 24px;
   overflow-wrap: anywhere;
 }
 .installation-option-b .installation-option-row dt > span {
@@ -2148,30 +2156,34 @@
 }
 .installation-option-b .installation-option-row dt > svg {
   flex-shrink: 0;
-  margin-top: 8px;
   color: var(--theme-muted, #a4b2c5);
 }
 .installation-option-b .installation-option-row dd {
   display: flex;
   align-items: flex-start;
   gap: 8px;
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 100%;
   margin: 0;
   color: var(--theme-ink, #101828);
   font-size: 15px;
   font-weight: 400;
-  line-height: 28px;
+  line-height: 24px;
 }
 .installation-option-b .installation-option-row dd > .installation-field-value,
 .installation-option-b .installation-option-row dd > .installation-protected-value,
 .installation-option-b .installation-option-row dd > .installation-missing {
   min-width: 0;
-  flex: 1 1 auto;
   overflow-wrap: anywhere;
 }
 .installation-option-b .installation-field-value {
-  line-height: 28px;
+  line-height: 24px;
   font-weight: 400;
+}
+.installation-option-b .installation-copy-button {
+  width: 24px;
+  height: 24px;
 }
 .installation-option-b dd.is-mono .installation-field-value {
   font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, 'JetBrains Mono', monospace;
@@ -2216,9 +2228,13 @@
   margin-top: 12px;
   min-width: 0;
 }
-@media (max-width: 520px) {
-  .installation-option-b .installation-option-row {
+@media (max-width: 1100px) {
+  .installation-option-b .installation-option-rows {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 720px) {
+  .installation-option-b .installation-option-rows {
     grid-template-columns: minmax(0, 1fr);
-    row-gap: 4px;
   }
 }

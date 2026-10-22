@@ -513,6 +513,17 @@ function CopyValueButton({ value, label }: { value: string; label: string }) {
   );
 }
 
+function wideOptionField(field: InstallationDetailField) {
+  return (
+    field.key === 'note' ||
+    field.key === 'address' ||
+    field.key === 'rootpath' ||
+    field.key.endsWith('_etc') ||
+    field.value.length > 80 ||
+    /[\n\r]/.test(field.value)
+  );
+}
+
 function OptionField({
   field,
   policyPending,
@@ -528,7 +539,7 @@ function OptionField({
   const label = installationFieldLabel(field);
   const shown = shownFieldValue(sectionId, field, codeOptions);
   return (
-    <div className="installation-option-row">
+    <div className={`installation-option-row${wideOptionField(field) ? ' is-wide' : ''}`}>
       <dt>
         <span>{label}</span>
         {(field.secret || field.masked) && <LockKeyhole size={12} aria-hidden="true" />}
