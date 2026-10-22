@@ -216,7 +216,8 @@ function accessRecordItems(rows: readonly InstallationDetailRow[]): AccessRecord
         .slice()
         .sort(
           (left, right) =>
-            (accessPartOrder[left.origin?.part ?? ''] ?? 9) - (accessPartOrder[right.origin?.part ?? ''] ?? 9),
+            (accessPartOrder[left.origin?.part ?? ''] ?? 9) -
+            (accessPartOrder[right.origin?.part ?? ''] ?? 9),
         ),
     });
   }
@@ -391,13 +392,11 @@ function SectionRows({
   policyPending,
   accessNotes,
   codeOptions,
-  actions,
 }: {
   section: InstallationDetailSection;
   policyPending: boolean;
   accessNotes?: ReactNode;
   codeOptions: readonly InstallationCodeOption[];
-  actions?: ReactNode;
 }) {
   useLocale();
   const notesAnchor = accessNotes
@@ -494,7 +493,6 @@ function SectionRows({
             <span className="installation-count">
               {section.rows.length > 1 ? `${index + 1} / ${section.rows.length}` : ''}
             </span>
-            {actions && <div className="installation-row-actions">{actions}</div>}
           </header>
           {row.fields.length ? (
             <dl className="installation-fields">
@@ -592,9 +590,7 @@ export default function InstallationDetails({
     sectionId: InstallationSectionId;
     details: VersionedDetails;
   } | null>(null);
-  const [accessRecordEdit, setAccessRecordEdit] = useState<
-    { scopeKey: string; mode: 'create' } | { scopeKey: string; mode: 'edit'; rowId: string } | null
-  >(null);
+  const [accessRecordEdit, setAccessRecordEdit] = useState<{ scopeKey: string; mode: 'create' } | null>(null);
   const [accessRowId, setAccessRowId] = useState('');
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState('');
@@ -611,16 +607,7 @@ export default function InstallationDetails({
   const visibleSectionEditing = sectionEditing?.scopeKey === scopeKey && canManage ? sectionEditing : null;
   const base = `/records/installations/${encodeURIComponent(record?.id ?? '')}`;
   const accessEdit = accessRecordEdit?.scopeKey === scopeKey && canManage ? accessRecordEdit : null;
-  const accessEditRowId = accessEdit?.mode === 'edit' ? accessEdit.rowId : '';
-  const accessEditActive = Boolean(
-    accessEdit &&
-    (accessEdit.mode === 'create' ||
-      visibleDetails?.sections.some(
-        (item) =>
-          item.id === 'access' &&
-          visibleInstallationSection(item).rows.some((row) => row.id === accessEditRowId),
-      )),
-  );
+  const accessEditActive = accessEdit?.mode === 'create';
   const editingActive = Boolean(visibleSectionEditing || basicEditor || accessEditActive);
   const interactionBusy = busy || basicBusy;
   const previousEditing = useRef('');
@@ -887,40 +874,25 @@ export default function InstallationDetails({
     const previousIds = new Set(
       visibleDetails.sections.find((item) => item.id === 'access')?.rows.map((row) => row.id) ?? [],
     );
-    const saved =
-      accessEdit.mode === 'create'
-        ? await mutate(
-            `${base}/rows`,
-            'POST',
-            { sectionId: 'access', title: payload.title, fields: payload.fields ?? [] },
-            '접근 정보를 저장했습니다.',
-            revision,
-          )
-        : await mutate(
-            `${base}/rows/${encodeURIComponent(accessEdit.rowId)}`,
-            'PATCH',
-            {
-              title: payload.title,
-              values: payload.values,
-              removeFields: payload.removeFields,
-              addFields: payload.addFields,
-            },
-            '접근 정보를 저장했습니다.',
-            revision,
-          );
+    const saved = await mutate(
+      `${base}/rows`,
+      'POST',
+      { sectionId: 'access', title: payload.title, fields: payload.fields ?? [] },
+      '접근 정보를 저장했습니다.',
+      revision,
+    );
     if (!saved) return;
     setAccessRecordEdit(null);
-    if (accessEdit.mode !== 'create') return;
     const created = saved.sections
       .find((item) => item.id === 'access')
       ?.rows.find((row) => !previousIds.has(row.id));
     if (created) setAccessRowId(created.id);
   };
-  const beginAccessRecord = (next: { mode: 'create' } | { mode: 'edit'; rowId: string }) => {
+  const beginAccessRecord = () => {
     if (!canManage || interactionBusy || policyPending || editingActive) return;
     setActionError('');
     setStatus('');
-    setAccessRecordEdit({ scopeKey, ...next });
+    setAccessRecordEdit({ scopeKey, mode: 'create' });
   };
 
   const saveSection = async (
@@ -1153,10 +1125,6 @@ export default function InstallationDetails({
         .map((row) => section.rows.find((item) => item.id === row.id))
         .filter((row): row is InstallationDetailRow => Boolean(row));
       const recordCount = config.id === 'access' ? accessItems.length : section.rows.length;
-      const editingAccessRow =
-        config.id === 'access' && accessEdit?.mode === 'edit'
-          ? section.rows.find((row) => row.id === accessEdit.rowId)
-          : undefined;
       const accessNotes =
         config.id === 'access' ? (
           <InstallationAccessNotes
@@ -1282,14 +1250,13 @@ export default function InstallationDetails({
                         if (interactionBusy || editingActive) return;
                         setAccessRowId(id);
                       }}
-                      onAdd={() => beginAccessRecord({ mode: 'create' })}
+                      onAdd={() => beginAccessRecord()}
                     />
-                    {accessEditActive && (accessEdit?.mode === 'create' || editingAccessRow) ? (
+                    {accessEditActive ? (
                       <InstallationRecordEditor
-                        key={accessEdit?.mode === 'create' ? 'create' : editingAccessRow?.id}
+                        key="create"
                         sectionId="access"
                         sectionTitle={section.title}
-                        row={editingAccessRow}
                         busy={busy}
                         error={actionError}
                         policyPending={policyPending}
@@ -1302,21 +1269,6 @@ export default function InstallationDetails({
                         policyPending={policyPending}
                         accessNotes={accessNotes}
                         codeOptions={codeOptions}
-                        actions={
-                          canManage && selectedAccessRows.length === 1 ? (
-                            <button
-                              type="button"
-                              className="button"
-                              disabled={interactionBusy || policyPending}
-                              onClick={() =>
-                                beginAccessRecord({ mode: 'edit', rowId: selectedAccessRows[0].id })
-                              }
-                            >
-                              <Pencil size={14} />
-                              {t('{0} 수정', [t(section.title)])}
-                            </button>
-                          ) : undefined
-                        }
                       />
                     )}
                   </div>
