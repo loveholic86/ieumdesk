@@ -530,7 +530,7 @@ function OptionField({
   return (
     <div className="installation-option-row">
       <dt>
-        {label}
+        <span>{label}</span>
         {(field.secret || field.masked) && <LockKeyhole size={12} aria-hidden="true" />}
       </dt>
       <dd className={monoField(field) ? 'is-mono' : undefined}>
@@ -564,7 +564,7 @@ function MigratedAccessDetail({
     0,
   );
   return (
-    <section className="installation-data-card installation-option-a">
+    <section className="installation-data-card installation-option-b">
       <header className="installation-card-heading">
         <span className="installation-small-icon">
           <Network size={17} />
@@ -646,7 +646,7 @@ function GroupedInstallationCard({
   const emptyCount = row.fields.filter((field) => !field.present).length;
   const notesPlaced = groups.some((group) => group.id === 'notes');
   return (
-    <section className="installation-data-card installation-option-a" data-installation-row={row.id}>
+    <section className="installation-data-card installation-option-b" data-installation-row={row.id}>
       <header className="installation-card-heading">
         <span className="installation-small-icon">
           {section.id === 'server' ? (

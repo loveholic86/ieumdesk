@@ -2054,7 +2054,7 @@
   font-display: swap;
   src: url('./fonts/PretendardVariable.woff2') format('woff2');
 }
-.installation-option-a {
+.installation-option-b {
   font-family:
     'Pretendard Card',
     Pretendard,
@@ -2067,8 +2067,8 @@
 .installation-option-groups {
   display: flex;
   flex-direction: column;
-  gap: 28px;
-  padding: 18px 28px 26px;
+  gap: 14px;
+  padding: 16px;
 }
 .installation-empty-toggle {
   align-self: flex-start;
@@ -2087,18 +2087,24 @@
   text-decoration: none;
   font-weight: 600;
 }
+.installation-option-b .installation-option-group {
+  min-width: 0;
+  padding: 14px 16px 16px;
+  border-radius: 12px;
+  background: var(--theme-surface-raised, #f3f6fb);
+}
 .installation-option-group-title {
-  margin: 0 0 8px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--theme-border, #e6edf6);
-  color: var(--theme-ink, #101828);
-  font-size: 16px;
+  margin: 0 0 12px;
+  padding-bottom: 0;
+  border-bottom: 0;
+  color: var(--theme-text, #5c7290);
+  font-size: 12px;
   font-weight: 650;
-  letter-spacing: 0;
+  letter-spacing: 0.04em;
   line-height: 1.4;
 }
 .installation-option-group > div + div {
-  margin-top: 28px;
+  margin-top: 16px;
 }
 .installation-origin-part-title {
   display: flex;
@@ -2115,16 +2121,17 @@
 .installation-option-rows {
   margin: 0;
 }
-.installation-option-a .installation-option-row {
+.installation-option-b .installation-option-row {
   display: grid;
-  grid-template-columns: minmax(8.5rem, 13rem) minmax(0, 1fr);
+  grid-template-columns: 13rem minmax(0, 1fr);
   column-gap: 28px;
   align-items: start;
-  padding: 13px 2px;
+  min-width: 0;
+  padding: 8px 0;
 }
-.installation-option-a .installation-option-row dt {
+.installation-option-b .installation-option-row dt {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   min-width: 0;
   min-height: 28px;
@@ -2132,13 +2139,19 @@
   color: #3e4f63;
   font-size: 14px;
   font-weight: 500;
-  line-height: 1.4;
+  line-height: 28px;
+  overflow-wrap: anywhere;
 }
-.installation-option-a .installation-option-row dt > svg {
+.installation-option-b .installation-option-row dt > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.installation-option-b .installation-option-row dt > svg {
   flex-shrink: 0;
+  margin-top: 8px;
   color: var(--theme-muted, #a4b2c5);
 }
-.installation-option-a .installation-option-row dd {
+.installation-option-b .installation-option-row dd {
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -2149,11 +2162,18 @@
   font-weight: 400;
   line-height: 28px;
 }
-.installation-option-a .installation-field-value {
+.installation-option-b .installation-option-row dd > .installation-field-value,
+.installation-option-b .installation-option-row dd > .installation-protected-value,
+.installation-option-b .installation-option-row dd > .installation-missing {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+}
+.installation-option-b .installation-field-value {
   line-height: 28px;
   font-weight: 400;
 }
-.installation-option-a dd.is-mono .installation-field-value {
+.installation-option-b dd.is-mono .installation-field-value {
   font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, 'JetBrains Mono', monospace;
   font-size: 15px;
   font-weight: 400;
@@ -2161,7 +2181,7 @@
   font-feature-settings: 'zero' 1;
 }
 @media screen {
-  :root[data-theme='dark'] .installation-option-a .installation-option-row dt {
+  :root[data-theme='dark'] .installation-option-b .installation-option-row dt {
     color: #aab7c9;
   }
 }
@@ -2196,14 +2216,9 @@
   margin-top: 12px;
   min-width: 0;
 }
-@media (max-width: 760px) {
-  .installation-option-groups {
-    padding: 14px 16px 18px;
-    gap: 22px;
-  }
-  .installation-option-a .installation-option-row {
+@media (max-width: 520px) {
+  .installation-option-b .installation-option-row {
     grid-template-columns: minmax(0, 1fr);
     row-gap: 4px;
-    padding: 12px 0;
   }
 }
