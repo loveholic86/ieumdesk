@@ -596,6 +596,7 @@ function MigratedAccessDetail({
         )}
         {rows.map((row) => {
           const label = accessOriginTitle(row) || t('접근 정보');
+          const partTitle = t(label);
           const groups = fieldsByGroup('access', row.fields);
           return (
             <section
@@ -605,14 +606,17 @@ function MigratedAccessDetail({
               data-origin-part={row.origin?.part}
             >
               <h4 className="installation-option-group-title installation-origin-part-title">
-                <span>{t(label)}</span>
+                <span>{partTitle}</span>
               </h4>
               {groups.map((group) => {
                 const visible = group.fields.filter((field) => field.present || showEmpty);
                 if (!visible.length) return null;
+                const subtitle = t(group.title);
                 return (
                   <div key={group.id}>
-                    <h5 className="installation-option-group-title">{t(group.title)}</h5>
+                    {subtitle !== partTitle && (
+                      <h5 className="installation-option-group-title">{subtitle}</h5>
+                    )}
                     <dl className="installation-option-rows">
                       {visible.map((field) => (
                         <OptionField

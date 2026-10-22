@@ -2067,8 +2067,8 @@
 .installation-option-groups {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
+  gap: 14px;
+  padding: 12px 12px 14px;
 }
 .installation-empty-toggle {
   align-self: flex-start;
@@ -2089,12 +2089,11 @@
 }
 .installation-option-b .installation-option-group {
   min-width: 0;
-  padding: 10px 12px 12px;
-  border-radius: 12px;
-  background: var(--theme-surface-raised, #f3f6fb);
+  padding: 0;
+  background: transparent;
 }
 .installation-option-group-title {
-  margin: 0 0 8px;
+  margin: 0 0 6px;
   padding-bottom: 0;
   border-bottom: 0;
   color: var(--theme-text, #5c7290);
@@ -2123,6 +2122,9 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px 18px;
   margin: 0;
+  padding: 10px 12px 12px;
+  border-radius: 12px;
+  background: var(--theme-surface-raised, #f3f6fb);
 }
 .installation-option-b .installation-option-row {
   display: flex;
