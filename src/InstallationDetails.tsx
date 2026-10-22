@@ -529,7 +529,7 @@ function wideOptionField(field: InstallationDetailField) {
   );
 }
 
-function OptionTable({
+export function OptionTable({
   fields,
   sectionId,
   policyPending,
@@ -584,12 +584,6 @@ function OptionTable({
                 policyPending={policyPending}
                 codeOptions={codeOptions}
               />
-            ))}
-            {[0, 1, 2].map((pad) => (
-              <div key={pad} className="installation-option-row is-pad" aria-hidden="true">
-                <dt />
-                <dd />
-              </div>
             ))}
           </dl>
         ),

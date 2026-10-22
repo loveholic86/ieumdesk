@@ -2121,38 +2121,36 @@
   container: kv / inline-size;
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  border: 1px solid #d5e0ec;
-  border-radius: 10px;
-  overflow: hidden;
-  background: #d5e0ec;
+  background: transparent;
 }
 .installation-option-b .installation-option-rows {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   gap: 1px;
   margin: 0;
   padding: 0;
   background: transparent;
 }
-.installation-option-b .installation-option-rows.is-span {
-  grid-template-columns: minmax(0, 1fr);
+.installation-option-b .installation-kv > .installation-option-rows + .installation-option-rows {
+  margin-top: -1px;
 }
 .installation-option-b .installation-option-row {
   display: grid;
   grid-template-columns: 9.5rem minmax(8.5rem, 1fr);
   gap: 1px;
+  flex: 0 0 100%;
   align-items: stretch;
+  max-width: 100%;
   min-height: 44px;
   min-width: 0;
   background: #d5e0ec;
+  outline: 1px solid #d5e0ec;
+  outline-offset: 0;
 }
 .installation-option-b .installation-option-row.is-wide {
-  grid-column: 1 / -1;
+  flex-basis: 100%;
+  max-width: 100%;
   grid-template-columns: 9.5rem minmax(0, 1fr);
-}
-.installation-option-b .installation-option-row.is-pad {
-  display: none;
 }
 .installation-option-b .installation-option-row dt {
   display: flex;
@@ -2241,53 +2239,41 @@
   font-feature-settings: 'zero' 1;
 }
 @container kv (min-width: 620px) and (max-width: 983.98px) {
-  .installation-option-b .installation-option-rows:not(.is-span):is([data-count='2'], [data-count='3'], [data-count='many']) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .installation-option-b .installation-option-rows[data-count='3'] > .installation-option-row.is-pad:nth-child(4) {
-    display: grid;
-  }
-  .installation-option-b .installation-option-rows[data-count='many'] > .installation-option-row:not(.is-pad):nth-child(odd of .installation-option-row:not(.is-pad)):nth-last-child(4) + .installation-option-row.is-pad {
-    display: grid;
+  .installation-option-b .installation-option-rows:not(.is-span):is([data-count='2'], [data-count='3'], [data-count='many']) > .installation-option-row:not(.is-wide) {
+    flex-basis: calc((100% - 1px) / 2);
+    max-width: calc((100% - 1px) / 2);
   }
 }
 @container kv (min-width: 984px) and (max-width: 1311.98px) {
-  .installation-option-b .installation-option-rows:not(.is-span)[data-count='2'] {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .installation-option-b .installation-option-rows:not(.is-span)[data-count='2'] > .installation-option-row:not(.is-wide) {
+    flex-basis: calc((100% - 1px) / 2);
+    max-width: calc((100% - 1px) / 2);
   }
-  .installation-option-b .installation-option-rows:not(.is-span):is([data-count='3'], [data-count='many']) {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .installation-option-b .installation-option-rows[data-count='many'] > .installation-option-row:not(.is-pad):nth-child(3n + 1 of .installation-option-row:not(.is-pad)):nth-last-child(4) + .installation-option-row.is-pad,
-  .installation-option-b .installation-option-rows[data-count='many'] > .installation-option-row:not(.is-pad):nth-child(3n + 1 of .installation-option-row:not(.is-pad)):nth-last-child(4) + .installation-option-row.is-pad + .installation-option-row.is-pad,
-  .installation-option-b .installation-option-rows[data-count='many'] > .installation-option-row:not(.is-pad):nth-child(3n + 2 of .installation-option-row:not(.is-pad)):nth-last-child(4) + .installation-option-row.is-pad {
-    display: grid;
+  .installation-option-b .installation-option-rows:not(.is-span):is([data-count='3'], [data-count='many']) > .installation-option-row:not(.is-wide) {
+    flex-basis: calc((100% - 2px) / 3);
+    max-width: calc((100% - 2px) / 3);
   }
 }
 @container kv (min-width: 1312px) {
-  .installation-option-b .installation-option-rows:not(.is-span)[data-count='2'] {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .installation-option-b .installation-option-rows:not(.is-span)[data-count='2'] > .installation-option-row:not(.is-wide) {
+    flex-basis: calc((100% - 1px) / 2);
+    max-width: calc((100% - 1px) / 2);
   }
-  .installation-option-b .installation-option-rows:not(.is-span)[data-count='3'] {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .installation-option-b .installation-option-rows:not(.is-span)[data-count='3'] > .installation-option-row:not(.is-wide) {
+    flex-basis: calc((100% - 2px) / 3);
+    max-width: calc((100% - 2px) / 3);
   }
-  .installation-option-b .installation-option-rows:not(.is-span)[data-count='many'] {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-  .installation-option-b .installation-option-rows[data-count='many'] > .installation-option-row:not(.is-pad):nth-child(4n + 1 of .installation-option-row:not(.is-pad)):nth-last-child(4) ~ .installation-option-row.is-pad,
-  .installation-option-b .installation-option-rows[data-count='many'] > .installation-option-row:not(.is-pad):nth-child(4n + 2 of .installation-option-row:not(.is-pad)):nth-last-child(4) + .installation-option-row.is-pad,
-  .installation-option-b .installation-option-rows[data-count='many'] > .installation-option-row:not(.is-pad):nth-child(4n + 2 of .installation-option-row:not(.is-pad)):nth-last-child(4) + .installation-option-row.is-pad + .installation-option-row.is-pad,
-  .installation-option-b .installation-option-rows[data-count='many'] > .installation-option-row:not(.is-pad):nth-child(4n + 3 of .installation-option-row:not(.is-pad)):nth-last-child(4) + .installation-option-row.is-pad {
-    display: grid;
+  .installation-option-b .installation-option-rows:not(.is-span)[data-count='many'] > .installation-option-row:not(.is-wide) {
+    flex-basis: calc((100% - 3px) / 4);
+    max-width: calc((100% - 3px) / 4);
   }
 }
 @media screen {
   :root[data-theme='dark'] .installation-option-group-title {
     color: #d5deea;
   }
-  :root[data-theme='dark'] .installation-option-b .installation-kv,
   :root[data-theme='dark'] .installation-option-b .installation-option-row {
-    border-color: #38475c;
+    outline-color: #38475c;
     background: #38475c;
   }
   :root[data-theme='dark'] .installation-option-b .installation-option-row dt {
