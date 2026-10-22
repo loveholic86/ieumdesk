@@ -2144,16 +2144,17 @@
   margin: 0;
   color: var(--theme-ink, #101828);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 400;
   line-height: 28px;
 }
 .installation-option-a .installation-field-value {
   line-height: 28px;
+  font-weight: 400;
 }
 .installation-option-a dd.is-mono .installation-field-value {
   font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, "JetBrains Mono", monospace;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 400;
   font-variant-numeric: slashed-zero;
   font-feature-settings: "zero" 1;
 }
