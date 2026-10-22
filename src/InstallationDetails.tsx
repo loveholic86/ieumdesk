@@ -571,11 +571,7 @@ export function OptionTable({
             />
           </dl>
         ) : (
-          <dl
-            key={block.key}
-            className="installation-option-rows"
-            data-count={block.fields.length >= 4 ? 'many' : String(block.fields.length)}
-          >
+          <dl key={block.key} className="installation-option-rows">
             {block.fields.map((field) => (
               <OptionField
                 key={field.id}

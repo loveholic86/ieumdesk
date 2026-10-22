@@ -25,8 +25,19 @@ test('option rows render one cell per field and no pad cells', async () => {
   assert.equal(markup.includes('<dt></dt>'), false);
   const rows = markup.match(/class="installation-option-row(?: |")/g) ?? [];
   assert.equal(rows.length, 5);
-  assert.match(markup, /data-count="many"/);
+  assert.equal(markup.includes('data-count'), false);
   assert.equal((markup.match(/class="installation-option-rows is-span"/g) ?? []).length, 1);
+
+  const two = renderToStaticMarkup(
+    createElement(OptionTable, {
+      sectionId: 'installation',
+      policyPending: false,
+      codeOptions: [],
+      fields: [field('system_code'), field('service_version')],
+    }),
+  );
+  assert.equal((two.match(/class="installation-option-row(?: |")/g) ?? []).length, 2);
+  assert.equal(two.includes('is-pad'), false);
 
   const single = renderToStaticMarkup(
     createElement(OptionTable, {
@@ -37,6 +48,5 @@ test('option rows render one cell per field and no pad cells', async () => {
     }),
   );
   assert.equal((single.match(/class="installation-option-row(?: |")/g) ?? []).length, 1);
-  assert.match(single, /data-count="1"/);
   assert.equal(single.includes('is-pad'), false);
 });

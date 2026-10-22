@@ -2136,7 +2136,7 @@
 }
 .installation-option-b .installation-option-row {
   display: grid;
-  grid-template-columns: 9.5rem minmax(8.5rem, 1fr);
+  grid-template-columns: 8.75rem minmax(8.5rem, 1fr);
   gap: 1px;
   flex: 0 0 100%;
   align-items: stretch;
@@ -2150,7 +2150,7 @@
 .installation-option-b .installation-option-row.is-wide {
   flex-basis: 100%;
   max-width: 100%;
-  grid-template-columns: 9.5rem minmax(0, 1fr);
+  grid-template-columns: 8.75rem minmax(0, 1fr);
 }
 .installation-option-b .installation-option-row dt {
   display: flex;
@@ -2238,34 +2238,16 @@
   font-variant-numeric: slashed-zero;
   font-feature-settings: 'zero' 1;
 }
-@container kv (min-width: 620px) and (max-width: 983.98px) {
-  .installation-option-b .installation-option-rows:not(.is-span):is([data-count='2'], [data-count='3'], [data-count='many']) > .installation-option-row:not(.is-wide) {
+@container kv (min-width: 640px) and (max-width: 839.98px) {
+  .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:not(.is-wide) {
     flex-basis: calc((100% - 1px) / 2);
     max-width: calc((100% - 1px) / 2);
   }
 }
-@container kv (min-width: 984px) and (max-width: 1311.98px) {
-  .installation-option-b .installation-option-rows:not(.is-span)[data-count='2'] > .installation-option-row:not(.is-wide) {
-    flex-basis: calc((100% - 1px) / 2);
-    max-width: calc((100% - 1px) / 2);
-  }
-  .installation-option-b .installation-option-rows:not(.is-span):is([data-count='3'], [data-count='many']) > .installation-option-row:not(.is-wide) {
+@container kv (min-width: 840px) {
+  .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:not(.is-wide) {
     flex-basis: calc((100% - 2px) / 3);
     max-width: calc((100% - 2px) / 3);
-  }
-}
-@container kv (min-width: 1312px) {
-  .installation-option-b .installation-option-rows:not(.is-span)[data-count='2'] > .installation-option-row:not(.is-wide) {
-    flex-basis: calc((100% - 1px) / 2);
-    max-width: calc((100% - 1px) / 2);
-  }
-  .installation-option-b .installation-option-rows:not(.is-span)[data-count='3'] > .installation-option-row:not(.is-wide) {
-    flex-basis: calc((100% - 2px) / 3);
-    max-width: calc((100% - 2px) / 3);
-  }
-  .installation-option-b .installation-option-rows:not(.is-span)[data-count='many'] > .installation-option-row:not(.is-wide) {
-    flex-basis: calc((100% - 3px) / 4);
-    max-width: calc((100% - 3px) / 4);
   }
 }
 @media screen {
