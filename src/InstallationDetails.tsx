@@ -3,7 +3,7 @@ import { canViewProtectedInformation } from './protection-policy';
 import { canManageBusiness } from './permissions';
 import { t } from './i18n';
 import { useLocale } from './use-locale';
-import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Tabs from '@radix-ui/react-tabs';
 import {
@@ -16,6 +16,8 @@ import {
   KeyRound,
   LockKeyhole,
   Network,
+  Check,
+  Copy,
   Pencil,
   Plus,
   RefreshCw,
@@ -221,6 +223,13 @@ function accessItemTitle(item: AccessRecordItem) {
     : installationRowTitle(item.rows[0]) || t('미등록');
 }
 
+function accessOriginTitle(row: InstallationDetailRow | undefined) {
+  if (row?.origin?.part === 'address') return 'Address';
+  if (row?.origin?.part === 'vpn') return 'VPN';
+  if (row?.origin?.part === 'access') return '접근 정보';
+  return '';
+}
+
 function AccessListCell({
   field,
   policyPending,
@@ -361,6 +370,437 @@ function AccessRecordList({
   );
 }
 
+type CardGroup = { id: string; title: string; keys: readonly string[] };
+const cardGroup = (id: string, title: string, keys: string): CardGroup => ({
+  id,
+  title,
+  keys: keys.split(' '),
+});
+const cardGroups: Record<InstallationSectionId, readonly CardGroup[]> = {
+  installation: [
+    cardGroup(
+      'basic',
+      '기본 정보',
+      'systemCode serviceVersion sv_version setup_cd setup_year sys_cd ct_cd mng_cd',
+    ),
+    cardGroup(
+      'history',
+      '설치 이력',
+      'version installedAt patchedAt engineer setup_date last_setup_date setup_engineer yeta_version',
+    ),
+    cardGroup(
+      'operation',
+      '운영 정보',
+      'accessType autoUpdate domain autoupdate_yn bonding_yn sys_member sys_com_count',
+    ),
+    cardGroup('notes', '비고', 'note ct_etc setup_etc'),
+  ],
+  access: [
+    cardGroup('connection', '접속', 'access_type access_url domainurl access_id access_pwd'),
+    cardGroup('network', '네트워크', 'ssh_port external_ip internal_ip netmask gateway dns1 dns2'),
+    cardGroup('ssl', 'SSL', 'ssl_apply_yn ssl_manage_type ssl_applydate ssl_pwd'),
+    cardGroup('vpn', 'VPN', 'vpnsv_ip vpnsv_id vpnsv_pwd'),
+    cardGroup('path', '설치 경로', 'rootpath'),
+    cardGroup('os', 'OS 계정', 'os_root_id os_root_pwd os_user_id os_user_pwd os_login_etc'),
+    cardGroup('period', '기간', 'access_reqst_date access_reqst_enddate'),
+    cardGroup('notes', '비고', 'access_etc'),
+  ],
+  server: [
+    cardGroup('device', '서버 장비', 'hostname servicetag express_service_code model'),
+    cardGroup('location', '설치 장소', 'zipcode address'),
+    cardGroup('history', '설치 이력', 'migration_date migration_engineer'),
+  ],
+  settings: [cardGroup('settings', '설정 정보', 'setting_year setting_type setting_yn setting_etc')],
+  files: [cardGroup('files', '설정 정보', 'system_code att_year set_name set_value')],
+  yeta: [],
+  sap: [],
+};
+const addressKeys = new Set([
+  'domain',
+  'domainurl',
+  'access_url',
+  'external_ip',
+  'internal_ip',
+  'vpnsv_ip',
+  'gateway',
+  'dns1',
+  'dns2',
+  'address',
+  'hostname',
+]);
+
+function fieldsByGroup(sectionId: InstallationSectionId, fields: readonly InstallationDetailField[]) {
+  const used = new Set<string>();
+  const groups = cardGroups[sectionId]
+    .map((definition) => {
+      const grouped = definition.keys.flatMap((key) => {
+        const field = fields.find((item) => item.key === key);
+        if (!field || used.has(field.key)) return [];
+        used.add(field.key);
+        return [field];
+      });
+      return { id: definition.id, title: definition.title, fields: grouped };
+    })
+    .filter((group) => group.fields.length > 0);
+  const rest = fields.filter((field) => !used.has(field.key));
+  if (rest.length) groups.push({ id: 'other', title: '기타 항목', fields: rest });
+  return groups;
+}
+
+function monoField(field: { key: string; label: string }) {
+  return (
+    passwordField(field) ||
+    addressKeys.has(field.key) ||
+    /(?:^|_)id$/i.test(field.key) ||
+    field.key === 'rootpath'
+  );
+}
+
+function copyableField(field: InstallationDetailField, policyPending: boolean) {
+  return (
+    field.present &&
+    !field.masked &&
+    field.value !== '••••••••' &&
+    !installationFieldMasked(field, policyPending) &&
+    !passwordField(field) &&
+    (addressKeys.has(field.key) || /(?:^|_)id$/i.test(field.key))
+  );
+}
+
+function shownFieldValue(
+  sectionId: InstallationSectionId,
+  field: InstallationDetailField,
+  codeOptions: readonly InstallationCodeOption[],
+) {
+  return (
+    installationOptionDisplayValue(
+      codeOptions,
+      installationCodeGroupForField(sectionId, field.key, field.label),
+      installationFieldValue(field),
+      field.optionValue,
+    ) || installationFieldValue(field)
+  );
+}
+
+function CopyValueButton({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current) window.clearTimeout(timer.current);
+    },
+    [],
+  );
+  return (
+    <button
+      type="button"
+      className={`installation-copy-button${copied ? ' is-copied' : ''}`}
+      aria-label={copied ? t('복사됨') : t('{0} 복사', [label])}
+      onClick={() => {
+        void navigator.clipboard.writeText(value).then(
+          () => {
+            setCopied(true);
+            if (timer.current) window.clearTimeout(timer.current);
+            timer.current = window.setTimeout(() => setCopied(false), 4000);
+          },
+          () => setCopied(false),
+        );
+      }}
+    >
+      {copied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+      {copied && <span>{t('복사됨')}</span>}
+    </button>
+  );
+}
+
+function wideOptionField(field: InstallationDetailField) {
+  return (
+    field.key === 'note' ||
+    field.key === 'address' ||
+    field.key === 'rootpath' ||
+    field.key === 'domain' ||
+    field.key === 'domainurl' ||
+    field.key === 'access_url' ||
+    field.key.endsWith('_etc') ||
+    field.value.length > 80 ||
+    /[\n\r]/.test(field.value) ||
+    /^https?:\/\//i.test(field.value) ||
+    /^www\./i.test(field.value)
+  );
+}
+
+export function OptionTable({
+  fields,
+  sectionId,
+  policyPending,
+  codeOptions,
+}: {
+  fields: readonly InstallationDetailField[];
+  sectionId: InstallationSectionId;
+  policyPending: boolean;
+  codeOptions: readonly InstallationCodeOption[];
+}) {
+  const blocks: Array<
+    | { key: string; wide: false; fields: InstallationDetailField[] }
+    | { key: string; wide: true; field: InstallationDetailField }
+  > = [];
+  let compact: InstallationDetailField[] = [];
+  const flush = () => {
+    if (!compact.length) return;
+    blocks.push({ key: compact[0].id, wide: false, fields: compact });
+    compact = [];
+  };
+  for (const field of fields) {
+    if (wideOptionField(field)) {
+      flush();
+      blocks.push({ key: field.id, wide: true, field });
+    } else compact.push(field);
+  }
+  flush();
+  if (!blocks.length) return null;
+  return (
+    <div className="installation-kv">
+      {blocks.map((block) =>
+        block.wide ? (
+          <dl key={block.key} className="installation-option-rows is-span">
+            <OptionField
+              field={block.field}
+              sectionId={sectionId}
+              policyPending={policyPending}
+              codeOptions={codeOptions}
+            />
+          </dl>
+        ) : (
+          <dl key={block.key} className="installation-option-rows">
+            {block.fields.map((field) => (
+              <OptionField
+                key={field.id}
+                field={field}
+                sectionId={sectionId}
+                policyPending={policyPending}
+                codeOptions={codeOptions}
+              />
+            ))}
+          </dl>
+        ),
+      )}
+    </div>
+  );
+}
+
+function OptionField({
+  field,
+  policyPending,
+  codeOptions,
+  sectionId,
+}: {
+  field: InstallationDetailField;
+  policyPending: boolean;
+  codeOptions: readonly InstallationCodeOption[];
+  sectionId: InstallationSectionId;
+}) {
+  useLocale();
+  const label = installationFieldLabel(field);
+  const shown = shownFieldValue(sectionId, field, codeOptions);
+  return (
+    <div className={`installation-option-row${wideOptionField(field) ? ' is-wide' : ''}`}>
+      <dt>
+        <span>{label}</span>
+        {(field.secret || field.masked) && <LockKeyhole size={12} aria-hidden="true" />}
+      </dt>
+      <dd className={monoField(field) ? 'is-mono' : undefined}>
+        <DataValue
+          sectionId={sectionId}
+          field={field}
+          policyPending={policyPending}
+          codeOptions={codeOptions}
+        />
+        {copyableField(field, policyPending) && shown && <CopyValueButton value={shown} label={label} />}
+      </dd>
+    </div>
+  );
+}
+
+const migratedViewMerge = new Set(['address', 'vpn']);
+
+/** View-only. Address and VPN share one list; full-width fields stay last. */
+export function migratedAccessViewBlocks(rows: readonly InstallationDetailRow[], showEmpty: boolean) {
+  const blocks: { key: string; titles: string[]; parts: string[]; rows: InstallationDetailRow[] }[] = [];
+  for (const row of rows) {
+    const part = row.origin?.part ?? '';
+    const last = blocks[blocks.length - 1];
+    if (part && migratedViewMerge.has(part) && last && last.parts.every((item) => migratedViewMerge.has(item))) {
+      last.parts.push(part);
+      last.rows.push(row);
+      continue;
+    }
+    blocks.push({ key: row.id, titles: [], parts: part ? [part] : [], rows: [row] });
+  }
+  return blocks
+    .map((block) => {
+      const ordered = block.rows.flatMap((row) =>
+        fieldsByGroup('access', row.fields).flatMap((group) =>
+          group.fields.filter((field) => field.present || showEmpty),
+        ),
+      );
+      return {
+        key: block.key,
+        parts: block.parts,
+        titles: block.rows
+          .map((row) => accessOriginTitle(row) || '접근 정보')
+          .filter((title, index, all) => all.indexOf(title) === index),
+        fields: [
+          ...ordered.filter((field) => !wideOptionField(field)),
+          ...ordered.filter((field) => wideOptionField(field)),
+        ],
+      };
+    })
+    .filter((block) => block.fields.length > 0);
+}
+
+function MigratedAccessDetail({
+  rows,
+  policyPending,
+  codeOptions,
+  accessNotes,
+}: {
+  rows: InstallationDetailRow[];
+  policyPending: boolean;
+  codeOptions: readonly InstallationCodeOption[];
+  accessNotes?: ReactNode;
+}) {
+  useLocale();
+  const [showEmpty, setShowEmpty] = useState(false);
+  const emptyCount = rows.reduce(
+    (count, row) => count + row.fields.filter((field) => !field.present).length,
+    0,
+  );
+  return (
+    <section className="installation-data-card installation-option-b">
+      <header className="installation-card-heading">
+        <span className="installation-small-icon">
+          <Network size={17} />
+        </span>
+        <h3>{t('기존 접근 정보')}</h3>
+      </header>
+      <div className="installation-option-groups">
+        {emptyCount > 0 && (
+          <button
+            type="button"
+            className="installation-empty-toggle"
+            aria-expanded={showEmpty}
+            onClick={() => setShowEmpty((open) => !open)}
+          >
+            {showEmpty ? t('빈 항목 접기') : t('빈 항목 보기')}
+            {!showEmpty && <span>{emptyCount}</span>}
+          </button>
+        )}
+        {migratedAccessViewBlocks(rows, showEmpty).map((block) => (
+          <section
+            key={block.key}
+            className="installation-option-group"
+            data-origin-part={block.parts.join(' ')}
+          >
+            <h4 className="installation-option-group-title installation-origin-part-title">
+              <span>{block.titles.map((title) => t(title)).join(' · ')}</span>
+            </h4>
+            <OptionTable
+              fields={block.fields}
+              sectionId="access"
+              policyPending={policyPending}
+              codeOptions={codeOptions}
+            />
+          </section>
+        ))}
+        {accessNotes}
+      </div>
+    </section>
+  );
+}
+
+function GroupedInstallationCard({
+  section,
+  row,
+  index,
+  policyPending,
+  codeOptions,
+  accessNotes,
+}: {
+  section: InstallationDetailSection;
+  row: InstallationDetailRow;
+  index: number;
+  policyPending: boolean;
+  codeOptions: readonly InstallationCodeOption[];
+  accessNotes?: ReactNode;
+}) {
+  useLocale();
+  const [showEmpty, setShowEmpty] = useState(false);
+  const groups = fieldsByGroup(section.id, row.fields);
+  const emptyCount = row.fields.filter((field) => !field.present).length;
+  const notesPlaced = groups.some((group) => group.id === 'notes');
+  return (
+    <section className="installation-data-card installation-option-b" data-installation-row={row.id}>
+      <header className="installation-card-heading">
+        <span className="installation-small-icon">
+          {section.id === 'server' ? (
+            <Server size={17} />
+          ) : section.id === 'sap' ? (
+            <Database size={17} />
+          ) : section.id === 'yeta' ? (
+            <KeyRound size={17} />
+          ) : (
+            <Settings2 size={17} />
+          )}
+        </span>
+        <h3>
+          {installationRowTitle(row) ||
+            (section.rows.length > 1 ? `${t(section.title)} ${index + 1}` : t(section.title))}
+        </h3>
+        <span className="installation-count">
+          {section.rows.length > 1 ? `${index + 1} / ${section.rows.length}` : ''}
+        </span>
+      </header>
+      {row.fields.length ? (
+        <div className="installation-option-groups">
+          {emptyCount > 0 && (
+            <button
+              type="button"
+              className="installation-empty-toggle"
+              aria-expanded={showEmpty}
+              onClick={() => setShowEmpty((open) => !open)}
+            >
+              {showEmpty ? t('빈 항목 접기') : t('빈 항목 보기')}
+              {!showEmpty && <span>{emptyCount}</span>}
+            </button>
+          )}
+          {groups.map((group) => {
+            const visible = group.fields.filter((field) => field.present || showEmpty);
+            const notesHere = Boolean(accessNotes) && group.id === 'notes';
+            if (!visible.length && !notesHere) return null;
+            return (
+              <section key={group.id} className="installation-option-group">
+                <h4 className="installation-option-group-title">{t(group.title)}</h4>
+                {visible.length > 0 && (
+                  <OptionTable
+                    fields={visible}
+                    sectionId={section.id}
+                    policyPending={policyPending}
+                    codeOptions={codeOptions}
+                  />
+                )}
+                {notesHere && <div className="installation-option-notes">{accessNotes}</div>}
+              </section>
+            );
+          })}
+          {accessNotes && !notesPlaced && accessNotes}
+        </div>
+      ) : (
+        <p className="installation-row-empty">{t('등록된 항목이 없습니다.')}</p>
+      )}
+    </section>
+  );
+}
+
 function SectionRows({
   section,
   policyPending,
@@ -447,66 +887,15 @@ function SectionRows({
   return (
     <div className="installation-cards">
       {section.rows.map((row, index) => (
-        <section className="installation-data-card" key={row.id} data-installation-row={row.id}>
-          <header className="installation-card-heading">
-            <span className="installation-small-icon">
-              {section.id === 'server' ? (
-                <Server size={17} />
-              ) : section.id === 'sap' ? (
-                <Database size={17} />
-              ) : section.id === 'yeta' ? (
-                <KeyRound size={17} />
-              ) : (
-                <Settings2 size={17} />
-              )}
-            </span>
-            <h3>
-              {installationRowTitle(row) ||
-                (section.rows.length > 1 ? `${t(section.title)} ${index + 1}` : t(section.title))}
-            </h3>
-            <span className="installation-count">
-              {section.rows.length > 1 ? `${index + 1} / ${section.rows.length}` : ''}
-            </span>
-          </header>
-          {row.fields.length ? (
-            <dl className="installation-fields">
-              {row.fields.map((field) => (
-                <Fragment key={field.id}>
-                  <div
-                    className={`installation-field ${
-                      (section.id === 'installation' && (field.key === 'note' || field.key === 'ct_etc')) ||
-                      field.value.length > 160 ||
-                      /[\n\r]/.test(field.value)
-                        ? 'wide'
-                        : ''
-                    }`}
-                  >
-                    <dt>
-                      {installationFieldLabel(field)}
-                      {(field.secret || field.masked) && <LockKeyhole size={12} aria-hidden="true" />}
-                    </dt>
-                    <dd>
-                      <DataValue
-                        sectionId={section.id}
-                        field={field}
-                        policyPending={policyPending}
-                        codeOptions={codeOptions}
-                      />
-                    </dd>
-                  </div>
-                  {notesAnchor?.row.id === row.id && notesAnchor.field.id === field.id && (
-                    <div className="installation-reference-field">
-                      <dt className="sr-only">{t('참고사항')}</dt>
-                      <dd>{accessNotes}</dd>
-                    </div>
-                  )}
-                </Fragment>
-              ))}
-            </dl>
-          ) : (
-            <p className="installation-row-empty">{t('등록된 항목이 없습니다.')}</p>
-          )}
-        </section>
+        <GroupedInstallationCard
+          key={row.id}
+          section={section}
+          row={row}
+          index={index}
+          policyPending={policyPending}
+          codeOptions={codeOptions}
+          accessNotes={notesAnchor?.row.id === row.id ? accessNotes : undefined}
+        />
       ))}
       {accessNotes && !notesAnchor && accessNotes}
     </div>
@@ -1157,6 +1546,34 @@ export default function InstallationDetails({
             error={actionError}
           />
         ) : undefined;
+      const bundleDetail = selectedAccessRows.length > 0 && selectedAccessRows.every((row) => row.origin);
+      const accessCreate = accessEditActive ? (
+        <InstallationRecordEditor
+          key="create"
+          sectionId="access"
+          sectionTitle={section.title}
+          busy={busy}
+          error={actionError}
+          policyPending={policyPending}
+          onClose={cancelEditing}
+          onSave={(payload) => void saveAccessRecord(payload)}
+        />
+      ) : null;
+      const accessRead = bundleDetail ? (
+        <MigratedAccessDetail
+          rows={selectedAccessRows}
+          policyPending={policyPending}
+          codeOptions={codeOptions}
+          accessNotes={accessNotes}
+        />
+      ) : (
+        <SectionRows
+          section={{ ...section, rows: selectedAccessRows }}
+          policyPending={policyPending}
+          accessNotes={accessNotes}
+          codeOptions={codeOptions}
+        />
+      );
       return (
         <Tabs.Content
           key={config.id}
@@ -1240,33 +1657,15 @@ export default function InstallationDetails({
                       }}
                       onAdd={() => beginAccessRecord()}
                     />
-                    {accessEditActive ? (
-                      <InstallationRecordEditor
-                        key="create"
-                        sectionId="access"
-                        sectionTitle={section.title}
-                        busy={busy}
-                        error={actionError}
-                        policyPending={policyPending}
-                        onClose={cancelEditing}
-                        onSave={(payload) => void saveAccessRecord(payload)}
-                      />
-                    ) : (
-                      <SectionRows
-                        section={{ ...section, rows: selectedAccessRows }}
-                        policyPending={policyPending}
-                        accessNotes={accessNotes}
-                        codeOptions={codeOptions}
-                      />
-                    )}
+                    {accessCreate ?? accessRead}
                   </div>
+                ) : config.id === 'access' && accessEditActive ? (
+                  accessCreate
+                ) : config.id === 'access' && bundleDetail ? (
+                  accessRead
                 ) : (
                   <SectionRows
-                    section={
-                      config.id === 'access'
-                        ? { ...section, rows: selectedAccessRows.length ? selectedAccessRows : section.rows }
-                        : section
-                    }
+                    section={section}
                     policyPending={policyPending}
                     accessNotes={accessNotes}
                     codeOptions={codeOptions}

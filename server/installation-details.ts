@@ -315,10 +315,24 @@ function demoMigratedAccessRow(): Row {
     domainurl: 'legacy.example.com',
     external_ip: '203.0.113.10',
     vpnsv_ip: '203.0.113.20',
+    vpnsv_pwd: 'Il1|0O%!',
     ssl_apply_yn: 'Y',
     access_type: '방문 접속',
+    vpnsv_id: 'ops-admin',
+    rootpath: '/var/ieumdesk/legacy/customer/demo-mig/releases/current/application',
     access_reqst_enddate: '2026-12-31',
-    access_url: 'https://legacy.example.com/gate',
+    access_url:
+      'https://legacy.example.com/gate/customers/demo-migrated/access/annual-review/2026/external-window/session/detail',
+  };
+}
+
+function demoServerRow(): Row {
+  return {
+    hostname: 'demo-migrated-application-host-01.customer.internal.legacy.example.com',
+    servicetag: 'DEMO-TAG',
+    model: '검수 RX-12',
+    migration_date: '2026-04-01',
+    migration_engineer: '김수',
   };
 }
 
@@ -517,8 +531,18 @@ export class InstallationDetailsService implements InstallationDetailsAccess {
       }
     } else {
       const code = scalar(scope.data.systemCode);
-      if (code === 'DEMO-SYS-2' || code === 'DEMO-MIG')
+      if (code === 'DEMO-SYS-2' || code === 'DEMO-MIG') {
         addSetupAccess(demoMigratedAccessRow(), 'setup_tb', opaque('demo-setup-access', scope.id));
+        add(
+          'server',
+          '이관 원본 서버 정보',
+          demoServerRow(),
+          'setup_tb',
+          opaque('demo-setup-server', scope.id),
+          SERVER,
+          true,
+        );
+      }
     }
     for (const section of sections) {
       if (!section.imported) section.note = '이 설치에 연결된 이관 자료가 없습니다.';
