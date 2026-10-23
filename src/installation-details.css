@@ -2127,6 +2127,7 @@
   letter-spacing: 0;
 }
 .installation-option-b .installation-kv {
+  --kv-label: 118px;
   container-type: inline-size;
   display: flex;
   flex-direction: column;
@@ -2138,28 +2139,40 @@
 }
 .installation-option-b .installation-option-rows {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1px;
+  grid-template-columns: var(--kv-label) minmax(0, 1fr) var(--kv-label) minmax(0, 1fr) var(--kv-label) minmax(0, 1fr);
+  column-gap: 1px;
+  row-gap: 1px;
   margin: 0;
   padding: 0;
   background: #e9edf3;
 }
+.installation-option-b .installation-option-rows.is-span {
+  grid-template-columns: var(--kv-label) minmax(0, 1fr);
+}
 .installation-option-b .installation-option-row {
   display: grid;
-  grid-template-columns: minmax(118px, max-content) minmax(0, 1fr);
+  grid-template-columns: subgrid;
+  grid-column: span 2;
   align-items: stretch;
   min-height: 44px;
   min-width: 0;
-  background: #fff;
+  background: #f5f7fb;
 }
 .installation-option-b .installation-option-row.is-wide {
   grid-column: 1 / -1;
 }
+.installation-option-b .installation-option-row.is-wide > dd {
+  grid-column: 2 / -1;
+}
 .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(3n + 2) {
-  grid-column: span 2;
+  grid-column: span 4;
 }
 .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(3n + 1) {
   grid-column: 1 / -1;
+}
+.installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(3n + 2) > dd,
+.installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(3n + 1) > dd {
+  grid-column: 2 / -1;
 }
 .installation-option-b .installation-option-row dt {
   display: flex;
@@ -2175,10 +2188,13 @@
   line-height: 20px;
   text-align: left;
 }
+.installation-option-b .installation-option-row.is-wide dt {
+  align-items: flex-start;
+}
 .installation-option-b .installation-option-row dt > span {
   min-width: 0;
-  white-space: nowrap;
   word-break: keep-all;
+  overflow-wrap: break-word;
 }
 .installation-option-b .installation-lock {
   width: 12px;
@@ -2189,7 +2205,7 @@
 }
 .installation-option-b .installation-option-row dd {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: flex-start;
   gap: 8px;
   min-width: 0;
@@ -2202,9 +2218,20 @@
   line-height: 20px;
   text-align: left;
 }
+.installation-option-b .installation-option-row dd::before {
+  content: '\200b';
+  width: 0;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+}
 .installation-option-b .installation-option-row.is-wide dd {
+  align-items: flex-start;
   line-height: 1.65;
   color: #374151;
+}
+.installation-option-b .installation-option-row.is-wide dd::before {
+  line-height: 1.65;
 }
 .installation-option-b .installation-option-row dd > .installation-field-value,
 .installation-option-b .installation-option-row dd > .installation-missing {
@@ -2242,35 +2269,53 @@
   font-size: 14px;
   font-weight: 400;
 }
+.installation-option-b .installation-copy-button,
+.installation-option-b .installation-protected-value {
+  align-self: center;
+}
 .installation-option-b .installation-copy-button {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
 }
 .installation-option-b dd.is-mono .installation-field-value {
   font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, 'JetBrains Mono', monospace;
   font-size: 14px;
   font-weight: 400;
+  line-height: 20px;
   font-variant-numeric: slashed-zero;
   font-feature-settings: 'zero' 1;
 }
 @container (max-width: 720px) {
   .installation-option-b .installation-option-rows:not(.is-span) {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: var(--kv-label) minmax(0, 1fr) var(--kv-label) minmax(0, 1fr);
   }
   .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(3n + 2),
   .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(3n + 1) {
+    grid-column: span 2;
+  }
+  .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(3n + 2) > dd,
+  .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(3n + 1) > dd {
     grid-column: auto;
   }
   .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(2n + 1) {
     grid-column: 1 / -1;
   }
+  .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(2n + 1) > dd {
+    grid-column: 2 / -1;
+  }
 }
 @container (max-width: 400px) {
   .installation-option-b .installation-option-rows:not(.is-span) {
-    grid-template-columns: 1fr;
+    grid-template-columns: var(--kv-label) minmax(0, 1fr);
   }
-  .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child {
-    grid-column: auto !important;
+  .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(3n + 2),
+  .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(3n + 1),
+  .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(2n + 1),
+  .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row {
+    grid-column: 1 / -1;
+  }
+  .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row > dd {
+    grid-column: auto;
   }
 }
 @media screen {
@@ -2287,7 +2332,9 @@
     background: #253449;
     color: #d5deea;
   }
-  :root[data-theme='dark'] .installation-option-b .installation-option-row,
+  :root[data-theme='dark'] .installation-option-b .installation-option-row {
+    background: #253449;
+  }
   :root[data-theme='dark'] .installation-option-b .installation-option-row dd,
   :root[data-theme='dark'] .installation-option-b .installation-option-row.is-wide .installation-field-value,
   :root[data-theme='dark'] .installation-option-b .installation-option-row.is-wide .installation-missing {

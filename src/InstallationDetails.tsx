@@ -3,7 +3,7 @@ import { canViewProtectedInformation } from './protection-policy';
 import { canManageBusiness } from './permissions';
 import { t } from './i18n';
 import { useLocale } from './use-locale';
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Tabs from '@radix-ui/react-tabs';
 import {
@@ -540,6 +540,45 @@ export function OptionTable({
   policyPending: boolean;
   codeOptions: readonly InstallationCodeOption[];
 }) {
+  const labelKey = fields.map((field) => `${field.key}\0${field.label}\0${field.secret}`).join('\n');
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    let cancel = false;
+    const measure = () => {
+      if (cancel || !root.isConnected) return;
+      let max = 0;
+      for (const node of root.querySelectorAll('dt')) {
+        if (!(node instanceof HTMLElement)) continue;
+        const span = node.querySelector(':scope > span');
+        if (!(span instanceof HTMLElement)) continue;
+        const previous = span.getAttribute('style');
+        span.style.position = 'absolute';
+        span.style.whiteSpace = 'nowrap';
+        span.style.width = 'max-content';
+        const text = span.getBoundingClientRect().width;
+        if (previous === null) span.removeAttribute('style');
+        else span.setAttribute('style', previous);
+        const lock = node.querySelector('.installation-lock');
+        const lockWidth = lock ? (lock.getBoundingClientRect().width || 12) + 5 : 0;
+        const style = getComputedStyle(node);
+        const pad = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight);
+        max = Math.max(max, Math.ceil(text + lockWidth + pad));
+      }
+      if (!max) return;
+      // ponytail: cap 180px so one long label cannot widen the card; raise it if a label must stay one line
+      const next = `${Math.min(180, Math.max(118, max))}px`;
+      if (root.style.getPropertyValue('--kv-label').trim() !== next) root.style.setProperty('--kv-label', next);
+    };
+    measure();
+    void document.fonts?.ready.then(() => {
+      if (!cancel) measure();
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [labelKey]);
   const blocks: Array<
     | { key: string; wide: false; fields: InstallationDetailField[] }
     | { key: string; wide: true; field: InstallationDetailField }
@@ -559,7 +598,7 @@ export function OptionTable({
   flush();
   if (!blocks.length) return null;
   return (
-    <div className="installation-kv">
+    <div className="installation-kv" ref={ref}>
       {blocks.map((block) =>
         block.wide ? (
           <dl key={block.key} className="installation-option-rows is-span">
