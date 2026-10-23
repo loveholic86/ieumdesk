@@ -51,6 +51,42 @@ test('option rows render one cell per field and no pad cells', async () => {
   assert.equal(single.includes('is-pad'), false);
 });
 
+function rowRuns(markup: string) {
+  return [...markup.matchAll(/<dl class="([^"]*)">([\s\S]*?)<\/dl>/g)].map((match) => ({
+    span: match[1].includes('is-span'),
+    rows: (match[2].match(/class="installation-option-row(?: |")/g) ?? []).length,
+  }));
+}
+
+test('each compact run ends on its last pair and has no empty cells', async () => {
+  const { OptionTable } = await import('../src/InstallationDetails.tsx');
+  const markup = renderToStaticMarkup(
+    createElement(OptionTable, {
+      sectionId: 'installation',
+      policyPending: false,
+      codeOptions: [],
+      fields: [field('version'), field('setup_date'), field('note', '메모'), field('engineer')],
+    }),
+  );
+  assert.equal(markup.includes('is-pad'), false);
+  assert.equal(markup.includes('<dt></dt>'), false);
+  assert.deepEqual(rowRuns(markup), [
+    { span: false, rows: 2 },
+    { span: true, rows: 1 },
+    { span: false, rows: 1 },
+  ]);
+  const four = renderToStaticMarkup(
+    createElement(OptionTable, {
+      sectionId: 'installation',
+      policyPending: false,
+      codeOptions: [],
+      fields: [field('version'), field('setup_date'), field('patch_date'), field('engineer')],
+    }),
+  );
+  assert.deepEqual(rowRuns(four), [{ span: false, rows: 4 }]);
+  assert.equal(four.includes('is-pad'), false);
+});
+
 function originRow(part: InstallationAccessOriginPart, fields: InstallationDetailField[]): InstallationDetailRow {
   return { id: part, origin: { group: 'a'.repeat(64), part }, fields };
 }
