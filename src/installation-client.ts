@@ -123,7 +123,7 @@ export function prepareInstallationSectionOperations(
     }
     const payload = prepareInstallationRow(row, title, values, removed, additions);
     const changed = Boolean(
-      payload.title !== row.title ||
+      (payload.title !== undefined && payload.title !== row.title) ||
       (payload.values && Object.keys(payload.values).length) ||
       payload.removeFields?.length ||
       payload.addFields?.length,
@@ -215,13 +215,74 @@ export function prepareInstallationSection(
   return changes;
 }
 
-const unusedAccessFields = new Set([
-  'access_reqst_date',
-  'access_reqst_enddate',
-  'access_url',
-  'access_id',
-  'access_pwd',
-]);
+const accessPartOrder: Record<string, number> = { address: 0, vpn: 1, access: 2 };
+
+/** One migrated source is one list item. Other rows stay individual items. */
+export function accessRecordItems(rows: readonly InstallationDetailRow[]) {
+  const items: { id: string; rows: InstallationDetailRow[] }[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const group = row.origin?.group;
+    if (!group) {
+      items.push({ id: row.id, rows: [row] });
+      continue;
+    }
+    if (seen.has(group)) continue;
+    seen.add(group);
+    items.push({
+      id: group,
+      rows: rows
+        .filter((item) => item.origin?.group === group)
+        .slice()
+        .sort(
+          (left, right) =>
+            (accessPartOrder[left.origin?.part ?? ''] ?? 9) -
+            (accessPartOrder[right.origin?.part ?? ''] ?? 9),
+        ),
+    });
+  }
+  return items;
+}
+
+/** Keep the selected access rows, plus rows created after editing started. One record, or any other tab, stays whole. */
+export function installationAccessEditingDetails<T extends InstallationDetails>(
+  details: T,
+  selectedIds: readonly string[] | undefined,
+  baselineIds: readonly string[] | undefined,
+): T {
+  if (!selectedIds) return details;
+  const selected = new Set(selectedIds);
+  const baseline = new Set(baselineIds ?? selectedIds);
+  return {
+    ...details,
+    sections: details.sections.map((section) =>
+      section.id === 'access'
+        ? {
+            ...section,
+            rows: section.rows.filter((row) => selected.has(row.id) || !baseline.has(row.id)),
+          }
+        : section,
+    ),
+  };
+}
+
+export function installationDetailsForAccessEdit<T extends InstallationDetails>(
+  details: T,
+  selectedId: string,
+): T {
+  const section = details.sections.find((item) => item.id === 'access');
+  if (!section) return details;
+  const items = accessRecordItems(section.rows);
+  if (items.length <= 1) return details;
+  const selected = items.find((item) => item.id === selectedId) ?? items[0];
+  return installationAccessEditingDetails(
+    details,
+    selected.rows.map((row) => row.id),
+    section.rows.map((row) => row.id),
+  );
+}
+
+const unusedAccessFields = new Set(['access_reqst_date', 'access_id', 'access_pwd']);
 
 /** Hide retired controls in both reading and editing without deleting stored values. */
 export function visibleInstallationSection(section: InstallationDetailSection): InstallationDetailSection {
@@ -245,6 +306,23 @@ function validServerTimestamp(value: unknown): boolean {
   if (typeof value !== 'string' || !serverTimestamp.test(value)) return false;
   const date = new Date(value);
   return Number.isFinite(date.getTime()) && date.toISOString() === value;
+}
+
+const accessOriginParts = new Set(['address', 'vpn', 'access']);
+
+function validAccessOrigin(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!object(value)) return false;
+  const keys = Object.keys(value);
+  return (
+    keys.length === 2 &&
+    keys.includes('group') &&
+    keys.includes('part') &&
+    typeof value.group === 'string' &&
+    /^[a-f0-9]{64}$/.test(value.group) &&
+    typeof value.part === 'string' &&
+    accessOriginParts.has(value.part)
+  );
 }
 
 function validAccessNotes(value: unknown): boolean {
@@ -313,6 +391,7 @@ export function validateInstallationDetails(
           rowIds.has(row.id) ||
           (row.managed !== undefined && row.managed !== 'metadata') ||
           (row.managed === 'metadata' && !value.metadataRevision) ||
+          !validAccessOrigin(row.origin) ||
           !Array.isArray(row.fields)
         )
           return false;
@@ -386,7 +465,7 @@ export function prepareInstallationRow(
   )
     throw new Error('기본 정보의 이름과 항목 구성은 변경할 수 없습니다. 항목 값을 수정해 주세요.');
   if (!normalizedTitle || normalizedTitle.length > 120 || /[\u0000-\u001f\u007f]/.test(normalizedTitle))
-    throw new Error('기록 이름을 제어문자 없이 120자 이내로 입력해 주세요.');
+    throw new Error('구분명을 제어문자 없이 120자 이내로 입력해 주세요.');
   const fields = added.map(({ key, label, value }) => ({ key: key.trim(), label: label.trim(), value }));
   const remaining =
     row?.fields.filter((field) => !removed.includes(field.key)).map((field) => field.key) ?? [];
@@ -427,7 +506,11 @@ export function prepareInstallationRow(
     if (Object.keys(changed).length === 0) throw new Error('변경한 기본 정보가 없습니다.');
     return { values: changed };
   }
-  return row
-    ? { title: normalizedTitle, values: changed, removeFields: [...new Set(removed)], addFields: fields }
-    : { title: normalizedTitle, fields };
+  const patch = { values: changed, removeFields: [...new Set(removed)], addFields: fields };
+  // Origin titles stay as stored. The editor shows a fixed label and must not PATCH title.
+  return row?.origin
+    ? patch
+    : row
+      ? { title: normalizedTitle, ...patch }
+      : { title: normalizedTitle, fields };
 }

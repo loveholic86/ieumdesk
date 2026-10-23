@@ -149,6 +149,18 @@ const builtInRowTitles = new Set([
 ]);
 const numberedRowTitle = /^(?:이관 원본 )?(?:고객사 연결|YETA 로그인|SAP|별도 설정|고객 전달용 설정|설정) \d+$/;
 
+export function accessOriginGroupLabel(row: Pick<InstallationDetailRow, 'origin'>) {
+  const part =
+    row.origin?.part === 'address'
+      ? 'Address'
+      : row.origin?.part === 'vpn'
+        ? 'VPN'
+        : row.origin?.part === 'access'
+          ? '접근 정보'
+          : '';
+  return part ? `${t('기존 접근 정보')} · ${t(part)}` : '';
+}
+
 export function installationRowTitle(row: Pick<InstallationDetailRow, 'id' | 'title'>) {
   if (!row.title || row.id.startsWith('workspace-row-')) return row.title;
   return builtInRowTitles.has(row.title) || numberedRowTitle.test(row.title) ? t(row.title) : row.title;

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import pg from 'pg';
 import type {
+  InstallationAccessOriginPart,
   InstallationDetails,
   InstallationDetailField,
   InstallationDetailSection,
@@ -309,6 +310,18 @@ export function parseInstallationArchive(raw: string): Row {
   return parsed as Row;
 }
 
+function demoMigratedAccessRow(): Row {
+  return {
+    domainurl: 'legacy.example.com',
+    external_ip: '203.0.113.10',
+    vpnsv_ip: '203.0.113.20',
+    ssl_apply_yn: 'Y',
+    access_type: '방문 접속',
+    access_reqst_enddate: '2026-12-31',
+    access_url: 'https://legacy.example.com/gate',
+  };
+}
+
 function scalar(value: unknown): string {
   if (value === null || value === undefined) return '';
   if (typeof value === 'string' || typeof value === 'boolean' || typeof value === 'number')
@@ -417,6 +430,7 @@ export class InstallationDetailsService implements InstallationDetailsAccess {
       sourceKey: string,
       fields: Field[],
       imported: boolean,
+      part?: InstallationAccessOriginPart,
     ) => {
       const group = sections.find((item) => item.id === section)!;
       if (imported) group.imported = true;
@@ -446,7 +460,17 @@ export class InstallationDetailsService implements InstallationDetailsAccess {
           present,
         };
       });
-      group.rows.push({ id: rowId, title, fields: rendered });
+      group.rows.push({
+        id: rowId,
+        title,
+        ...(part ? { origin: { group: opaque('access-origin', table, sourceKey), part } } : {}),
+        fields: rendered,
+      });
+    };
+    const addSetupAccess = (row: Row, table: string, sourceKey: string) => {
+      add('access', '이관 원본 Address', row, table, sourceKey, ADDRESS, true, 'address');
+      add('access', '이관 원본 VPN', row, table, sourceKey, VPN, true, 'vpn');
+      add('access', '이관 원본 접근 정보', row, table, sourceKey, ACCESS, true, 'access');
     };
     add('installation', '현재 설치 정보', scope.data, 'current', scope.id, CURRENT, false);
     if (scope.batch) {
@@ -479,9 +503,7 @@ export class InstallationDetailsService implements InstallationDetailsAccess {
           add(section, title, row, archive.source_table, archive.source_key, fields, true);
         if (archive.source_table === 'setup_tb') {
           addRow('installation', '이관 원본 설치 정보', BASIC);
-          addRow('access', '이관 원본 Address', ADDRESS);
-          addRow('access', '이관 원본 VPN', VPN);
-          addRow('access', '이관 원본 접근 정보', ACCESS);
+          addSetupAccess(row, archive.source_table, archive.source_key);
           addRow('server', '이관 원본 서버 정보', SERVER);
         } else if (archive.source_table === 'setup_cominfo_tb')
           addRow('installation', `이관 원본 고객사 연결 ${ordinal}`, CONNECTION);
@@ -493,6 +515,10 @@ export class InstallationDetailsService implements InstallationDetailsAccess {
         else if (archive.source_table === 'setting_file_tb')
           addRow('files', `이관 원본 고객 전달용 설정 ${ordinal}`, FILES);
       }
+    } else {
+      const code = scalar(scope.data.systemCode);
+      if (code === 'DEMO-SYS-2' || code === 'DEMO-MIG')
+        addSetupAccess(demoMigratedAccessRow(), 'setup_tb', opaque('demo-setup-access', scope.id));
     }
     for (const section of sections) {
       if (!section.imported) section.note = '이 설치에 연결된 이관 자료가 없습니다.';

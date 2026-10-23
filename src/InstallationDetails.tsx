@@ -17,6 +17,7 @@ import {
   LockKeyhole,
   Network,
   Pencil,
+  Plus,
   RefreshCw,
   Server,
   Settings2,
@@ -47,14 +48,19 @@ import {
 } from './installation-code-options';
 import { runInstallationSavePlan } from './installation-save-flow';
 import {
+  accessRecordItems,
+  installationAccessEditingDetails,
+  installationDetailsForAccessEdit,
   validateInstallationDetails,
   installationFieldMasked,
   visibleInstallationSection,
   prepareInstallationSectionOperations,
   type InstallationSectionDraft,
   type InstallationSectionOperation,
+  type RowDraftPayload,
 } from './installation-client';
 import InstallationFiles from './InstallationFiles';
+import InstallationRecordEditor from './InstallationRecordEditor';
 import InstallationSectionEditor from './InstallationSectionEditor';
 import { InstallationDiscardDialog, InstallationEditorContext } from './InstallationEditorLayout';
 import InstallationAccessNotes from './InstallationAccessNotes';
@@ -173,6 +179,185 @@ function DataValue({
         field.optionValue,
       ) || <span className="installation-missing">{t('미등록')}</span>}
     </span>
+  );
+}
+
+function passwordField(field: { key: string; label: string }) {
+  return /pwd|password|passwd|비밀번호|비번|패스워드/i.test(`${field.key} ${field.label}`);
+}
+
+const accessAddressKeys = [
+  'access_url',
+  'domainurl',
+  'external_ip',
+  'internal_ip',
+  'vpnsv_ip',
+  'gateway',
+  'hostname',
+  'address',
+] as const;
+type AccessRecordItem = ReturnType<typeof accessRecordItems>[number];
+
+function accessField(rows: readonly InstallationDetailRow[], key: string) {
+  for (const row of rows) {
+    const field = row.fields.find((item) => item.key === key);
+    if (field) return field;
+  }
+  return undefined;
+}
+
+function accessListAddress(rows: readonly InstallationDetailRow[]) {
+  for (const key of accessAddressKeys)
+    for (const row of rows) {
+      const field = row.fields.find((item) => item.key === key);
+      if (field && !passwordField(field)) return field;
+    }
+  return undefined;
+}
+
+function accessItemTitle(item: AccessRecordItem) {
+  return item.rows.some((row) => row.origin)
+    ? t('기존 접근 정보')
+    : installationRowTitle(item.rows[0]) || t('미등록');
+}
+
+function AccessListCell({
+  field,
+  policyPending,
+  codeOptions,
+}: {
+  field: InstallationDetailField | undefined;
+  policyPending: boolean;
+  codeOptions: readonly InstallationCodeOption[];
+}) {
+  if (!field || passwordField(field)) return <span className="installation-missing">{t('미등록')}</span>;
+  return (
+    <DataValue sectionId="access" field={field} policyPending={policyPending} codeOptions={codeOptions} />
+  );
+}
+
+function AccessRecordList({
+  items,
+  selectedId,
+  policyPending,
+  codeOptions,
+  canManage,
+  locked,
+  onSelect,
+  onAdd,
+}: {
+  items: AccessRecordItem[];
+  selectedId: string;
+  policyPending: boolean;
+  codeOptions: readonly InstallationCodeOption[];
+  canManage: boolean;
+  locked: boolean;
+  onSelect: (id: string) => void;
+  onAdd: () => void;
+}) {
+  useLocale();
+  const spoken = (field: InstallationDetailField | undefined) => {
+    if (!field || !field.present || passwordField(field)) return t('미등록');
+    if (installationFieldMasked(field, policyPending)) return t('보호됨');
+    return (
+      installationOptionDisplayValue(
+        codeOptions,
+        installationCodeGroupForField('access', field.key, field.label),
+        installationFieldValue(field),
+        field.optionValue,
+      ) || t('미등록')
+    );
+  };
+  return (
+    <div className="installation-table-card">
+      <div className="installation-card-heading">
+        <span className="installation-small-icon">
+          <Network size={17} />
+        </span>
+        <h3>{t('접근 정보')}</h3>
+        <span className="installation-count">
+          {items.length}
+          {t('건')}
+        </span>
+        {canManage && (
+          <div className="installation-row-actions">
+            <button type="button" className="button" disabled={locked} onClick={onAdd}>
+              <Plus size={14} />
+              {t('{0} 추가', [t('접근 정보')])}
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="installation-table-scroll">
+        <table
+          className="installation-data-table installation-access-list"
+          role="grid"
+          aria-label={t('{0} 목록', [t('접근 정보')])}
+        >
+          <thead>
+            <tr>
+              <th scope="col">{t('구분명')}</th>
+              <th scope="col">{t('접근 유형')}</th>
+              <th scope="col">{t('접속 주소')}</th>
+              <th scope="col">{t('접근 종료일')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => {
+              const typeField = accessField(item.rows, 'access_type');
+              const addressField = accessListAddress(item.rows);
+              const endField = accessField(item.rows, 'access_reqst_enddate');
+              const title = accessItemTitle(item);
+              const label = [
+                `${t('구분명')} ${title}`,
+                `${t('접근 유형')} ${spoken(typeField)}`,
+                `${t('접속 주소')} ${spoken(addressField)}`,
+                `${t('접근 종료일')} ${spoken(endField)}`,
+              ].join(', ');
+              return (
+                <tr
+                  key={item.id}
+                  role="row"
+                  tabIndex={0}
+                  aria-selected={item.id === selectedId}
+                  aria-label={label}
+                  className={item.id === selectedId ? 'is-selected' : undefined}
+                  onClick={() => onSelect(item.id)}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    onSelect(item.id);
+                  }}
+                >
+                  <td>{title}</td>
+                  <td>
+                    <AccessListCell
+                      field={typeField}
+                      policyPending={policyPending}
+                      codeOptions={codeOptions}
+                    />
+                  </td>
+                  <td>
+                    <AccessListCell
+                      field={addressField}
+                      policyPending={policyPending}
+                      codeOptions={codeOptions}
+                    />
+                  </td>
+                  <td>
+                    <AccessListCell
+                      field={endField}
+                      policyPending={policyPending}
+                      codeOptions={codeOptions}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
@@ -378,7 +563,12 @@ export default function InstallationDetails({
     scopeKey: string;
     sectionId: InstallationSectionId;
     details: VersionedDetails;
+    recordTitle?: string;
+    rowIds?: readonly string[];
+    baselineIds?: readonly string[];
   } | null>(null);
+  const [accessRecordEdit, setAccessRecordEdit] = useState<{ scopeKey: string; mode: 'create' } | null>(null);
+  const [accessRowId, setAccessRowId] = useState('');
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState('');
   const [status, setStatus] = useState('');
@@ -393,11 +583,19 @@ export default function InstallationDetails({
   const visibleDetails = cached?.scopeKey === scopeKey ? cached.details : null;
   const visibleSectionEditing = sectionEditing?.scopeKey === scopeKey && canManage ? sectionEditing : null;
   const base = `/records/installations/${encodeURIComponent(record?.id ?? '')}`;
-  const editingActive = Boolean(visibleSectionEditing || basicEditor);
+  const accessEdit = accessRecordEdit?.scopeKey === scopeKey && canManage ? accessRecordEdit : null;
+  const accessEditActive = accessEdit?.mode === 'create';
+  const editingActive = Boolean(visibleSectionEditing || basicEditor || accessEditActive);
   const interactionBusy = busy || basicBusy;
   const previousEditing = useRef('');
   const basicEditButton = useRef<HTMLButtonElement>(null);
-  const editingFocusKey = visibleSectionEditing ? 'section' : basicEditor ? 'basic' : '';
+  const editingFocusKey = visibleSectionEditing
+    ? 'section'
+    : accessEditActive
+      ? 'record'
+      : basicEditor
+        ? 'basic'
+        : '';
   useEffect(() => {
     const previous = previousEditing.current;
     previousEditing.current = editingFocusKey;
@@ -423,6 +621,7 @@ export default function InstallationDetails({
     setDiscardOpen(false);
     setEditingDirty(false);
     setSectionEditing(null);
+    setAccessRecordEdit(null);
     setActionError('');
     if (basicEditor) onBasicCancel?.();
   };
@@ -440,6 +639,8 @@ export default function InstallationDetails({
     ++generation.current;
     operation.current?.abort();
     setSectionEditing(null);
+    setAccessRecordEdit(null);
+    setAccessRowId('');
     setActionError('');
     setStatus('');
     setBusy(false);
@@ -588,6 +789,7 @@ export default function InstallationDetails({
     operation.current?.abort();
     setCached(null);
     setSectionEditing(null);
+    setAccessRecordEdit(null);
     setDiscardOpen(false);
     setEditingDirty(false);
     onClose();
@@ -598,7 +800,7 @@ export default function InstallationDetails({
     body: Record<string, unknown>,
     success: string,
     revision: number,
-  ): Promise<boolean> => {
+  ): Promise<VersionedDetails | false> => {
     if (
       !canManage ||
       busy ||
@@ -630,7 +832,7 @@ export default function InstallationDetails({
       setSectionEditing(null);
       setStatus(success);
       onChanged?.();
-      return true;
+      return result;
     } catch (reason) {
       if (token === generation.current && !controller.signal.aborted)
         setActionError(reason instanceof Error ? reason.message : '저장하지 못했습니다. 다시 확인해 주세요.');
@@ -641,6 +843,33 @@ export default function InstallationDetails({
         operation.current = null;
       }
     }
+  };
+
+  const saveAccessRecord = async (payload: RowDraftPayload) => {
+    if (!accessEdit || !visibleDetails || !record) return;
+    const revision = visibleDetails.revision;
+    const previousIds = new Set(
+      visibleDetails.sections.find((item) => item.id === 'access')?.rows.map((row) => row.id) ?? [],
+    );
+    const saved = await mutate(
+      `${base}/rows`,
+      'POST',
+      { sectionId: 'access', title: payload.title, fields: payload.fields ?? [] },
+      '접근 정보를 저장했습니다.',
+      revision,
+    );
+    if (!saved) return;
+    setAccessRecordEdit(null);
+    const created = saved.sections
+      .find((item) => item.id === 'access')
+      ?.rows.find((row) => !previousIds.has(row.id));
+    if (created) setAccessRowId(created.id);
+  };
+  const beginAccessRecord = () => {
+    if (!canManage || interactionBusy || policyPending || editingActive) return;
+    setActionError('');
+    setStatus('');
+    setAccessRecordEdit({ scopeKey, mode: 'create' });
   };
 
   const saveSection = async (
@@ -755,7 +984,12 @@ export default function InstallationDetails({
           saved++;
           committed(change, result, previous);
           setSectionEditing((current) =>
-            current?.scopeKey === scopeKey ? { ...current, details: latest } : current,
+            current?.scopeKey === scopeKey
+              ? {
+                  ...current,
+                  details: installationAccessEditingDetails(latest, current.rowIds, current.baselineIds),
+                }
+              : current,
           );
           if (!identity.current.policyPending) setCached({ scopeKey, details: latest });
         },
@@ -811,7 +1045,12 @@ export default function InstallationDetails({
         throw new Error('설치 상세 정보를 확인하지 못했습니다.');
       if (token !== generation.current || identity.current.scopeKey !== scopeKey) return false;
       setSectionEditing((current) =>
-        current?.scopeKey === scopeKey ? { ...current, details: result } : current,
+        current?.scopeKey === scopeKey
+          ? {
+              ...current,
+              details: installationAccessEditingDetails(result, current.rowIds, current.baselineIds),
+            }
+          : current,
       );
       setCached({ scopeKey, details: result });
       onChanged?.();
@@ -865,9 +1104,14 @@ export default function InstallationDetails({
     );
   else
     content = sectionConfig.map((config) => {
-      const section = visibleInstallationSection(
-        visibleDetails!.sections.find((item) => item.id === config.id)!,
-      );
+      const sourceSection = visibleDetails!.sections.find((item) => item.id === config.id)!;
+      const section = visibleInstallationSection(sourceSection);
+      const accessItems = config.id === 'access' ? accessRecordItems(sourceSection.rows) : [];
+      const selectedAccessItem = accessItems.find((item) => item.id === accessRowId) ?? accessItems[0];
+      const selectedAccessRows = (selectedAccessItem?.rows ?? [])
+        .map((row) => section.rows.find((item) => item.id === row.id))
+        .filter((row): row is InstallationDetailRow => Boolean(row));
+      const recordCount = config.id === 'access' ? accessItems.length : section.rows.length;
       const accessNotes =
         config.id === 'access' ? (
           <InstallationAccessNotes
@@ -877,25 +1121,37 @@ export default function InstallationDetails({
             canManage={false}
             busy={busy || editingActive}
             policyPending={policyPending}
-            onCreate={(value, revision) =>
-              mutate(`${base}/access-notes`, 'POST', { content: value }, '참고사항을 등록했습니다.', revision)
-            }
-            onUpdate={(noteId, value, revision) =>
-              mutate(
-                `${base}/access-notes/${encodeURIComponent(noteId)}`,
-                'PATCH',
-                { content: value },
-                '참고사항을 수정했습니다.',
-                revision,
+            onCreate={async (value, revision) =>
+              Boolean(
+                await mutate(
+                  `${base}/access-notes`,
+                  'POST',
+                  { content: value },
+                  '참고사항을 등록했습니다.',
+                  revision,
+                ),
               )
             }
-            onDelete={(noteId, revision) =>
-              mutate(
-                `${base}/access-notes/${encodeURIComponent(noteId)}`,
-                'DELETE',
-                {},
-                '참고사항을 삭제했습니다.',
-                revision,
+            onUpdate={async (noteId, value, revision) =>
+              Boolean(
+                await mutate(
+                  `${base}/access-notes/${encodeURIComponent(noteId)}`,
+                  'PATCH',
+                  { content: value },
+                  '참고사항을 수정했습니다.',
+                  revision,
+                ),
+              )
+            }
+            onDelete={async (noteId, revision) =>
+              Boolean(
+                await mutate(
+                  `${base}/access-notes/${encodeURIComponent(noteId)}`,
+                  'DELETE',
+                  {},
+                  '참고사항을 삭제했습니다.',
+                  revision,
+                ),
               )
             }
             error={actionError}
@@ -907,7 +1163,9 @@ export default function InstallationDetails({
           value={config.id}
           className={
             'installation-tab-panel' +
-            (visibleSectionEditing?.sectionId === config.id ? ' is-group-editing' : '')
+            (visibleSectionEditing?.sectionId === config.id || (config.id === 'access' && accessEditActive)
+              ? ' is-group-editing'
+              : '')
           }
         >
           <div className="installation-section-heading">
@@ -920,9 +1178,9 @@ export default function InstallationDetails({
             </div>
             {config.id !== 'files' && (
               <div className="installation-section-actions">
-                {section.rows.length > 0 && (
+                {recordCount > 0 && (
                   <span className="installation-section-count">
-                    {section.rows.length}
+                    {recordCount}
                     {t('개 기록')}
                   </span>
                 )}
@@ -944,6 +1202,7 @@ export default function InstallationDetails({
             <InstallationSectionEditor
               key={`${scopeKey}:${config.id}`}
               details={visibleSectionEditing.details}
+              recordTitle={visibleSectionEditing.recordTitle}
               sectionId={config.id}
               busy={busy}
               policyPending={policyPending}
@@ -965,13 +1224,54 @@ export default function InstallationDetails({
             />
           ) : (
             <>
-              {section.rows.length ? (
-                <SectionRows
-                  section={section}
-                  policyPending={policyPending}
-                  accessNotes={accessNotes}
-                  codeOptions={codeOptions}
-                />
+              {recordCount ? (
+                config.id === 'access' && accessItems.length > 1 && selectedAccessItem ? (
+                  <div className="installation-access-browser">
+                    <AccessRecordList
+                      items={accessItems}
+                      selectedId={selectedAccessItem.id}
+                      policyPending={policyPending}
+                      codeOptions={codeOptions}
+                      canManage={canManage}
+                      locked={interactionBusy || policyPending || editingActive}
+                      onSelect={(id) => {
+                        if (interactionBusy || editingActive) return;
+                        setAccessRowId(id);
+                      }}
+                      onAdd={() => beginAccessRecord()}
+                    />
+                    {accessEditActive ? (
+                      <InstallationRecordEditor
+                        key="create"
+                        sectionId="access"
+                        sectionTitle={section.title}
+                        busy={busy}
+                        error={actionError}
+                        policyPending={policyPending}
+                        onClose={cancelEditing}
+                        onSave={(payload) => void saveAccessRecord(payload)}
+                      />
+                    ) : (
+                      <SectionRows
+                        section={{ ...section, rows: selectedAccessRows }}
+                        policyPending={policyPending}
+                        accessNotes={accessNotes}
+                        codeOptions={codeOptions}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <SectionRows
+                    section={
+                      config.id === 'access'
+                        ? { ...section, rows: selectedAccessRows.length ? selectedAccessRows : section.rows }
+                        : section
+                    }
+                    policyPending={policyPending}
+                    accessNotes={accessNotes}
+                    codeOptions={codeOptions}
+                  />
+                )
               ) : (
                 <div className="installation-empty">
                   <span>
@@ -989,7 +1289,7 @@ export default function InstallationDetails({
                   </p>
                 </div>
               )}
-              {!section.rows.length && accessNotes}
+              {!recordCount && accessNotes}
             </>
           )}
         </Tabs.Content>
@@ -1201,11 +1501,32 @@ export default function InstallationDetails({
                           (!canManage && tab !== 'installation')
                         }
                         onClick={() => {
-                          if (canManage && visibleDetails) {
-                            setActionError('');
-                            setStatus('');
+                          if (!(canManage && visibleDetails)) {
+                            onEdit();
+                            return;
+                          }
+                          setActionError('');
+                          setStatus('');
+                          if (tab !== 'access') {
                             setSectionEditing({ scopeKey, sectionId: tab, details: visibleDetails });
-                          } else onEdit();
+                            return;
+                          }
+                          const rows =
+                            visibleDetails.sections.find((item) => item.id === 'access')?.rows ?? [];
+                          const items = accessRecordItems(rows);
+                          const selected = items.find((item) => item.id === accessRowId) ?? items[0];
+                          const many = items.length > 1 && Boolean(selected);
+                          setSectionEditing({
+                            scopeKey,
+                            sectionId: tab,
+                            details:
+                              many && selected
+                                ? installationDetailsForAccessEdit(visibleDetails, selected.id)
+                                : visibleDetails,
+                            recordTitle: many && selected ? accessItemTitle(selected) : undefined,
+                            rowIds: many && selected ? selected.rows.map((row) => row.id) : undefined,
+                            baselineIds: many ? rows.map((row) => row.id) : undefined,
+                          });
                         }}
                       >
                         <Pencil size={15} />

@@ -65,6 +65,7 @@ id_ed25519*
 !/tests/installation-save-flow.test.ts
 !/tests/installation-draft-reconcile.test.ts
 !/tests/installation-code-options.test.ts
+!/tests/installation-origin-save.test.ts
 /server/*.test.ts
 /deploy/
 /scripts/cloud-*.ts

@@ -550,6 +550,26 @@
 .installation-data-table tbody tr:hover {
   background: var(--theme-surface, #fcfdff);
 }
+.installation-access-browser {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.installation-access-list tbody tr {
+  cursor: pointer;
+}
+.installation-access-list tbody tr.is-selected td {
+  background: color-mix(in srgb, var(--theme-accent, #175cd3) 16%, var(--theme-surface, #fff));
+  color: var(--theme-text, #24344a);
+}
+.installation-access-list tbody tr.is-selected td:first-child {
+  box-shadow: inset 4px 0 0 var(--theme-accent, #175cd3);
+  color: var(--theme-text, #24344a);
+}
+.installation-access-list tbody tr:focus-visible {
+  outline: 2px solid var(--theme-accent, #175cd3);
+  outline-offset: -2px;
+}
 .installation-data-table td:first-child {
   color: var(--theme-muted, #748dab);
 }

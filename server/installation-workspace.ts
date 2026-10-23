@@ -25,6 +25,7 @@ import {
   managedInstallationDetails,
   managedInstallationSchema,
   managedMetadataRowId,
+  ordinaryInstallationTitle,
   installationAccessNoteIdSchema,
   installationAccessNoteContentSchema,
   type ManagedInstallationState,
@@ -317,6 +318,7 @@ export class InstallationWorkspaceService {
       vault?: () => Promise<LegacyVault>;
       metadata?: InstallationMetadataAccess;
       now?: () => number;
+      mode?: 'demo' | 'postgres';
     } = {},
   ) {
     this.legacy = new LegacyInstallationWorkspaceService(base, repository, options);
@@ -353,14 +355,16 @@ export class InstallationWorkspaceService {
     const loaded = await this.document(id);
     // Current-record lookup also rejects archived/deleted installations without opening the import archive.
     const record = await this.options.metadata?.read(id);
-    if (loaded.state)
+    if (loaded.state) {
+      const state = await this.withDemoAccessOrigins(id, loaded.state);
       return {
         ...loaded,
-        state: loaded.state,
+        state,
         record,
         metadataPatch: {} as Partial<RecordInput>,
         preservedEdits: 0,
       };
+    }
     const prepared = await this.legacy.managed(id, record);
     if (prepared.expectedRevision !== loaded.revision) throw conflict();
     return {
@@ -371,13 +375,88 @@ export class InstallationWorkspaceService {
       preservedEdits: prepared.preservedEdits,
     };
   }
+  /** Demo workspaces saved before the fixture existed do not contain its rows. Copy a wholly missing group into memory; the next write persists those ordinary rows. A deleted group that is entirely gone is copied again. */
+  private async withDemoAccessOrigins(id: string, state: ManagedInstallationState) {
+    if (this.options.mode !== 'demo') return state;
+    const raw = await this.base.details(id, { protected: false, raw: true });
+    const shown = await this.base.details(id, { protected: false });
+    const rawRows =
+      raw.sections.find((section) => section.id === 'access')?.rows.filter((row) => row.origin) ?? [];
+    const access = state.sections.find((section) => section.id === 'access');
+    if (!rawRows.length || !access) return state;
+    const ids = new Set(access.rows.map((row) => row.id));
+    const groups = new Map<string, InstallationDetailRow[]>();
+    for (const row of rawRows) {
+      const members = groups.get(row.origin!.group) ?? [];
+      members.push(row);
+      groups.set(row.origin!.group, members);
+    }
+    const next = structuredClone(state);
+    const target = next.sections.find((section) => section.id === 'access')!;
+    let added = false;
+    for (const members of groups.values()) {
+      if (members.some((row) => ids.has(row.id))) continue;
+      for (const row of members) {
+        const display = shown.sections
+          .find((section) => section.id === 'access')
+          ?.rows.find((item) => item.id === row.id);
+        if (!display || display.fields.length !== row.fields.length) continue;
+        target.rows.push({
+          id: row.id,
+          title: ordinaryInstallationTitle(row.title),
+          fields: row.fields.map((field) => {
+            const visible = display.fields.find((item) => item.key === field.key);
+            return {
+              id: field.id,
+              key: field.key,
+              label: field.label,
+              value: field.value,
+              displayValue: visible?.value ?? '',
+              secret: visible?.secret ?? field.secret,
+            };
+          }),
+        });
+        added = true;
+      }
+    }
+    if (!added) return state;
+    const parsed = managedInstallationSchema.safeParse(next);
+    return parsed.success ? parsed.data : state;
+  }
+  private async attachAccessOrigins(id: string, details: InstallationDetails) {
+    let base: InstallationDetails;
+    try {
+      base = await this.base.details(id);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 503) return;
+      throw error;
+    }
+    const sources = new Map(
+      (base.sections.find((section) => section.id === 'access')?.rows ?? []).flatMap((row) =>
+        row.origin ? ([[row.id, row]] as const) : [],
+      ),
+    );
+    const section = details.sections.find((item) => item.id === 'access');
+    if (!section) return;
+    for (const row of section.rows) {
+      const source = sources.get(row.id);
+      if (!source?.origin) continue;
+      row.origin = { group: source.origin.group, part: source.origin.part };
+      if (source.title) row.title = source.title;
+    }
+  }
   async details(id: string, options: { protected?: boolean; raw?: boolean } = {}) {
     const current = await this.effective(id);
     const record = current.record ? { ...current.record, ...current.metadataPatch } : undefined;
-    return protectInstallationDetails(
-      managedInstallationDetails(id, current.state, current.revision, record, Boolean(options.raw)),
-      options.protected !== false,
+    const details = managedInstallationDetails(
+      id,
+      current.state,
+      current.revision,
+      record,
+      Boolean(options.raw),
     );
+    await this.attachAccessOrigins(id, details);
+    return protectInstallationDetails(details, options.protected !== false);
   }
   async prepareMaterialization(id: string): Promise<InstallationMaterialization> {
     const before = await this.document(id),
