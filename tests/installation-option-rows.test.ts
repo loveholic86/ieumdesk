@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { register } from 'node:module';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -129,4 +130,31 @@ test('migrated access view packs Address and VPN together and keeps wide rows la
     migratedAccessViewBlocks([address], true)[0].fields.map((item) => item.key),
     ['ssh_port', 'external_ip', 'ssl_apply_yn', 'domainurl'],
   );
+});
+
+test('a card shares one label column and the copy button follows the value', async () => {
+  const css = readFileSync(new URL('../src/installation-details.css', import.meta.url), 'utf8');
+  const card = css.slice(css.indexOf('.installation-option-b .installation-kv'));
+  assert.match(card, /\.installation-option-b \.installation-kv \{[^}]*--kv-label: 118px;/s);
+  assert.match(card, /grid-template-columns: subgrid;/);
+  assert.match(card, /grid-template-columns: var\(--kv-label\) minmax\(0, 1fr\) var\(--kv-label\) minmax\(0, 1fr\) var\(--kv-label\) minmax\(0, 1fr\);/);
+  assert.equal(card.includes('minmax(118px, max-content)'), false);
+  assert.equal(card.includes('auto !important'), false);
+  const { OptionTable } = await import('../src/InstallationDetails.tsx');
+  const markup = renderToStaticMarkup(
+    createElement(OptionTable, {
+      sectionId: 'access',
+      policyPending: false,
+      codeOptions: [],
+      fields: [field('external_ip', '203.0.113.10'), field('ssh_port', '22'), field('access_etc', '첫째 줄\n둘째 줄')],
+    }),
+  );
+  assert.equal((markup.match(/class="installation-kv"/g) ?? []).length, 1);
+  const copied = markup.slice(markup.indexOf('external_ip'), markup.indexOf('ssh_port'));
+  const valueAt = copied.indexOf('installation-field-value');
+  const buttonAt = copied.indexOf('installation-copy-button');
+  assert.ok(valueAt >= 0 && buttonAt > valueAt);
+  const plain = markup.slice(markup.indexOf('ssh_port'), markup.indexOf('access_etc'));
+  assert.equal(plain.includes('installation-copy-button'), false);
+  assert.match(markup, /<dt><span>access_etc<\/span><\/dt>/);
 });
