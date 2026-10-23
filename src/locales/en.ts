@@ -994,6 +994,7 @@ export const english: Record<string, string> = {
   '비우기 예정': 'Will be cleared',
   변경됨: 'Changed',
   '보호된 값': 'Protected value',
+  '보호 항목': 'Protected field',
   '현재 값 유지 · 변경할 때만 입력': 'Keep current value · enter only to change',
   '내용을 입력하세요': 'Enter content',
   '{0} 크게 편집': 'Expand {0} editor',

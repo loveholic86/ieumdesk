@@ -1,0 +1,592 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { CatalogService } from '../server/catalog.ts';
+import { ApiError } from '../server/errors.ts';
+import { InstallationDetailsService } from '../server/installation-details.ts';
+import { managedField, type ManagedInstallationState } from '../server/installation-managed.ts';
+import {
+  InstallationWorkspaceService,
+  MemoryInstallationWorkspaceRepository,
+} from '../server/installation-workspace.ts';
+import { LegacyReader } from '../server/legacy-reader.ts';
+import { openLegacyVault, type LegacyVault, type LegacyVaultEnvelope } from '../server/legacy-vault.ts';
+import { createMaterializer } from '../scripts/materialize-installations.ts';
+import { english } from '../src/locales/en.ts';
+
+const sections: [ManagedInstallationState['sections'][number]['id'], string][] = [
+  ['installation', '설치 정보'],
+  ['access', '접근 정보'],
+  ['server', '서버 정보'],
+  ['yeta', 'YETA 로그인 정보'],
+  ['sap', 'SAP 정보'],
+  ['settings', '별도 설정 정보'],
+  ['files', '설정 파일'],
+];
+const tables = [
+  'setup_tb',
+  'setup_cominfo_tb',
+  'ct_yetalogin_tb',
+  'ct_sap_tb',
+  'setup_setting_tb',
+  'setting_file_tb',
+  'code_tb',
+] as const;
+const setupKey = '9007199254740993';
+const adjacentKey = '9007199254740992';
+const workspaceContext = (id: string, revision: number) => ({
+  source: 'yeta-crm-workspace:v1',
+  table: 'installation_workspace',
+  primaryKey: id,
+  batchId: String(revision),
+});
+
+function accessState(): ManagedInstallationState {
+  const rows = [
+    ['address-row', 'domainurl', '도메인 URL', 'https://demo.example'],
+    ['vpn-row', 'vpnsv_ip', 'VPN 서버 IP', '203.0.113.10'],
+    ['access-row', 'access_url', '접근 URL', 'https://demo.example/gate'],
+  ] as const;
+  return {
+    version: 2,
+    sections: sections.map(([id, title]) => ({
+      id,
+      title,
+      rows:
+        id === 'access'
+          ? rows.map(([rowId, key, label, value]) => ({
+              id: rowId,
+              title: label,
+              fields: [managedField('access', rowId, key, label, value)],
+            }))
+          : [],
+    })),
+  };
+}
+
+async function vault() {
+  const root = await mkdtemp(path.join(tmpdir(), 'ieum-current-'));
+  const keys = path.join(root, 'keys');
+  await mkdir(keys, { mode: 0o700 });
+  return {
+    root,
+    vault: await openLegacyVault({ keyFile: path.join(keys, 'vault.key'), createIfMissing: true }),
+  };
+}
+
+function store(stored: LegacyVault, id: string, state: unknown, revision = 1) {
+  const repository = new MemoryInstallationWorkspaceRepository();
+  const envelope = stored.encrypt(JSON.stringify(state), workspaceContext(id, revision));
+  repository.records.set(id, { revision, envelope });
+  return repository;
+}
+
+function blankDetails(rowId = 'row-0123456789abcdef0123456789abcdef') {
+  return {
+    id: 'inst-v1',
+    imported: false,
+    revision: 0,
+    sections: sections.map(([id, title]) => ({
+      id,
+      title,
+      imported: false,
+      rows:
+        id === 'access'
+          ? [
+              {
+                id: rowId,
+                title: '접속 주소',
+                fields: [
+                  {
+                    id: 'field-domainurl',
+                    key: 'domainurl',
+                    label: '도메인 URL',
+                    value: 'https://demo.example',
+                    secret: false,
+                    masked: false,
+                    present: true,
+                  },
+                ],
+              },
+            ]
+          : [],
+    })),
+  };
+}
+
+test('i18n translates the protected field label', () => {
+  assert.equal(english['보호 항목'], 'Protected field');
+});
+
+test('installation-details keeps archive safety on current table rows', async () => {
+  const opened = await vault();
+  const now = 1_700_000_000_000;
+  const schemaPath = path.join(opened.root, 'schema.json');
+  await writeFile(
+    schemaPath,
+    JSON.stringify({
+      tables: tables
+        .filter((table) => table !== 'code_tb')
+        .map((table) => ({ table_name: table, columns: [{ name: 'setup_cd', type: 'bigint' }] })),
+    }),
+  );
+  const archiveContext = (table: string, sourceKey: string) => ({
+    source: 'CRM_OLD_DB:public:v1',
+    table,
+    primaryKey: sourceKey,
+    batchId: 'batch-1',
+  });
+  const body = (table: string, sourceKey: string) => {
+    if (table === 'code_tb') return JSON.stringify({ grp_cd: 'sv_version', code: '1', code_nm: '비번' });
+    if (table === 'setup_cominfo_tb') return `{"setup_cd":${setupKey},"ct_cd":${sourceKey},"sys_cd":"DEMO"}`;
+    if (table === 'setting_file_tb')
+      return `{"setup_cd":${setupKey},"system_code":"DEMO","att_year":"2026","set_name":"system_max_user_count","set_value":"12"}`;
+    if (table === 'setup_tb')
+      return `{"setup_cd":${setupKey},"sv_version":"1","domainurl":"https://demo.example","ssl_apply_yn":"Y","ssl_pwd":"present","access_pwd":"present","access_url":"https://demo.example/gate"}`;
+    return `{"setup_cd":${setupKey}}`;
+  };
+  const envelopes = () =>
+    tables.flatMap((table) => {
+      const keys = table === 'setup_cominfo_tb' ? [adjacentKey, setupKey] : [table === 'setup_tb' ? setupKey : '1'];
+      return keys.map((sourceKey) => ({
+        source_table: table,
+        source_key: sourceKey,
+        envelope: opened.vault.encrypt(body(table, sourceKey), archiveContext(table, sourceKey)),
+      }));
+    });
+  const batch = {
+    id: 'batch-1',
+    source: 'CRM_OLD_DB:public:v1',
+    fingerprint: 'ab'.repeat(32),
+    keyId: opened.vault.keyId,
+    setupKey,
+    sourceCounts: Object.fromEntries(tables.map((table) => [table, table === 'setup_cominfo_tb' ? 2 : 1])),
+  };
+  let archives = 0;
+  const repository = {
+    async installation(id: string) {
+      return { id, data: { systemCode: 'DEMO-CURRENT' }, batch };
+    },
+    async archives() {
+      archives += 1;
+      return envelopes();
+    },
+    async audit() {},
+  };
+  try {
+    const details = new InstallationDetailsService(repository, {
+      vault: async () => opened.vault,
+      schemaFile: schemaPath,
+      now: () => now,
+    });
+    const masked = await details.details('inst-archive');
+    const again = await details.details('inst-archive');
+    assert.equal(archives, 1);
+    assert.equal(again.sections.length, masked.sections.length);
+    assert.deepEqual(
+      masked.sections.map((section) => section.id),
+      sections.map(([id]) => id),
+    );
+    const secret = masked.sections
+      .flatMap((section) => section.rows.flatMap((row) => row.fields))
+      .filter((field) => field.secret && field.present);
+    assert.ok(secret.length > 0);
+    assert.ok(secret.every((field) => field.masked && field.value === '••••••••'));
+    const links = masked.sections
+      .find((section) => section.id === 'installation')!
+      .rows.filter((row) => row.title?.includes('고객사 연결'));
+    assert.deepEqual(
+      links.map((row) => row.fields.find((field) => field.key === 'ct_cd')?.value),
+      [adjacentKey, setupKey],
+    );
+    const setup = masked.sections
+      .find((section) => section.id === 'installation')!
+      .rows.flatMap((row) => row.fields)
+      .find((field) => field.key === 'setup_cd');
+    assert.equal(setup?.value, setupKey);
+    const version = masked.sections
+      .find((section) => section.id === 'installation')!
+      .rows.flatMap((row) => row.fields)
+      .find((field) => field.key === 'sv_version');
+    assert.equal(version?.value, '1');
+    const fileRow = masked.sections.find((section) => section.id === 'files')!.rows[0];
+    assert.equal(fileRow.fields.find((field) => field.key === 'set_name')?.value, 'system_max_user_count');
+    const revealed = await details.details('inst-archive', { protected: false });
+    const password = revealed.sections
+      .find((section) => section.id === 'access')!
+      .rows.flatMap((row) => row.fields)
+      .find((field) => field.key === 'access_pwd');
+    assert.equal(password?.present, true);
+    assert.equal(password?.masked, false);
+    assert.equal(archives, 1);
+    const secrets = await details.secrets('inst-archive');
+    assert.equal(secrets.expiresAt, new Date(now + 60_000).toISOString());
+    assert.equal(archives, 1);
+
+    const mismatch = {
+      ...batch,
+      sourceCounts: { ...batch.sourceCounts, setting_file_tb: 9 },
+    };
+    const closed = new InstallationDetailsService(
+      { ...repository, async installation(id: string) { return { id, data: { systemCode: 'DEMO-CURRENT' }, batch: mismatch }; } },
+      { vault: async () => opened.vault, schemaFile: schemaPath, now: () => now },
+    );
+    await assert.rejects(
+      () => closed.details('inst-archive'),
+      (error: ApiError) => error.code === 'INSTALLATION_ARCHIVE_UNAVAILABLE',
+    );
+    let tamperReads = 0;
+    const tampered = new InstallationDetailsService(
+      { ...repository, async archives() { return envelopes(); } },
+      {
+        schemaFile: schemaPath,
+        now: () => now,
+        vault: async () => ({
+          keyId: opened.vault.keyId,
+          encrypt: opened.vault.encrypt.bind(opened.vault),
+          decrypt(envelope: LegacyVaultEnvelope, context: { source: string; table: string; primaryKey: string; batchId: string }) {
+            const plain = opened.vault.decrypt(envelope, context);
+            if (context.table === 'setup_cominfo_tb' && context.primaryKey === adjacentKey) {
+              tamperReads += 1;
+              if (tamperReads > 1) return plain.replaceAll(setupKey, '1');
+            }
+            return plain;
+          },
+        }),
+      },
+    );
+    await assert.rejects(
+      () => tampered.details('inst-archive'),
+      (error: ApiError) => error.code === 'INSTALLATION_ARCHIVE_UNAVAILABLE',
+    );
+    const badSchema = path.join(opened.root, 'schema-int.json');
+    await writeFile(
+      badSchema,
+      JSON.stringify({
+        tables: tables
+          .filter((table) => table !== 'code_tb')
+          .map((table) => ({ table_name: table, columns: [{ name: 'setup_cd', type: 'integer' }] })),
+      }),
+    );
+    const schemaRejected = new InstallationDetailsService(repository, {
+      vault: async () => opened.vault,
+      schemaFile: badSchema,
+      now: () => now,
+    });
+    await assert.rejects(
+      () => schemaRejected.details('inst-archive'),
+      (error: ApiError) => error.code === 'INSTALLATION_ARCHIVE_UNAVAILABLE',
+    );
+  } finally {
+    await rm(opened.root, { recursive: true, force: true });
+  }
+});
+
+test('installation-workspace keeps existing row ids and does not swallow original-read errors', async () => {
+  const opened = await vault();
+  const id = 'inst-v1';
+  const rowId = 'row-0123456789abcdef0123456789abcdef';
+  const reads = { count: 0 };
+  const repository = store(opened.vault, id, { version: 1, added: [], deleted: [], patches: {} });
+  const service = new InstallationWorkspaceService(
+    {
+      async details() {
+        reads.count += 1;
+        return blankDetails(rowId);
+      },
+      async secrets() {
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async audit() {
+        throw new Error('INSTALLATION_MATERIALIZATION_PREPARATION_WRITE_FORBIDDEN');
+      },
+    },
+    repository,
+    { vault: async () => opened.vault },
+  );
+  try {
+    await service.updateRow(id, rowId, { revision: 1, values: { domainurl: 'https://demo.example/kept' } }, 'actor');
+    assert.equal(reads.count, 2);
+    const details = await service.details(id, { protected: false, raw: true });
+    assert.equal(reads.count, 2);
+    const row = details.sections.find((section) => section.id === 'access')!.rows[0];
+    assert.equal(row.id, rowId);
+    assert.match(row.id, /^row-[a-f0-9]{32}$/);
+    await assert.rejects(
+      () =>
+        service.updateRow(
+          id,
+          'row-ffffffffffffffffffffffffffffffff',
+          { revision: 2, values: { domainurl: 'https://demo.example/missing' } },
+          'actor',
+        ),
+      (error: ApiError) => error.status === 404 && error.message === '요청한 항목을 찾을 수 없습니다.',
+    );
+    const blown = new InstallationWorkspaceService(
+      {
+        async details() {
+          throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+        },
+        async secrets() {
+          throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+        },
+        async audit() {},
+      },
+      store(opened.vault, 'inst-v2', accessState()),
+      {
+        vault: async () => opened.vault,
+        metadata: {
+          async read() {
+            throw new Error('UNEXPECTED_SOURCE_READ');
+          },
+          async update() {
+            throw new Error('INSTALLATION_MATERIALIZATION_PREPARATION_WRITE_FORBIDDEN');
+          },
+        },
+      },
+    );
+    await assert.rejects(() => blown.details('inst-v2'), /UNEXPECTED_SOURCE_READ/);
+  } finally {
+    await rm(opened.root, { recursive: true, force: true });
+  }
+});
+
+test('prepareMaterialization does not save an empty document when the workspace is absent', async () => {
+  const opened = await vault();
+  const reads = { count: 0 };
+  let saves = 0;
+  const service = new InstallationWorkspaceService(
+    {
+      async details() {
+        reads.count += 1;
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async secrets() {
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async audit() {
+        throw new Error('INSTALLATION_MATERIALIZATION_PREPARATION_WRITE_FORBIDDEN');
+      },
+    },
+    {
+      async get() {
+        return undefined;
+      },
+      async save() {
+        saves += 1;
+        throw new Error('INSTALLATION_MATERIALIZATION_PREPARATION_WRITE_FORBIDDEN');
+      },
+    },
+    { vault: async () => opened.vault },
+  );
+  try {
+    await assert.rejects(
+      () => service.prepareMaterialization('missing-workspace'),
+      (error: ApiError) => error.code === 'INSTALLATION_WORKSPACE_ABSENT',
+    );
+    assert.equal(reads.count, 0);
+    assert.equal(saves, 0);
+  } finally {
+    await rm(opened.root, { recursive: true, force: true });
+  }
+});
+
+test('installation-managed does not group a manually added adjacent row', async () => {
+  const opened = await vault();
+  const id = 'inst-current';
+  const plain = accessState();
+  const storedGroup = 'cd'.repeat(32);
+  const grouped = accessState();
+  grouped.sections.find((section) => section.id === 'access')!.rows[0].origin = {
+    group: storedGroup,
+    part: 'address',
+  };
+  grouped.sections.find((section) => section.id === 'access')!.rows[1].origin = {
+    group: storedGroup,
+    part: 'vpn',
+  };
+  const reads = { count: 0 };
+  const service = new InstallationWorkspaceService(
+    {
+      async details() {
+        reads.count += 1;
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async secrets() {
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async audit() {},
+    },
+    store(opened.vault, id, grouped),
+    { vault: async () => opened.vault, metadata: { async read() { return { systemCode: 'DEMO-CURRENT' }; }, async update() {} } },
+  );
+  const ungrouped = new InstallationWorkspaceService(
+    {
+      async details() {
+        reads.count += 1;
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async secrets() {
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async audit() {},
+    },
+    store(opened.vault, 'inst-plain', plain),
+    { vault: async () => opened.vault, metadata: { async read() { return {}; }, async update() {} } },
+  );
+  try {
+    const before = await service.details(id, { protected: false, raw: true });
+    assert.equal(reads.count, 0);
+    const beforeRows = before.sections.find((section) => section.id === 'access')!.rows;
+    assert.deepEqual(
+      beforeRows.map((row) => row.id),
+      ['address-row', 'vpn-row', 'access-row'],
+    );
+    assert.equal(beforeRows[0].origin?.group, storedGroup);
+    assert.equal(beforeRows[1].origin?.group, storedGroup);
+    assert.equal(beforeRows[2].origin, undefined);
+    await service.createRow(
+      id,
+      {
+        revision: 1,
+        sectionId: 'access',
+        title: '수동 인접 행',
+        fields: [{ key: 'domainurl', label: '도메인 URL', value: 'https://demo.example/manual' }],
+      },
+      'actor',
+    );
+    const after = await service.details(id, { protected: false, raw: true });
+    const rows = after.sections.find((section) => section.id === 'access')!.rows;
+    const manual = rows.find((row) => row.title === '수동 인접 행');
+    assert.equal(manual?.origin, undefined);
+    assert.match(manual?.id ?? '', /^workspace-row-/);
+    assert.equal(rows.find((row) => row.id === 'address-row')?.origin?.group, storedGroup);
+    assert.equal(rows.find((row) => row.id === 'vpn-row')?.origin?.group, storedGroup);
+    assert.equal(rows.find((row) => row.id === 'access-row')?.origin, undefined);
+    const guessed = await ungrouped.details('inst-plain', { protected: false, raw: true });
+    assert.ok(
+      guessed.sections
+        .find((section) => section.id === 'access')!
+        .rows.every((row) => row.origin === undefined),
+    );
+    assert.equal(reads.count, 0);
+  } finally {
+    await rm(opened.root, { recursive: true, force: true });
+  }
+});
+
+test('materialize plan uses real v1 preparation and leaves v2 unread from originals', async () => {
+  const opened = await vault();
+  const v1 = 'inst-v1';
+  const v2 = 'inst-v2';
+  const v1Envelope = opened.vault.encrypt(
+    JSON.stringify({ version: 1, added: [], deleted: [], patches: {} }),
+    workspaceContext(v1, 1),
+  );
+  const v2Envelope = opened.vault.encrypt(JSON.stringify(accessState()), workspaceContext(v2, 1));
+  const queries: string[] = [];
+  const client = {
+    async query(sql: string) {
+      queries.push(sql);
+      if (/legacy_items/.test(sql)) return { rows: [] };
+      if (/legacy_archive|legacy_runs/.test(sql)) throw new Error('UNEXPECTED_SOURCE_READ');
+      if (sql.includes('yeta_crm.records'))
+        return {
+          rows: [
+            { id: v1, data: { systemCode: 'DEMO-SYS-2' }, protected_data: null },
+            { id: v2, data: { systemCode: 'DEMO-CURRENT' }, protected_data: null },
+          ],
+        };
+      if (sql.includes('installation_workspace'))
+        return {
+          rows: [
+            { installation_id: v1, revision: 1, envelope: v1Envelope },
+            { installation_id: v2, revision: 1, envelope: v2Envelope },
+          ],
+        };
+      throw new Error(`UNEXPECTED_SOURCE_READ ${sql}`);
+    },
+  };
+  try {
+    const operational = createMaterializer(client, opened.vault, undefined, true);
+    const current = await operational.details(v2, { protected: false, raw: true });
+    assert.ok(
+      current.sections
+        .find((section) => section.id === 'access')!
+        .rows.every((row) => row.origin === undefined),
+    );
+    assert.equal(queries.some((sql) => /legacy_/.test(sql)), false);
+    const preparedV2 = await operational.prepareMaterialization(v2);
+    assert.equal(preparedV2.alreadyMaterialized, true);
+    assert.equal(preparedV2.envelope, undefined);
+    assert.equal(queries.some((sql) => /legacy_/.test(sql)), false);
+
+    const planning = createMaterializer(client, opened.vault);
+    const preparedV1 = await planning.prepareMaterialization(v1);
+    assert.equal(preparedV1.alreadyMaterialized, false);
+    assert.ok(preparedV1.envelope);
+    assert.equal(queries.filter((sql) => /legacy_items/.test(sql)).length, 1);
+    const state = JSON.parse(opened.vault.decrypt(preparedV1.envelope!, workspaceContext(v1, preparedV1.nextRevision)));
+    const access = state.sections.find((section: { id: string }) => section.id === 'access');
+    assert.equal(access.rows.length, 3);
+    assert.match(access.rows[0].id, /^row-[a-f0-9]{32}$/);
+    assert.equal(access.rows[0].origin.group, access.rows[1].origin.group);
+    assert.deepEqual(
+      access.rows.map((row: { origin: { part: string } }) => row.origin.part),
+      ['address', 'vpn', 'access'],
+    );
+
+    const invalid = {
+      async query(sql: string) {
+        if (/legacy_items/.test(sql)) return { rows: [{ target_id: v1 }, { target_id: v1 }] };
+        return client.query(sql);
+      },
+    };
+    await assert.rejects(
+      () => createMaterializer(invalid, opened.vault).prepareMaterialization(v1),
+      /INSTALLATION_MATERIALIZATION_SOURCE_LINK_INVALID/,
+    );
+  } finally {
+    await rm(opened.root, { recursive: true, force: true });
+  }
+});
+
+test('catalog list merges legacy code and product rows', async () => {
+  const original = LegacyReader.prototype.read;
+  let calls = 0;
+  LegacyReader.prototype.read = async function (tables: string[]) {
+    calls += 1;
+    if (tables[0] === 'code_tb')
+      return [
+        {
+          table: 'code_tb',
+          key: 'sv',
+          data: { grp_cd: 'sv_version', grp_cd_nm: '버전', code: '1', code_nm: 'Cloud', parent_cd: '' },
+        },
+      ];
+    return [
+      {
+        table: 'quotation_item_tb',
+        key: 'item',
+        data: { qt_item_nm: '설치', amount: 10, conts: '', qt_bcls: '구축', qt_mcls: '기본' },
+      },
+    ];
+  };
+  const opened = await vault();
+  try {
+    const catalog = new CatalogService('demo', path.join(opened.root, 'catalog.json'));
+    const codes = await catalog.list('codes');
+    const products = await catalog.list('products');
+    assert.equal(codes.length, 1);
+    assert.equal(codes[0]?.imported, true);
+    assert.equal(codes[0]?.name, 'Cloud');
+    assert.equal(products[0]?.name, '설치');
+    assert.ok(calls >= 2);
+    await catalog.close();
+  } finally {
+    LegacyReader.prototype.read = original;
+    await rm(opened.root, { recursive: true, force: true });
+  }
+});

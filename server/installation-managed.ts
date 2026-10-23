@@ -55,11 +55,18 @@ const fieldSchema = z
     secret: z.boolean(),
   })
   .strict();
+const accessOriginSchema = z
+  .object({
+    group: z.string().regex(/^[a-f0-9]{64}$/),
+    part: z.enum(['address', 'vpn', 'access']),
+  })
+  .strict();
 const rowSchema = z
   .object({
     id: z.string().min(1).max(100),
     title: z.string().max(120),
     managed: z.literal('metadata').optional(),
+    origin: accessOriginSchema.optional(),
     fields: z.array(fieldSchema).min(1).max(80),
   })
   .strict();
@@ -188,6 +195,7 @@ export function buildManagedInstallation(
       rows: section.rows.map((row) => ({
         id: row.id,
         title: ordinaryInstallationTitle(row.title),
+        ...(row.origin ? { origin: { group: row.origin.group, part: row.origin.part } } : {}),
         fields: row.fields.map((field) => {
           const shown = display.sections
             .find((item) => item.id === section.id)
@@ -330,7 +338,7 @@ export function managedInstallationDetails(
   record?: Record<string, unknown>,
   raw = false,
 ): InstallationDetails {
-  return {
+  const built: InstallationDetails = {
     id,
     imported: false,
     revision,
@@ -346,6 +354,7 @@ export function managedInstallationDetails(
           id: row.id,
           title: row.title,
           ...(row.managed ? { managed: row.managed } : {}),
+          ...(row.origin ? { origin: { group: row.origin.group, part: row.origin.part } } : {}),
           fields: row.fields.map((field) => ({
             id: field.id,
             key: field.key,
@@ -366,6 +375,7 @@ export function managedInstallationDetails(
       }),
     })),
   };
+  return built;
 }
 
 export function managedInstallationCounts(state: ManagedInstallationState) {
