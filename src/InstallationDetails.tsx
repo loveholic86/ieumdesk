@@ -606,7 +606,20 @@ function OptionField({
     <div className={`installation-option-row${wideOptionField(field) ? ' is-wide' : ''}`}>
       <dt>
         <span>{label}</span>
-        {(field.secret || field.masked) && <LockKeyhole size={12} aria-hidden="true" />}
+        {(field.secret || field.masked) && (
+          <svg
+            className="installation-lock"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            role="img"
+            aria-label={t('보호 항목')}
+          >
+            <rect x="3" y="7" width="10" height="7" rx="1.6" />
+            <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+          </svg>
+        )}
       </dt>
       <dd className={monoField(field) ? 'is-mono' : undefined}>
         <DataValue
