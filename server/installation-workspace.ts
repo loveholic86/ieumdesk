@@ -9,7 +9,7 @@ import {
 } from '../src/installation-configuration.ts';
 import { databaseConfig } from './config.ts';
 import { openLegacyVault, type LegacyVault, type LegacyVaultEnvelope } from './legacy-vault.ts';
-import type { InstallationDetailsAccess } from './installation-details.ts';
+import { installationWorkspaceField, type InstallationDetailsAccess } from './installation-details.ts';
 import type {
   InstallationDetails,
   InstallationSectionId,
@@ -18,10 +18,10 @@ import type {
 import type { RecordInput } from './validation.ts';
 import { installationMetadataPatch, installationMetadataRevision } from './installation-metadata.ts';
 import {
+  buildManagedInstallation,
   managedField,
   managedInstallationCounts,
   managedInstallationDetails,
-  managedInstallationFromRecord,
   managedInstallationSchema,
   managedMetadataRowId,
   installationAccessNoteIdSchema,
@@ -155,6 +155,94 @@ function unique(fields: InstallationWorkspaceFieldInput[]) {
   if (new Set(fields.map((field) => field.key)).size !== fields.length) throw bad();
 }
 
+class LegacyInstallationWorkspaceService {
+  constructor(
+    private base: InstallationDetailsAccess,
+    private repository: InstallationWorkspaceRepository,
+    private options: { vault?: () => Promise<LegacyVault> } = {},
+  ) {}
+  private async vault() {
+    return (this.options.vault ?? (() => openLegacyVault({ createIfMissing: false })))();
+  }
+  private async load(id: string) {
+    const record = await this.repository.get(id);
+    if (!record) return { revision: 0, state: blank() };
+    try {
+      if (!Number.isSafeInteger(record.revision) || record.revision < 1) throw unavailable();
+      const raw = (await this.vault()).decrypt(record.envelope, context(id, record.revision));
+      if (Buffer.byteLength(raw) > 1_048_576) throw unavailable();
+      const state = stateSchema.parse(JSON.parse(raw));
+      for (const row of state.added) unique(row.fields);
+      return { revision: record.revision, state };
+    } catch {
+      throw unavailable();
+    }
+  }
+  private apply(
+    base: InstallationDetails,
+    state: State,
+    revision: number,
+    raw: boolean,
+  ): InstallationDetails {
+    const result = structuredClone(base);
+    result.revision = revision;
+    for (const section of result.sections) {
+      section.rows = section.rows.filter((row) => !state.deleted.includes(row.id));
+      for (const added of state.added.filter((row) => row.sectionId === section.id)) {
+        const fields = added.fields.map((field) =>
+          installationWorkspaceField(section.id, added.id, field.key, field.label, field.value),
+        );
+        if (raw)
+          fields.forEach((field, index) => {
+            field.value = added.fields[index].value;
+          });
+        section.rows.push({ id: added.id, title: added.title, fields });
+      }
+      for (const row of section.rows) {
+        const patch = state.patches[row.id];
+        if (!patch) continue;
+        if (patch.title !== undefined) row.title = patch.title;
+        row.fields = row.fields.filter((field) => !patch.removeFields.includes(field.key));
+        for (const field of row.fields)
+          if (Object.hasOwn(patch.values, field.key)) {
+            const next = installationWorkspaceField(
+              section.id,
+              row.id,
+              field.key,
+              field.label,
+              patch.values[field.key],
+            );
+            if (raw) next.value = patch.values[field.key];
+            Object.assign(field, next);
+          }
+        for (const field of patch.addFields) {
+          const next = installationWorkspaceField(section.id, row.id, field.key, field.label, field.value);
+          if (raw) next.value = field.value;
+          row.fields.push(next);
+        }
+      }
+      if (
+        section.rows.some(
+          (row) => row.id.startsWith('workspace-row-') || Object.hasOwn(state.patches, row.id),
+        )
+      )
+        section.note = '이관 원본을 보존하고 암호화된 작업본의 변경을 적용한 정보입니다.';
+    }
+    return result;
+  }
+  async managed(id: string, record?: Record<string, unknown>) {
+    const rawBase = await this.base.details(id, { protected: false, raw: true });
+    const displayBase = await this.base.details(id, { protected: false });
+    const loaded = await this.load(id);
+    const raw = this.apply(rawBase, loaded.state, loaded.revision, true);
+    const display = this.apply(displayBase, loaded.state, loaded.revision, false);
+    return {
+      ...buildManagedInstallation(raw, display, displayBase, loaded.state, record),
+      expectedRevision: loaded.revision,
+    };
+  }
+}
+
 export function protectInstallationDetails(
   details: InstallationDetails,
   protectedValues = true,
@@ -220,8 +308,9 @@ export interface InstallationMaterialization {
 
 /** Operational details own their complete encrypted data; basic metadata is shared with the list. */
 export class InstallationWorkspaceService {
+  private legacy: LegacyInstallationWorkspaceService;
   constructor(
-    private base: InstallationDetailsAccess,
+    base: InstallationDetailsAccess,
     private repository: InstallationWorkspaceRepository,
     private options: {
       vault?: () => Promise<LegacyVault>;
@@ -230,7 +319,7 @@ export class InstallationWorkspaceService {
       mode?: 'demo' | 'postgres';
     } = {},
   ) {
-    void this.base;
+    this.legacy = new LegacyInstallationWorkspaceService(base, repository, options);
   }
   private async vault() {
     return (this.options.vault ?? (() => openLegacyVault({ createIfMissing: false })))();
@@ -260,24 +349,9 @@ export class InstallationWorkspaceService {
       throw unavailable();
     }
   }
-  private async currentRecord(id: string) {
-    try {
-      return await this.options.metadata?.read(id);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '';
-      if (
-        message === 'ORIGINAL_DETAILS_MUST_NOT_BE_READ' ||
-        message === 'UNEXPECTED_SOURCE_READ' ||
-        message === 'archive deliberately unavailable after materialization' ||
-        message.includes('PREPARATION_WRITE_FORBIDDEN')
-      )
-        return undefined;
-      throw error;
-    }
-  }
   private async effective(id: string) {
     const loaded = await this.document(id);
-    const record = await this.currentRecord(id);
+    const record = await this.options.metadata?.read(id);
     if (loaded.state)
       return {
         ...loaded,
@@ -285,12 +359,14 @@ export class InstallationWorkspaceService {
         metadataPatch: {} as Partial<RecordInput>,
         preservedEdits: 0,
       };
+    const prepared = await this.legacy.managed(id, record);
+    if (prepared.expectedRevision !== loaded.revision) throw conflict();
     return {
       revision: loaded.revision,
-      state: managedInstallationFromRecord(id, record),
+      state: prepared.state,
       record,
-      metadataPatch: {} as Partial<RecordInput>,
-      preservedEdits: 0,
+      metadataPatch: prepared.metadataPatch,
+      preservedEdits: prepared.preservedEdits,
     };
   }
   async details(id: string, options: { protected?: boolean; raw?: boolean } = {}) {
@@ -302,6 +378,12 @@ export class InstallationWorkspaceService {
     );
   }
   async prepareMaterialization(id: string): Promise<InstallationMaterialization> {
+    if (!(await this.repository.get(id)))
+      throw new ApiError(
+        409,
+        'INSTALLATION_WORKSPACE_ABSENT',
+        '설치 작업본이 없습니다. 빈 문서는 저장하지 않습니다.',
+      );
     const before = await this.document(id),
       current = await this.effective(id);
     if (before.revision !== current.revision) throw conflict();

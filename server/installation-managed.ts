@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { installationAccessPartKeys } from './installation-details.ts';
 import { z } from 'zod';
 import { ApiError } from './errors.ts';
 import { installationWorkspaceField } from './installation-details.ts';
@@ -13,7 +12,6 @@ import {
 } from './installation-metadata.ts';
 import type { RecordInput } from './validation.ts';
 import type {
-  InstallationAccessOriginPart,
   InstallationDetails,
   InstallationDetailRow,
   InstallationSectionId,
@@ -57,11 +55,18 @@ const fieldSchema = z
     secret: z.boolean(),
   })
   .strict();
+const accessOriginSchema = z
+  .object({
+    group: z.string().regex(/^[a-f0-9]{64}$/),
+    part: z.enum(['address', 'vpn', 'access']),
+  })
+  .strict();
 const rowSchema = z
   .object({
     id: z.string().min(1).max(100),
     title: z.string().max(120),
     managed: z.literal('metadata').optional(),
+    origin: accessOriginSchema.optional(),
     fields: z.array(fieldSchema).min(1).max(80),
   })
   .strict();
@@ -190,6 +195,7 @@ export function buildManagedInstallation(
       rows: section.rows.map((row) => ({
         id: row.id,
         title: ordinaryInstallationTitle(row.title),
+        ...(row.origin ? { origin: { group: row.origin.group, part: row.origin.part } } : {}),
         fields: row.fields.map((field) => {
           const shown = display.sections
             .find((item) => item.id === section.id)
@@ -325,78 +331,6 @@ export function buildManagedInstallation(
   return { state: parsed.data, metadataPatch, preservedEdits };
 }
 
-const accessPartKeys: Record<InstallationAccessOriginPart, ReadonlySet<string>> = {
-  address: new Set(installationAccessPartKeys.address),
-  vpn: new Set(installationAccessPartKeys.vpn),
-  access: new Set(installationAccessPartKeys.access),
-};
-function accessPart(keys: readonly string[]): InstallationAccessOriginPart | undefined {
-  const hits = { address: 0, vpn: 0, access: 0 };
-  for (const key of keys) {
-    if (accessPartKeys.address.has(key)) hits.address += 1;
-    else if (accessPartKeys.vpn.has(key)) hits.vpn += 1;
-    else if (accessPartKeys.access.has(key)) hits.access += 1;
-  }
-  const parts = (['address', 'vpn', 'access'] as const).filter((part) => hits[part] > 0);
-  return parts.length === 1 ? parts[0] : undefined;
-}
-/** Group stored access rows that already belong to one migrated source. No archive read. */
-function attachStoredAccessOrigins(details: InstallationDetails) {
-  const section = details.sections.find((item) => item.id === 'access');
-  if (!section) return;
-  let bucket: { row: InstallationDetailRow; part: InstallationAccessOriginPart }[] = [];
-  const flush = () => {
-    if (bucket.length > 1) {
-      const group = createHash('sha256')
-        .update(JSON.stringify(['access-origin', ...bucket.map((item) => item.row.id)]))
-        .digest('hex');
-      for (const item of bucket) item.row.origin = { group, part: item.part };
-    }
-    bucket = [];
-  };
-  for (const row of section.rows) {
-    if (row.origin) {
-      flush();
-      continue;
-    }
-    const part = accessPart(row.fields.map((field) => field.key));
-    if (!part) {
-      flush();
-      continue;
-    }
-    if (bucket.some((item) => item.part === part)) flush();
-    bucket.push({ row, part });
-  }
-  flush();
-}
-const currentSections: [InstallationSectionId, string][] = [
-  ['installation', '설치 정보'],
-  ['access', '접근 정보'],
-  ['server', '서버 정보'],
-  ['yeta', 'YETA 로그인 정보'],
-  ['sap', 'SAP 정보'],
-  ['settings', '별도 설정 정보'],
-  ['files', '설정 파일'],
-];
-/** Detail view from the current record when no operational document exists. */
-export function managedInstallationFromRecord(
-  id: string,
-  record?: Record<string, unknown>,
-): ManagedInstallationState {
-  const sections = currentSections.map(([sectionId, title]) => ({
-    id: sectionId,
-    title,
-    rows: [] as ManagedInstallationRow[],
-  }));
-  if (record) {
-    try {
-      sections[0].rows.push(metadataRow(id, record));
-    } catch {
-      /* A partial current record still opens the detail view. */
-    }
-  }
-  return { version: 2, sections };
-}
 export function managedInstallationDetails(
   id: string,
   state: ManagedInstallationState,
@@ -420,6 +354,7 @@ export function managedInstallationDetails(
           id: row.id,
           title: row.title,
           ...(row.managed ? { managed: row.managed } : {}),
+          ...(row.origin ? { origin: { group: row.origin.group, part: row.origin.part } } : {}),
           fields: row.fields.map((field) => ({
             id: field.id,
             key: field.key,
@@ -440,7 +375,6 @@ export function managedInstallationDetails(
       }),
     })),
   };
-  attachStoredAccessOrigins(built);
   return built;
 }
 

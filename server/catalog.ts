@@ -7,6 +7,7 @@ import pg from 'pg';
 import { z } from 'zod';
 import { databaseConfig } from './config.ts';
 import { ApiError } from './errors.ts';
+import { LegacyReader } from './legacy-reader.ts';
 import { BusinessEncryption } from './business-encryption.ts';
 import { openLegacyVault, type LegacyVault } from './legacy-vault.ts';
 import { DemoPrivateFile } from './demo-private-file.ts';
@@ -56,9 +57,12 @@ const localSchema = z
   .strict();
 const fail = () =>
   new ApiError(409, 'CATALOG_CONFLICT', '카탈로그가 변경되었습니다. 다시 불러온 뒤 저장해 주세요.');
+const identity = (kind: Kind, key: string) =>
+  `legacy-${kind}-${createHash('sha256').update(key).digest('hex').slice(0, 24)}`;
 const scalar = (value: unknown) => (value == null ? '' : String(value));
 const unavailable = () => new ApiError(503, 'CATALOG_UNAVAILABLE', '카탈로그를 확인하지 못했습니다.');
 export class CatalogService {
+  private legacy: LegacyReader;
   private pool?: Promise<pg.Pool>;
   private queue: Promise<unknown> = Promise.resolve();
   private encryption: BusinessEncryption;
@@ -71,6 +75,7 @@ export class CatalogService {
   ) {
     this.file = path.resolve(file);
     this.localFile = new DemoPrivateFile(this.file, unavailable);
+    this.legacy = new LegacyReader(mode);
     this.encryption = new BusinessEncryption(options.vault);
   }
   private openLocalVault(createIfMissing = false) {
@@ -144,6 +149,39 @@ export class CatalogService {
     return pending;
   }
   async list(kind: Kind, includeInactive = false, groups?: readonly string[]): Promise<CatalogItem[]> {
+    const original = await this.legacy.read([kind === 'products' ? 'quotation_item_tb' : 'code_tb']);
+    const mapped: CatalogItem[] = original.map(({ key, data }) => {
+      if (kind === 'products') {
+        const amount = Number(data.amount ?? 0),
+          valid = Number.isSafeInteger(amount) && amount >= 0;
+        return {
+          id: identity(kind, key),
+          revision: 0,
+          active: valid,
+          name: scalar(data.qt_item_nm),
+          unitPrice: valid ? amount : 0,
+          description: scalar(data.conts),
+          category: scalar(data.qt_bcls),
+          subCategory: scalar(data.qt_mcls),
+          imported: true,
+        };
+      }
+      const numeric = Number(data.num_val),
+        numericValue =
+          data.num_val == null || data.num_val === '' ? null : Number.isSafeInteger(numeric) ? numeric : null;
+      return {
+        id: identity(kind, key),
+        revision: 0,
+        active: true,
+        group: scalar(data.grp_cd),
+        groupName: scalar(data.grp_cd_nm),
+        code: scalar(data.code),
+        name: scalar(data.code_nm),
+        parentCode: scalar(data.parent_cd),
+        numericValue,
+        imported: true,
+      };
+    });
     const edits =
       this.mode === 'demo'
         ? (await this.local())[kind]
@@ -163,7 +201,9 @@ export class CatalogService {
               } as CatalogItem;
             }),
           );
-    return edits
+    const items = new Map(mapped.map((item) => [item.id, item]));
+    for (const item of edits) items.set(item.id, item);
+    return [...items.values()]
       .filter((item) => includeInactive || item.active)
       .filter((item) => kind !== 'codes' || !groups || groups.includes(scalar(item.group)))
       .sort(
@@ -333,6 +373,7 @@ export class CatalogService {
     }
   }
   async close() {
+    await this.legacy.close();
     if (this.pool) await (await this.pool).end();
     await this.queue;
   }
