@@ -1,6 +1,4 @@
-import { runtimePath } from './runtime-config.ts';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
 import pg from 'pg';
 import type {
   InstallationAccessOriginPart,
@@ -13,7 +11,7 @@ import type {
 import type { Store } from './store.ts';
 import { ApiError, notFound } from './errors.ts';
 import { databaseConfig } from './config.ts';
-import { openLegacyVault, type LegacyVault, type LegacyVaultEnvelope } from './legacy-vault.ts';
+import type { LegacyVault, LegacyVaultEnvelope } from './legacy-vault.ts';
 import { BusinessEncryption } from './business-encryption.ts';
 import {
   installationCodeGroupForField,
@@ -21,16 +19,6 @@ import {
   normalizeInstallationOptionName,
 } from '../src/installation-code-options.ts';
 
-const SOURCE = 'CRM_OLD_DB:public:v1';
-const TABLES = [
-  'setup_tb',
-  'setup_cominfo_tb',
-  'ct_yetalogin_tb',
-  'ct_sap_tb',
-  'setup_setting_tb',
-  'setting_file_tb',
-  'code_tb',
-] as const;
 const TITLES: [InstallationSectionId, string][] = [
   ['installation', '설치 정보'],
   ['access', '접근 정보'],
@@ -98,9 +86,6 @@ const flag: Plain = (value) => {
   };
   return Object.hasOwn(labels, value) ? labels[value] : undefined;
 };
-const safeLabel = (value: string) =>
-  /^[\p{L}\p{N} _()/+-]{1,80}$/u.test(value) &&
-  !/(?:password|passwd|secret|token|비밀번호|비번|패스워드|접속정보)/i.test(value);
 const code =
   (group: string): Plain =>
   (value, _row, codes) =>
@@ -201,6 +186,11 @@ const ACCESS = [
   field('access_id', '접근 아이디'),
   field('access_pwd', '접근 비밀번호'),
 ];
+export const installationAccessPartKeys = {
+  address: ADDRESS.map((item) => item.key),
+  vpn: VPN.map((item) => item.key),
+  access: ACCESS.map((item) => item.key),
+};
 const SERVER = [
   field('hostname', '호스트네임'),
   field('servicetag', '서버 ServiceTag'),
@@ -343,9 +333,7 @@ function scalar(value: unknown): string {
   throw unavailable();
 }
 
-type ArchiveIndex = { bySetup: Map<string, ArchiveRow[]>; codes: Codes };
 export class InstallationDetailsService implements InstallationDetailsAccess {
-  private cached?: { key: string; until: number; ready: Promise<ArchiveIndex> };
   constructor(
     private repository: InstallationArchiveRepository,
     private options: {
@@ -362,69 +350,6 @@ export class InstallationDetailsService implements InstallationDetailsAccess {
     const scope = await this.repository.installation(id);
     if (!scope) throw notFound();
     return scope;
-  }
-  private async index(batch: Batch, vault: LegacyVault): Promise<ArchiveIndex> {
-    const key = `${batch.id}:${batch.fingerprint}:${batch.keyId}`;
-    if (this.cached?.key === key && this.cached.until > this.now()) return this.cached.ready;
-    const ready = this.buildIndex(batch, vault);
-    const cache = { key, until: this.now() + 5 * 60_000, ready };
-    this.cached = cache;
-    try {
-      return await ready;
-    } catch (error) {
-      if (this.cached === cache) this.cached = undefined;
-      throw error;
-    }
-  }
-  private async buildIndex(batch: Batch, vault: LegacyVault): Promise<ArchiveIndex> {
-    const metadata = JSON.parse(
-      await readFile(
-        this.options.schemaFile ?? runtimePath('migration/source-schema.json'),
-        'utf8',
-      ),
-    ) as { tables?: { table_name: string; columns: { name: string; type: string }[] }[] };
-    if (!Array.isArray(metadata.tables)) throw unavailable();
-    for (const table of TABLES.filter((table) => table !== 'code_tb')) {
-      const column = metadata.tables
-        .find((item) => item.table_name === table)
-        ?.columns.find((item) => item.name === 'setup_cd');
-      if (column?.type !== 'bigint') throw unavailable();
-    }
-    const archives = await this.repository.archives(batch.id);
-    const actualCounts = Object.fromEntries(TABLES.map((table) => [table, 0]));
-    const bySetup = new Map<string, ArchiveRow[]>();
-    const codes: Codes = new Map();
-    for (const archive of archives) {
-      if (!(TABLES as readonly string[]).includes(archive.source_table)) throw unavailable();
-      actualCounts[archive.source_table] += 1;
-      const row = parseInstallationArchive(
-        vault.decrypt(archive.envelope, {
-          source: batch.source,
-          table: archive.source_table,
-          primaryKey: archive.source_key,
-          batchId: batch.id,
-        }),
-      );
-      if (archive.source_table === 'code_tb') {
-        const group = scalar(row.grp_cd),
-          codeValue = scalar(row.code),
-          label = scalar(row.code_nm);
-        if (
-          ['sv_version', 'app_type', 'access_type', 'ssl_manage_type', 'setting_type'].includes(group) &&
-          safeLabel(label)
-        )
-          codes.set(`${group}\0${codeValue}`, label);
-        continue;
-      }
-      const setup = scalar(row.setup_cd);
-      if (!setup) continue; // Do not guess a cross-installation association from a shared system code.
-      if (!/^-?\d+$/.test(setup)) throw unavailable();
-      const entries = bySetup.get(setup) ?? [];
-      entries.push(archive); // Cache ciphertext and routing identifiers only, never the decoded row.
-      bySetup.set(setup, entries);
-    }
-    for (const table of TABLES) if (actualCounts[table] !== batch.sourceCounts[table]) throw unavailable();
-    return { bySetup, codes };
   }
   private async render(scope: InstallationScope, reveal: boolean) {
     const sections: InstallationDetailSection[] = TITLES.map(([id, title]) => ({
@@ -487,62 +412,19 @@ export class InstallationDetailsService implements InstallationDetailsAccess {
       add('access', '이관 원본 접근 정보', row, table, sourceKey, ACCESS, true, 'access');
     };
     add('installation', '현재 설치 정보', scope.data, 'current', scope.id, CURRENT, false);
-    if (scope.batch) {
-      const batch = scope.batch;
-      if (batch.source !== SOURCE) throw unavailable();
-      const vault = await (this.options.vault ?? (() => openLegacyVault({ createIfMissing: false })))();
-      if (vault.keyId !== batch.keyId) throw unavailable();
-      const index = await this.index(batch, vault);
-      codes = index.codes;
-      const archived = [...(index.bySetup.get(batch.setupKey) ?? [])].sort(
-        (a, b) =>
-          TABLES.indexOf(a.source_table as (typeof TABLES)[number]) -
-            TABLES.indexOf(b.source_table as (typeof TABLES)[number]) ||
-          a.source_key.localeCompare(b.source_key),
+    // Current records already hold the operational fields. Demo fixtures are in-code, not an archive read.
+    const code = scalar(scope.data.systemCode);
+    if (code === 'DEMO-SYS-2' || code === 'DEMO-MIG') {
+      addSetupAccess(demoMigratedAccessRow(), 'setup_tb', opaque('demo-setup-access', scope.id));
+      add(
+        'server',
+        '이관 원본 서버 정보',
+        demoServerRow(),
+        'setup_tb',
+        opaque('demo-setup-server', scope.id),
+        SERVER,
+        true,
       );
-      if (archived.filter((row) => row.source_table === 'setup_tb').length !== 1) throw unavailable();
-      const counters: Record<string, number> = {};
-      for (const archive of archived) {
-        const row = parseInstallationArchive(
-          vault.decrypt(archive.envelope, {
-            source: batch.source,
-            table: archive.source_table,
-            primaryKey: archive.source_key,
-            batchId: batch.id,
-          }),
-        );
-        if (scalar(row.setup_cd) !== batch.setupKey) throw unavailable();
-        const ordinal = (counters[archive.source_table] = (counters[archive.source_table] ?? 0) + 1);
-        const addRow = (section: InstallationSectionId, title: string, fields: Field[]) =>
-          add(section, title, row, archive.source_table, archive.source_key, fields, true);
-        if (archive.source_table === 'setup_tb') {
-          addRow('installation', '이관 원본 설치 정보', BASIC);
-          addSetupAccess(row, archive.source_table, archive.source_key);
-          addRow('server', '이관 원본 서버 정보', SERVER);
-        } else if (archive.source_table === 'setup_cominfo_tb')
-          addRow('installation', `이관 원본 고객사 연결 ${ordinal}`, CONNECTION);
-        else if (archive.source_table === 'ct_yetalogin_tb')
-          addRow('yeta', `이관 원본 YETA 로그인 ${ordinal}`, YETA);
-        else if (archive.source_table === 'ct_sap_tb') addRow('sap', `이관 원본 SAP ${ordinal}`, SAP);
-        else if (archive.source_table === 'setup_setting_tb')
-          addRow('settings', `이관 원본 별도 설정 ${ordinal}`, SETTINGS);
-        else if (archive.source_table === 'setting_file_tb')
-          addRow('files', `이관 원본 고객 전달용 설정 ${ordinal}`, FILES);
-      }
-    } else {
-      const code = scalar(scope.data.systemCode);
-      if (code === 'DEMO-SYS-2' || code === 'DEMO-MIG') {
-        addSetupAccess(demoMigratedAccessRow(), 'setup_tb', opaque('demo-setup-access', scope.id));
-        add(
-          'server',
-          '이관 원본 서버 정보',
-          demoServerRow(),
-          'setup_tb',
-          opaque('demo-setup-server', scope.id),
-          SERVER,
-          true,
-        );
-      }
     }
     for (const section of sections) {
       if (!section.imported) section.note = '이 설치에 연결된 이관 자료가 없습니다.';
@@ -637,46 +519,10 @@ export class PostgresInstallationRepository implements InstallationArchiveReposi
     ).rows[0];
     if (!stored) return undefined;
     const decoded = await this.encryption.decrypt('records', stored);
-    const record: InstallationScope = { id: stored.id, data: decoded.data as Row };
-    const rows = (
-      await pool.query(
-        `SELECT i.source_key, r.id, r.source, r.fingerprint, r.key_id, r.report
-       FROM yeta_crm_private.legacy_items i JOIN yeta_crm_private.legacy_runs r ON r.id=i.batch_id
-       WHERE i.target_table='records' AND i.target_kind='installations' AND i.target_id=$1 AND i.source_table='setup_tb'`,
-        [id],
-      )
-    ).rows;
-    if (rows.length > 1) throw unavailable();
-    const linked = rows[0];
-    if (!linked || linked.report?.status !== 'committed') return record;
-    if (
-      linked.source !== SOURCE ||
-      typeof linked.source_key !== 'string' ||
-      !/^-?\d+$/.test(linked.source_key) ||
-      !linked.report?.sourceCounts
-    )
-      throw unavailable();
-    return {
-      ...record,
-      batch: {
-        id: linked.id,
-        source: linked.source,
-        fingerprint: linked.fingerprint,
-        keyId: linked.key_id,
-        setupKey: linked.source_key,
-        sourceCounts: linked.report.sourceCounts,
-      },
-    };
+    return { id: stored.id, data: decoded.data as Row };
   }
-  async archives(batchId: string) {
-    return (
-      await (
-        await this.pool(true)
-      ).query<ArchiveRow>(
-        'SELECT source_table,source_key,envelope FROM yeta_crm_private.legacy_archive WHERE batch_id=$1 AND source_table=ANY($2::text[]) ORDER BY source_table,source_key',
-        [batchId, TABLES],
-      )
-    ).rows;
+  async archives(_batchId: string): Promise<ArchiveRow[]> {
+    return [];
   }
   async audit(actorUserId: string, installationId: string, outcome: InstallationAuditOutcome) {
     await (

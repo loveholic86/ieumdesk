@@ -59,15 +59,6 @@ const inputTables = new Set([
   'yeta_crm_private.legacy_items',
   'yeta_crm_private.legacy_runs',
 ]);
-const archiveTables = [
-  'setup_tb',
-  'setup_cominfo_tb',
-  'ct_yetalogin_tb',
-  'ct_sap_tb',
-  'setup_setting_tb',
-  'setting_file_tb',
-  'code_tb',
-];
 const workspaceContext = (id: string, revision: number) => ({
   source: 'yeta-crm-workspace:v1',
   table: 'installation_workspace',
@@ -256,64 +247,13 @@ export function createMaterializer(
         ),
       };
     })());
-  type SourceLink = {
-    target_id: string;
-    source_key: string;
-    id: string;
-    source: string;
-    fingerprint: string;
-    key_id: string;
-    report: { status: string; sourceCounts: Record<string, number> };
-  };
-  let linkedReady: Promise<Map<string, SourceLink[]>> | undefined;
-  const sourceLinks = () =>
-    (linkedReady ??= (async () => {
-      // This third bulk read is lazy: existing v2 documents never consult legacy links.
-      const rows = (
-        await client.query<SourceLink>(
-          "SELECT i.target_id,i.source_key,r.id,r.source,r.fingerprint,r.key_id,r.report FROM yeta_crm_private.legacy_items i JOIN yeta_crm_private.legacy_runs r ON r.id=i.batch_id WHERE i.target_table='records' AND i.target_kind='installations' AND i.source_table='setup_tb' ORDER BY i.target_id",
-        )
-      ).rows;
-      const links = new Map<string, SourceLink[]>();
-      for (const row of rows) links.set(row.target_id, [...(links.get(row.target_id) ?? []), row]);
-      return links;
-    })());
   const repository: InstallationArchiveRepository = {
     async installation(id) {
       const record = (await snapshot()).records.get(id);
-      if (!record) return undefined;
-      const linked = (await sourceLinks()).get(id) ?? [];
-      if (linked.length > 1) fail('SOURCE_LINK_INVALID');
-      if (!linked.length) return structuredClone(record);
-      const batch = linked[0];
-      if (
-        batch.source !== 'CRM_OLD_DB:public:v1' ||
-        batch.report?.status !== 'committed' ||
-        typeof batch.source_key !== 'string' ||
-        !/^-?\d+$/.test(batch.source_key) ||
-        !batch.report?.sourceCounts
-      )
-        fail('SOURCE_LINK_INVALID');
-      return {
-        id: record.id,
-        data: structuredClone(record.data),
-        batch: {
-          id: batch.id,
-          source: batch.source,
-          fingerprint: batch.fingerprint,
-          keyId: batch.key_id,
-          setupKey: batch.source_key,
-          sourceCounts: batch.report.sourceCounts,
-        },
-      };
+      return record ? structuredClone(record) : undefined;
     },
-    async archives(batchId) {
-      return (
-        await client.query(
-          'SELECT source_table,source_key,envelope FROM yeta_crm_private.legacy_archive WHERE batch_id=$1 AND source_table=ANY($2::text[]) ORDER BY source_table,source_key',
-          [batchId, archiveTables],
-        )
-      ).rows;
+    async archives() {
+      return [];
     },
     audit: forbidden,
   };

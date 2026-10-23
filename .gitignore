@@ -67,6 +67,7 @@ id_ed25519*
 !/tests/installation-code-options.test.ts
 !/tests/installation-origin-save.test.ts
 !/tests/installation-option-rows.test.ts
+!/tests/installation-current-read.test.ts
 !/tests/css-stub.mjs
 /server/*.test.ts
 /deploy/

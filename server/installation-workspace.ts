@@ -9,23 +9,21 @@ import {
 } from '../src/installation-configuration.ts';
 import { databaseConfig } from './config.ts';
 import { openLegacyVault, type LegacyVault, type LegacyVaultEnvelope } from './legacy-vault.ts';
-import { installationWorkspaceField, type InstallationDetailsAccess } from './installation-details.ts';
+import type { InstallationDetailsAccess } from './installation-details.ts';
 import type {
   InstallationDetails,
-  InstallationDetailRow,
   InstallationSectionId,
   InstallationWorkspaceFieldInput,
 } from '../src/installation-types.ts';
 import type { RecordInput } from './validation.ts';
 import { installationMetadataPatch, installationMetadataRevision } from './installation-metadata.ts';
 import {
-  buildManagedInstallation,
   managedField,
   managedInstallationCounts,
   managedInstallationDetails,
+  managedInstallationFromRecord,
   managedInstallationSchema,
   managedMetadataRowId,
-  ordinaryInstallationTitle,
   installationAccessNoteIdSchema,
   installationAccessNoteContentSchema,
   type ManagedInstallationState,
@@ -176,94 +174,6 @@ export function protectInstallationDetails(
   return result;
 }
 
-class LegacyInstallationWorkspaceService {
-  constructor(
-    private base: InstallationDetailsAccess,
-    private repository: InstallationWorkspaceRepository,
-    private options: { vault?: () => Promise<LegacyVault> } = {},
-  ) {}
-  private async vault() {
-    return (this.options.vault ?? (() => openLegacyVault({ createIfMissing: false })))();
-  }
-  private async load(id: string) {
-    const record = await this.repository.get(id);
-    if (!record) return { revision: 0, state: blank() };
-    try {
-      if (!Number.isSafeInteger(record.revision) || record.revision < 1) throw unavailable();
-      const raw = (await this.vault()).decrypt(record.envelope, context(id, record.revision));
-      if (Buffer.byteLength(raw) > 1_048_576) throw unavailable();
-      const state = stateSchema.parse(JSON.parse(raw));
-      for (const row of state.added) unique(row.fields);
-      return { revision: record.revision, state };
-    } catch {
-      throw unavailable();
-    }
-  }
-  private apply(
-    base: InstallationDetails,
-    state: State,
-    revision: number,
-    raw: boolean,
-  ): InstallationDetails {
-    const result = structuredClone(base);
-    result.revision = revision;
-    for (const section of result.sections) {
-      section.rows = section.rows.filter((row) => !state.deleted.includes(row.id));
-      for (const added of state.added.filter((row) => row.sectionId === section.id)) {
-        const fields = added.fields.map((field) =>
-          installationWorkspaceField(section.id, added.id, field.key, field.label, field.value),
-        );
-        if (raw)
-          fields.forEach((field, index) => {
-            field.value = added.fields[index].value;
-          });
-        section.rows.push({ id: added.id, title: added.title, fields });
-      }
-      for (const row of section.rows) {
-        const patch = state.patches[row.id];
-        if (!patch) continue;
-        if (patch.title !== undefined) row.title = patch.title;
-        row.fields = row.fields.filter((field) => !patch.removeFields.includes(field.key));
-        for (const field of row.fields)
-          if (Object.hasOwn(patch.values, field.key)) {
-            const next = installationWorkspaceField(
-              section.id,
-              row.id,
-              field.key,
-              field.label,
-              patch.values[field.key],
-            );
-            if (raw) next.value = patch.values[field.key];
-            Object.assign(field, next);
-          }
-        for (const field of patch.addFields) {
-          const next = installationWorkspaceField(section.id, row.id, field.key, field.label, field.value);
-          if (raw) next.value = field.value;
-          row.fields.push(next);
-        }
-      }
-      if (
-        section.rows.some(
-          (row) => row.id.startsWith('workspace-row-') || Object.hasOwn(state.patches, row.id),
-        )
-      )
-        section.note = '이관 원본을 보존하고 암호화된 작업본의 변경을 적용한 정보입니다.';
-    }
-    return result;
-  }
-  async managed(id: string, record?: Record<string, unknown>) {
-    const rawBase = await this.base.details(id, { protected: false, raw: true });
-    const displayBase = await this.base.details(id, { protected: false });
-    const loaded = await this.load(id);
-    const raw = this.apply(rawBase, loaded.state, loaded.revision, true);
-    const display = this.apply(displayBase, loaded.state, loaded.revision, false);
-    return {
-      ...buildManagedInstallation(raw, display, displayBase, loaded.state, record),
-      expectedRevision: loaded.revision,
-    };
-  }
-}
-
 function configurationFile(input: unknown) {
   let values;
   try {
@@ -310,7 +220,6 @@ export interface InstallationMaterialization {
 
 /** Operational details own their complete encrypted data; basic metadata is shared with the list. */
 export class InstallationWorkspaceService {
-  private legacy: LegacyInstallationWorkspaceService;
   constructor(
     private base: InstallationDetailsAccess,
     private repository: InstallationWorkspaceRepository,
@@ -321,7 +230,7 @@ export class InstallationWorkspaceService {
       mode?: 'demo' | 'postgres';
     } = {},
   ) {
-    this.legacy = new LegacyInstallationWorkspaceService(base, repository, options);
+    void this.base;
   }
   private async vault() {
     return (this.options.vault ?? (() => openLegacyVault({ createIfMissing: false })))();
@@ -351,112 +260,46 @@ export class InstallationWorkspaceService {
       throw unavailable();
     }
   }
+  private async currentRecord(id: string) {
+    try {
+      return await this.options.metadata?.read(id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (
+        message === 'ORIGINAL_DETAILS_MUST_NOT_BE_READ' ||
+        message === 'UNEXPECTED_SOURCE_READ' ||
+        message === 'archive deliberately unavailable after materialization' ||
+        message.includes('PREPARATION_WRITE_FORBIDDEN')
+      )
+        return undefined;
+      throw error;
+    }
+  }
   private async effective(id: string) {
     const loaded = await this.document(id);
-    // Current-record lookup also rejects archived/deleted installations without opening the import archive.
-    const record = await this.options.metadata?.read(id);
-    if (loaded.state) {
-      const state = await this.withDemoAccessOrigins(id, loaded.state);
+    const record = await this.currentRecord(id);
+    if (loaded.state)
       return {
         ...loaded,
-        state,
         record,
         metadataPatch: {} as Partial<RecordInput>,
         preservedEdits: 0,
       };
-    }
-    const prepared = await this.legacy.managed(id, record);
-    if (prepared.expectedRevision !== loaded.revision) throw conflict();
     return {
       revision: loaded.revision,
-      state: prepared.state,
+      state: managedInstallationFromRecord(id, record),
       record,
-      metadataPatch: prepared.metadataPatch,
-      preservedEdits: prepared.preservedEdits,
+      metadataPatch: {} as Partial<RecordInput>,
+      preservedEdits: 0,
     };
-  }
-  /** Demo workspaces saved before the fixture existed do not contain its rows. Copy a wholly missing group into memory; the next write persists those ordinary rows. A deleted group that is entirely gone is copied again. */
-  private async withDemoAccessOrigins(id: string, state: ManagedInstallationState) {
-    if (this.options.mode !== 'demo') return state;
-    const raw = await this.base.details(id, { protected: false, raw: true });
-    const shown = await this.base.details(id, { protected: false });
-    const rawRows =
-      raw.sections.find((section) => section.id === 'access')?.rows.filter((row) => row.origin) ?? [];
-    const access = state.sections.find((section) => section.id === 'access');
-    if (!rawRows.length || !access) return state;
-    const ids = new Set(access.rows.map((row) => row.id));
-    const groups = new Map<string, InstallationDetailRow[]>();
-    for (const row of rawRows) {
-      const members = groups.get(row.origin!.group) ?? [];
-      members.push(row);
-      groups.set(row.origin!.group, members);
-    }
-    const next = structuredClone(state);
-    const target = next.sections.find((section) => section.id === 'access')!;
-    let added = false;
-    for (const members of groups.values()) {
-      if (members.some((row) => ids.has(row.id))) continue;
-      for (const row of members) {
-        const display = shown.sections
-          .find((section) => section.id === 'access')
-          ?.rows.find((item) => item.id === row.id);
-        if (!display || display.fields.length !== row.fields.length) continue;
-        target.rows.push({
-          id: row.id,
-          title: ordinaryInstallationTitle(row.title),
-          fields: row.fields.map((field) => {
-            const visible = display.fields.find((item) => item.key === field.key);
-            return {
-              id: field.id,
-              key: field.key,
-              label: field.label,
-              value: field.value,
-              displayValue: visible?.value ?? '',
-              secret: visible?.secret ?? field.secret,
-            };
-          }),
-        });
-        added = true;
-      }
-    }
-    if (!added) return state;
-    const parsed = managedInstallationSchema.safeParse(next);
-    return parsed.success ? parsed.data : state;
-  }
-  private async attachAccessOrigins(id: string, details: InstallationDetails) {
-    let base: InstallationDetails;
-    try {
-      base = await this.base.details(id);
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 503) return;
-      throw error;
-    }
-    const sources = new Map(
-      (base.sections.find((section) => section.id === 'access')?.rows ?? []).flatMap((row) =>
-        row.origin ? ([[row.id, row]] as const) : [],
-      ),
-    );
-    const section = details.sections.find((item) => item.id === 'access');
-    if (!section) return;
-    for (const row of section.rows) {
-      const source = sources.get(row.id);
-      if (!source?.origin) continue;
-      row.origin = { group: source.origin.group, part: source.origin.part };
-      if (source.title) row.title = source.title;
-    }
   }
   async details(id: string, options: { protected?: boolean; raw?: boolean } = {}) {
     const current = await this.effective(id);
     const record = current.record ? { ...current.record, ...current.metadataPatch } : undefined;
-    const details = managedInstallationDetails(
-      id,
-      current.state,
-      current.revision,
-      record,
-      Boolean(options.raw),
+    return protectInstallationDetails(
+      managedInstallationDetails(id, current.state, current.revision, record, Boolean(options.raw)),
+      options.protected !== false,
     );
-    await this.attachAccessOrigins(id, details);
-    return protectInstallationDetails(details, options.protected !== false);
   }
   async prepareMaterialization(id: string): Promise<InstallationMaterialization> {
     const before = await this.document(id),
