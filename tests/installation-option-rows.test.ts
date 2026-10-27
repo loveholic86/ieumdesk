@@ -191,3 +191,35 @@ test('a card shares one label column and the copy button follows the value', asy
   assert.equal(plain.includes('installation-copy-button'), false);
   assert.match(markup, /<dt><span>access_etc<\/span><\/dt>/);
 });
+
+test('protected vpn and note locks stay 12px outside option-b', async () => {
+  const { OptionTable } = await import('../src/InstallationDetails.tsx');
+  const markup = renderToStaticMarkup(
+    createElement(OptionTable, {
+      sectionId: 'access',
+      policyPending: false,
+      codeOptions: [],
+      fields: [
+        { ...field('vpnsv_ip', '203.0.113.20'), label: 'VPN 서버 IP', secret: true },
+        { ...field('access_etc', '공통 비고'), label: '접근 비고', secret: true },
+      ],
+    }),
+  );
+  assert.equal(markup.includes('installation-option-b'), false);
+  const locks = markup.match(/<svg class="installation-lock"[^>]*>/g) ?? [];
+  assert.equal(locks.length, 2);
+  for (const lock of locks) {
+    assert.match(lock, /\bwidth="12"/);
+    assert.match(lock, /\bheight="12"/);
+  }
+  const css = readFileSync(new URL('../src/installation-details.css', import.meta.url), 'utf8');
+  assert.match(
+    css,
+    /\.installation-access-common \.installation-lock \{[^}]*width:\s*12px;[^}]*height:\s*12px;/s,
+  );
+  const source = readFileSync(new URL('../src/InstallationDetails.tsx', import.meta.url), 'utf8');
+  assert.match(source, /installation-data-card installation-option-b installation-access-common/);
+  const browserAt = source.indexOf('className="installation-access-browser"');
+  const panelAt = source.indexOf('<AccessCommonPanel');
+  assert.ok(browserAt > 0 && panelAt > browserAt);
+});

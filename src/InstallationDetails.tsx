@@ -662,6 +662,8 @@ function OptionField({
           <svg
             className="installation-lock"
             viewBox="0 0 16 16"
+            width={12}
+            height={12}
             fill="none"
             stroke="currentColor"
             strokeWidth="1.5"
@@ -820,7 +822,7 @@ function AccessCommonPanel({
     return field ? [field] : [];
   });
   return (
-    <section className="installation-data-card installation-access-common">
+    <section className="installation-data-card installation-option-b installation-access-common">
       <header className="installation-card-heading">
         <span className="installation-small-icon">
           <Network size={17} />
@@ -1849,24 +1851,6 @@ export default function InstallationDetails({
             />
           ) : (
             <>
-              {config.id === 'access' && (
-                <AccessCommonPanel
-                  rows={sourceSection.rows}
-                  notes={accessNotes}
-                  editing={accessCommonActive}
-                  canEdit={canManage && !editingActive}
-                  busy={busy}
-                  policyPending={policyPending}
-                  codeOptions={codeOptions}
-                  onEdit={() => {
-                    setActionError('');
-                    setStatus('');
-                    setAccessCommonEdit(true);
-                  }}
-                  onCancel={cancelEditing}
-                  onSave={(draft) => void saveAccessCommon(draft)}
-                />
-              )}
               {config.id === 'access' && accessEditActive ? (
                 accessCreate
               ) : config.id === 'access' ? (
@@ -1910,6 +1894,24 @@ export default function InstallationDetails({
                       : t('등록된 정보가 있으면 이곳에 표시됩니다.')}
                   </p>
                 </div>
+              )}
+              {config.id === 'access' && (
+                <AccessCommonPanel
+                  rows={sourceSection.rows}
+                  notes={accessNotes}
+                  editing={accessCommonActive}
+                  canEdit={canManage && !editingActive}
+                  busy={busy}
+                  policyPending={policyPending}
+                  codeOptions={codeOptions}
+                  onEdit={() => {
+                    setActionError('');
+                    setStatus('');
+                    setAccessCommonEdit(true);
+                  }}
+                  onCancel={cancelEditing}
+                  onSave={(draft) => void saveAccessCommon(draft)}
+                />
               )}
             </>
           )}
