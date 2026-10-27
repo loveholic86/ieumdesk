@@ -10,10 +10,12 @@ import {
 import { databaseConfig } from './config.ts';
 import { openLegacyVault, type LegacyVault, type LegacyVaultEnvelope } from './legacy-vault.ts';
 import { installationWorkspaceField, type InstallationDetailsAccess } from './installation-details.ts';
-import type {
-  InstallationDetails,
-  InstallationSectionId,
-  InstallationWorkspaceFieldInput,
+import {
+  accessCommonFieldKeys,
+  accessCommonRowId,
+  type InstallationDetails,
+  type InstallationSectionId,
+  type InstallationWorkspaceFieldInput,
 } from '../src/installation-types.ts';
 import type { RecordInput } from './validation.ts';
 import { installationMetadataPatch, installationMetadataRevision } from './installation-metadata.ts';
@@ -24,7 +26,6 @@ import {
   managedInstallationDetails,
   managedInstallationSchema,
   managedMetadataRowId,
-  newSavedAccessGroups,
   restoreSavedAccessOrigins,
   sealManagedInstallation,
   installationAccessNoteIdSchema,
@@ -156,7 +157,7 @@ function columnAccessOrigins(value: unknown): Record<string, InstallationAccessO
 export type InstallationWorkspaceAction =
   'row-create' | 'row-update' | 'row-delete' | 'materialize' | 'note-create' | 'note-update' | 'note-delete';
 export interface InstallationWorkspaceRepository {
-  /** True only when save/get keep accessOrigins beside the envelope. */
+  /** True when the nullable access_origins column is present. New saves do not add groups. */
   readonly persistsAccessOrigins: boolean;
   get(id: string): Promise<Stored | undefined>;
   save(
@@ -183,6 +184,23 @@ const context = (id: string, revision: number) => ({
 const blank = (): State => ({ version: 1, added: [], deleted: [], patches: {} });
 function unique(fields: InstallationWorkspaceFieldInput[]) {
   if (new Set(fields.map((field) => field.key)).size !== fields.length) throw bad();
+}
+function writeAccessCommonFields(
+  section: ManagedInstallationState['sections'][number],
+  fields: readonly InstallationWorkspaceFieldInput[],
+) {
+  if (!fields.length) return;
+  let row = section.rows.find((item) => item.id === accessCommonRowId);
+  if (!row) {
+    row = { id: accessCommonRowId, title: '설치 공통', fields: [] };
+    section.rows.push(row);
+  }
+  for (const field of fields) {
+    const written = managedField(section.id, row.id, field.key, field.label, field.value);
+    const current = row.fields.find((item) => item.key === field.key);
+    if (!current) row.fields.push(written);
+    else Object.assign(current, written, { id: current.id });
+  }
 }
 
 class LegacyInstallationWorkspaceService {
@@ -490,35 +508,31 @@ export class InstallationWorkspaceService {
       actor,
       'row-create',
       (state) => {
-        if (managedInstallationCounts(state).rowCount >= 1_000) throw bad();
         const section = state.sections.find((item) => item.id === data.sectionId)!;
-        const grouped =
-          data.sectionId === 'access' && this.repository.persistsAccessOrigins
-            ? newSavedAccessGroups(data.fields)
-            : undefined;
-        if (!grouped) {
+        const serverFields =
+          data.sectionId === 'access'
+            ? data.fields.filter((field) => !accessCommonFieldKeys.has(field.key))
+            : data.fields;
+        const commonFields =
+          data.sectionId === 'access'
+            ? data.fields.filter((field) => accessCommonFieldKeys.has(field.key))
+            : [];
+        const adding =
+          (serverFields.length ? 1 : 0) +
+          (commonFields.length && !section.rows.some((row) => row.id === accessCommonRowId) ? 1 : 0);
+        if (!adding && !commonFields.length) throw bad();
+        if (managedInstallationCounts(state).rowCount + adding > 1_000) throw bad();
+        if (serverFields.length) {
           const rowId = `workspace-row-${randomUUID()}`;
           section.rows.push({
             id: rowId,
             title: data.title,
-            fields: data.fields.map((field) =>
-              managedField(data.sectionId, rowId, field.key, field.label, field.value),
-            ),
-          });
-          return;
-        }
-        if (managedInstallationCounts(state).rowCount + grouped.parts.length > 1_000) throw bad();
-        for (const part of grouped.parts) {
-          const rowId = `workspace-row-${randomUUID()}`;
-          section.rows.push({
-            id: rowId,
-            title: data.title,
-            origin: { group: grouped.group, part: part.part },
-            fields: part.fields.map((field) =>
+            fields: serverFields.map((field) =>
               managedField(data.sectionId, rowId, field.key, field.label, field.value),
             ),
           });
         }
+        writeAccessCommonFields(section, commonFields);
       },
       guard,
     );

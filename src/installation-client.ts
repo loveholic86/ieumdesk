@@ -1,9 +1,13 @@
-import type {
-  InstallationDetails,
-  InstallationDetailField,
-  InstallationDetailRow,
-  InstallationDetailSection,
-  InstallationSectionId,
+import {
+  accessCommonFieldKeys,
+  accessCommonRowId,
+  accessEtcKey,
+  accessVpnKeys,
+  type InstallationDetails,
+  type InstallationDetailField,
+  type InstallationDetailRow,
+  type InstallationDetailSection,
+  type InstallationSectionId,
 } from './installation-types';
 
 /** Only yes/no fields qualify. Unknown/third-choice values remain editable without coercion. */
@@ -215,39 +219,139 @@ export function prepareInstallationSection(
   return changes;
 }
 
-const accessPartOrder: Record<string, number> = { address: 0, vpn: 1, access: 2 };
+const genericAccessTitles = new Set([
+  '기존 접근 정보',
+  '접근 정보',
+  'Address',
+  'VPN',
+  '서버',
+  '접속 주소',
+  '이관 원본 Address',
+  '이관 원본 VPN',
+  '이관 원본 접근 정보',
+  '설치 공통',
+]);
 
-/** One migrated source is one list item. Other rows stay individual items. */
-export function accessRecordItems(rows: readonly InstallationDetailRow[]) {
-  const visibleRows = visibleInstallationSection({
+function visibleAccessRows(rows: readonly InstallationDetailRow[]) {
+  return visibleInstallationSection({
     id: 'access',
     title: '접근 정보',
     imported: false,
     rows: [...rows],
   }).rows;
-  const items: { id: string; rows: InstallationDetailRow[] }[] = [];
+}
+
+function accessFilled(field: InstallationDetailField) {
+  return field.masked || field.value.trim().length > 0;
+}
+
+function sameAccessValue(left: InstallationDetailField, right: InstallationDetailField) {
+  if (left.masked && right.masked) return true;
+  if (left.masked || right.masked) return false;
+  return left.value === right.value;
+}
+
+function genericAccessTitle(title: string) {
+  return genericAccessTitles.has(title) || /^이관 원본\s+(?:address|vpn|access|접근 정보)$/i.test(title);
+}
+
+/** Stored title when it names a server. Part labels and the shared slot title do not. */
+export function accessServerTitle(rows: readonly Pick<InstallationDetailRow, 'title'>[]) {
+  for (const row of rows) {
+    const title = row.title?.trim();
+    if (title && !genericAccessTitle(title)) return title;
+  }
+  return '';
+}
+
+/** Address and access fields for one server card. VPN and access remarks stay installation-wide. */
+export function accessServerFields(rows: readonly InstallationDetailRow[]) {
   const seen = new Set<string>();
+  const fields: InstallationDetailField[] = [];
+  for (const row of rows)
+    for (const field of row.fields) {
+      if (accessCommonFieldKeys.has(field.key) || seen.has(field.key)) continue;
+      seen.add(field.key);
+      fields.push(field);
+    }
+  return fields;
+}
+
+/** One server per list row. An origin group is one server. Rows without an origin are never merged. */
+export function accessRecordItems(rows: readonly InstallationDetailRow[]) {
+  const visibleRows = visibleAccessRows(rows);
+  const items: { id: string; rows: InstallationDetailRow[] }[] = [];
+  const grouped = new Map<string, { id: string; rows: InstallationDetailRow[] }>();
   for (const row of visibleRows) {
+    if (row.id === accessCommonRowId || row.origin?.part === 'vpn') continue;
+    if (!row.fields.some((field) => !accessCommonFieldKeys.has(field.key))) continue;
     const group = row.origin?.group;
     if (!group) {
       items.push({ id: row.id, rows: [row] });
       continue;
     }
-    if (seen.has(group)) continue;
-    seen.add(group);
-    items.push({
-      id: group,
-      rows: visibleRows
-        .filter((item) => item.origin?.group === group)
-        .slice()
-        .sort(
-          (left, right) =>
-            (accessPartOrder[left.origin?.part ?? ''] ?? 9) -
-            (accessPartOrder[right.origin?.part ?? ''] ?? 9),
-        ),
-    });
+    const existing = grouped.get(group);
+    if (existing) {
+      existing.rows.push(row);
+      continue;
+    }
+    const item = { id: group, rows: [row] };
+    grouped.set(group, item);
+    items.push(item);
   }
-  return items;
+  return items.map((item, index) => ({ ...item, index: index + 1 }));
+}
+
+export type AccessHeldField = { id: string; title: string; keys: string[] };
+
+/** Read-only installation VPN and access remarks. Does not rewrite stored rows. */
+export function accessInstallationCommon(rows: readonly InstallationDetailRow[]) {
+  const visibleRows = visibleAccessRows(rows);
+  const slot = visibleRows.find((row) => row.id === accessCommonRowId);
+  const vpn: InstallationDetailField[] = [];
+  const held = new Map<string, AccessHeldField>();
+  const hold = (row: InstallationDetailRow, key: string) => {
+    const current = held.get(row.id) ?? {
+      id: row.id,
+      title: row.title?.trim() || '접근 정보',
+      keys: [] as string[],
+    };
+    if (!current.keys.includes(key)) current.keys.push(key);
+    held.set(row.id, current);
+  };
+  for (const key of accessVpnKeys) {
+    const explicit = slot?.fields.find((field) => field.key === key);
+    if (explicit) {
+      if (accessFilled(explicit)) vpn.push(explicit);
+      continue;
+    }
+    const found: { row: InstallationDetailRow; field: InstallationDetailField }[] = [];
+    for (const row of visibleRows) {
+      if (row.id === accessCommonRowId) continue;
+      const field = row.fields.find((item) => item.key === key);
+      if (field && accessFilled(field)) found.push({ row, field });
+    }
+    if (!found.length) continue;
+    const [first] = found;
+    if (found.some((item) => !sameAccessValue(item.field, first.field))) {
+      for (const item of found) hold(item.row, key);
+      continue;
+    }
+    vpn.push(first.field);
+  }
+  const explicitEtc = slot?.fields.find((field) => field.key === accessEtcKey);
+  let etc: InstallationDetailField | undefined;
+  if (!explicitEtc) {
+    for (const row of visibleRows) {
+      if (row.id === accessCommonRowId) continue;
+      const field = row.fields.find((item) => item.key === accessEtcKey);
+      if (field && accessFilled(field)) {
+        etc = field;
+        break;
+      }
+    }
+  } else if (accessFilled(explicitEtc)) etc = explicitEtc;
+  return { vpn, etc, held: [...held.values()] };
 }
 
 /** Keep the selected access rows, plus rows created after editing started. One record, or any other tab, stays whole. */
@@ -279,13 +383,28 @@ export function installationDetailsForAccessEdit<T extends InstallationDetails>(
   const section = details.sections.find((item) => item.id === 'access');
   if (!section) return details;
   const items = accessRecordItems(section.rows);
-  if (items.length <= 1) return details;
   const selected = items.find((item) => item.id === selectedId) ?? items[0];
-  return installationAccessEditingDetails(
+  const scoped = installationAccessEditingDetails(
     details,
-    selected.rows.map((row) => row.id),
+    selected?.rows.map((row) => row.id) ?? [],
     section.rows.map((row) => row.id),
   );
+  return {
+    ...scoped,
+    sections: scoped.sections.map((item) =>
+      item.id === 'access'
+        ? {
+            ...item,
+            rows: item.rows
+              .map((row) => ({
+                ...row,
+                fields: row.fields.filter((field) => !accessCommonFieldKeys.has(field.key)),
+              }))
+              .filter((row) => row.fields.length > 0),
+          }
+        : item,
+    ),
+  };
 }
 
 const unusedAccessFields = new Set(['access_reqst_date', 'access_id', 'access_pwd']);

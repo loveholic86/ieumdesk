@@ -4,7 +4,11 @@ import { readFileSync } from 'node:fs';
 import { register } from 'node:module';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { InstallationAccessOriginPart, InstallationDetailField, InstallationDetailRow } from '../src/installation-types.ts';
+import type {
+  InstallationAccessOriginPart,
+  InstallationDetailField,
+  InstallationDetailRow,
+} from '../src/installation-types.ts';
 
 register('./css-stub.mjs', import.meta.url);
 
@@ -19,7 +23,13 @@ test('option rows render one cell per field and no pad cells', async () => {
       sectionId: 'installation',
       policyPending: false,
       codeOptions: [],
-      fields: [field('version'), field('setup_date'), field('patch_date'), field('engineer'), field('note', '메모')],
+      fields: [
+        field('version'),
+        field('setup_date'),
+        field('patch_date'),
+        field('engineer'),
+        field('note', '메모'),
+      ],
     }),
   );
   assert.equal(markup.includes('is-pad'), false);
@@ -88,12 +98,16 @@ test('each compact run ends on its last pair and has no empty cells', async () =
   assert.equal(four.includes('is-pad'), false);
 });
 
-function originRow(part: InstallationAccessOriginPart, fields: InstallationDetailField[]): InstallationDetailRow {
+function originRow(
+  part: InstallationAccessOriginPart,
+  fields: InstallationDetailField[],
+): InstallationDetailRow {
   return { id: part, origin: { group: 'a'.repeat(64), part }, fields };
 }
 
-test('migrated access view packs Address and VPN together and keeps wide rows last', async () => {
-  const { migratedAccessViewBlocks } = await import('../src/InstallationDetails.tsx');
+test('an origin group reads as one server and leaves VPN out of the server fields', async () => {
+  const { accessInstallationCommon, accessRecordItems, accessServerFields } =
+    await import('../src/installation-client.ts');
   const address = originRow('address', [
     field('domainurl', 'legacy.example'),
     field('external_ip', '203.0.113.10'),
@@ -110,25 +124,37 @@ test('migrated access view packs Address and VPN together and keeps wide rows la
     field('access_url', 'https://example.test/gate'),
     field('rootpath', '/var/app'),
     field('access_reqst_enddate', '2026-12-31'),
+    field('access_etc', '남김'),
   ]);
   const before = address.fields.map((item) => item.key);
-  const blocks = migratedAccessViewBlocks([address, vpn, access], false);
-  assert.deepEqual(before, address.fields.map((item) => item.key));
+  const items = accessRecordItems([address, vpn, access]);
   assert.deepEqual(
-    blocks.map((block) => block.titles),
-    [['Address', 'VPN'], ['접근 정보']],
+    before,
+    address.fields.map((item) => item.key),
   );
+  assert.equal(items.length, 1);
   assert.deepEqual(
-    blocks[0].fields.map((item) => item.key),
-    ['external_ip', 'ssl_apply_yn', 'vpnsv_ip', 'vpnsv_id', 'vpnsv_pwd', 'domainurl'],
+    accessServerFields(items[0]?.rows ?? []).map((item) => item.key),
+    [
+      'domainurl',
+      'external_ip',
+      'ssl_apply_yn',
+      'ssh_port',
+      'access_type',
+      'access_url',
+      'rootpath',
+      'access_reqst_enddate',
+    ],
   );
+  const common = accessInstallationCommon([address, vpn, access]);
   assert.deepEqual(
-    blocks[1].fields.map((item) => item.key),
-    ['access_type', 'access_reqst_enddate', 'access_url', 'rootpath'],
+    common.vpn.map((item) => item.key),
+    ['vpnsv_ip', 'vpnsv_id', 'vpnsv_pwd'],
   );
-  assert.deepEqual(
-    migratedAccessViewBlocks([address], true)[0].fields.map((item) => item.key),
-    ['ssh_port', 'external_ip', 'ssl_apply_yn', 'domainurl'],
+  assert.equal(common.etc?.value, '남김');
+  assert.equal(
+    access.fields.some((item) => item.key === 'access_etc'),
+    true,
   );
 });
 
@@ -137,7 +163,10 @@ test('a card shares one label column and the copy button follows the value', asy
   const card = css.slice(css.indexOf('.installation-option-b .installation-kv'));
   assert.match(card, /\.installation-option-b \.installation-kv \{[^}]*--kv-label: 118px;/s);
   assert.match(card, /grid-template-columns: subgrid;/);
-  assert.match(card, /grid-template-columns: var\(--kv-label\) minmax\(0, 1fr\) var\(--kv-label\) minmax\(0, 1fr\) var\(--kv-label\) minmax\(0, 1fr\);/);
+  assert.match(
+    card,
+    /grid-template-columns:\s*var\(--kv-label\)\s*minmax\(\s*0,\s*1fr\s*\)\s*var\(--kv-label\)\s*minmax\(\s*0,\s*1fr\s*\)\s*var\(--kv-label\)\s*minmax\(\s*0,\s*1fr\s*\);/s,
+  );
   assert.equal(card.includes('minmax(118px, max-content)'), false);
   assert.equal(card.includes('auto !important'), false);
   const { OptionTable } = await import('../src/InstallationDetails.tsx');
@@ -146,7 +175,11 @@ test('a card shares one label column and the copy button follows the value', asy
       sectionId: 'access',
       policyPending: false,
       codeOptions: [],
-      fields: [field('external_ip', '203.0.113.10'), field('ssh_port', '22'), field('access_etc', '첫째 줄\n둘째 줄')],
+      fields: [
+        field('external_ip', '203.0.113.10'),
+        field('ssh_port', '22'),
+        field('access_etc', '첫째 줄\n둘째 줄'),
+      ],
     }),
   );
   assert.equal((markup.match(/class="installation-kv"/g) ?? []).length, 1);

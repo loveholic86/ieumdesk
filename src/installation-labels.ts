@@ -37,16 +37,12 @@ export const installationFieldTemplates: Record<InstallationSectionId, [string, 
     ['ssl_manage_type', 'SSL 관리 유형'],
     ['ssl_applydate', 'SSL 적용일'],
     ['ssl_pwd', 'SSL 비밀번호'],
-    ['vpnsv_ip', 'VPN 서버 IP'],
-    ['vpnsv_id', 'VPN 아이디'],
-    ['vpnsv_pwd', 'VPN 비밀번호'],
     ['rootpath', '설치 경로'],
     ['os_root_id', 'OS 관리자 아이디'],
     ['os_root_pwd', 'OS 관리자 비밀번호'],
     ['os_user_id', 'OS 사용자 아이디'],
     ['os_user_pwd', 'OS 사용자 비밀번호'],
     ['os_login_etc', 'OS 로그인 비고'],
-    ['access_etc', '접근 비고'],
   ],
   server: [
     ['hostname', '호스트네임'],
@@ -97,6 +93,10 @@ export const installationFieldTemplates: Record<InstallationSectionId, [string, 
 
 const builtInLabels: Record<string, string> = {
   ...Object.fromEntries(Object.values(installationFieldTemplates).flat()),
+  vpnsv_ip: 'VPN 서버 IP',
+  vpnsv_id: 'VPN 아이디',
+  vpnsv_pwd: 'VPN 비밀번호',
+  access_etc: '접근 비고',
   setup_cd: '설치 ID',
   systemCode: '시스템 코드',
   serviceVersion: '서비스 버전',
@@ -147,19 +147,8 @@ const builtInRowTitles = new Set([
   '이관 원본 접근 정보',
   '이관 원본 서버 정보',
 ]);
-const numberedRowTitle = /^(?:이관 원본 )?(?:고객사 연결|YETA 로그인|SAP|별도 설정|고객 전달용 설정|설정) \d+$/;
-
-export function accessOriginGroupLabel(row: Pick<InstallationDetailRow, 'origin'>) {
-  const part =
-    row.origin?.part === 'address'
-      ? 'Address'
-      : row.origin?.part === 'vpn'
-        ? 'VPN'
-        : row.origin?.part === 'access'
-          ? '접근 정보'
-          : '';
-  return part ? `${t('기존 접근 정보')} · ${t(part)}` : '';
-}
+const numberedRowTitle =
+  /^(?:이관 원본 )?(?:고객사 연결|YETA 로그인|SAP|별도 설정|고객 전달용 설정|설정) \d+$/;
 
 export function installationRowTitle(row: Pick<InstallationDetailRow, 'id' | 'title'>) {
   if (!row.title || row.id.startsWith('workspace-row-')) return row.title;
