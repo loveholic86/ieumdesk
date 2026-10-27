@@ -560,6 +560,10 @@
   flex-direction: column;
   gap: 14px;
 }
+.installation-access-common .installation-lock {
+  width: 12px;
+  height: 12px;
+}
 .installation-access-common-form {
   display: grid;
   gap: 12px;
