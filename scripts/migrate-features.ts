@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { Client } from 'pg';
 import { databaseConfig } from '../server/config.ts';
 
-const allowed = new Set(['005_installation_workspace.sql','006_workspace_settings.sql','007_business_extensions.sql','008_catalog.sql','009_support.sql','010_archive.sql','011_company_task_details.sql','012_backups.sql','016_password_reset.sql']);
+const allowed = new Set(['005_installation_workspace.sql','006_workspace_settings.sql','007_business_extensions.sql','008_catalog.sql','009_support.sql','010_archive.sql','011_company_task_details.sql','012_backups.sql','016_password_reset.sql','017_installation_access_origins.sql']);
 const names = process.argv.slice(2).filter(value=>value!=='--apply');
 const apply = process.argv.slice(2).includes('--apply');
 let client:Client|undefined;

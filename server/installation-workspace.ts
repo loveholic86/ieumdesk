@@ -12,7 +12,6 @@ import { openLegacyVault, type LegacyVault, type LegacyVaultEnvelope } from './l
 import { installationWorkspaceField, type InstallationDetailsAccess } from './installation-details.ts';
 import type {
   InstallationDetails,
-  InstallationDetailRow,
   InstallationSectionId,
   InstallationWorkspaceFieldInput,
 } from '../src/installation-types.ts';
@@ -25,9 +24,12 @@ import {
   managedInstallationDetails,
   managedInstallationSchema,
   managedMetadataRowId,
-  ordinaryInstallationTitle,
+  newSavedAccessGroups,
+  restoreSavedAccessOrigins,
+  sealManagedInstallation,
   installationAccessNoteIdSchema,
   installationAccessNoteContentSchema,
+  type InstallationAccessOrigin,
   type ManagedInstallationState,
 } from './installation-managed.ts';
 
@@ -126,11 +128,36 @@ const stateSchema = z
   })
   .strict();
 type State = z.infer<typeof stateSchema>;
-export type InstallationWorkspaceStored = { revision: number; envelope: LegacyVaultEnvelope };
+export type InstallationWorkspaceStored = {
+  revision: number;
+  envelope: LegacyVaultEnvelope;
+  accessOrigins?: Record<string, InstallationAccessOrigin>;
+};
 type Stored = InstallationWorkspaceStored;
+type WorkspaceQuery = {
+  query(sql: string, params?: unknown[]): Promise<{ rows: any[]; rowCount?: number | null }>;
+};
+type WorkspaceDb = WorkspaceQuery & {
+  connect(): Promise<WorkspaceQuery & { release(): void }>;
+  end?(): Promise<void>;
+};
+function columnAccessOrigins(value: unknown): Record<string, InstallationAccessOrigin> | undefined {
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return undefined;
+    }
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const record = value as Record<string, InstallationAccessOrigin>;
+  return Object.keys(record).length ? structuredClone(record) : undefined;
+}
 export type InstallationWorkspaceAction =
   'row-create' | 'row-update' | 'row-delete' | 'materialize' | 'note-create' | 'note-update' | 'note-delete';
 export interface InstallationWorkspaceRepository {
+  /** True only when save/get keep accessOrigins beside the envelope. */
+  readonly persistsAccessOrigins: boolean;
   get(id: string): Promise<Stored | undefined>;
   save(
     id: string,
@@ -138,6 +165,7 @@ export interface InstallationWorkspaceRepository {
     envelope: LegacyVaultEnvelope,
     actorUserId: string,
     action: InstallationWorkspaceAction,
+    accessOrigins?: Record<string, InstallationAccessOrigin>,
   ): Promise<number>;
   close?(): Promise<void>;
 }
@@ -155,25 +183,6 @@ const context = (id: string, revision: number) => ({
 const blank = (): State => ({ version: 1, added: [], deleted: [], patches: {} });
 function unique(fields: InstallationWorkspaceFieldInput[]) {
   if (new Set(fields.map((field) => field.key)).size !== fields.length) throw bad();
-}
-
-export function protectInstallationDetails(
-  details: InstallationDetails,
-  protectedValues = true,
-): InstallationDetails {
-  const result = structuredClone(details);
-  result.accessNotes = (result.accessNotes ?? []).map((note) => ({
-    ...note,
-    content: protectedValues ? MASK : note.content,
-    masked: protectedValues,
-  }));
-  for (const section of result.sections)
-    for (const row of section.rows)
-      for (const field of row.fields) {
-        field.masked = protectedValues && field.secret && field.present;
-        if (field.masked) field.value = MASK;
-      }
-  return result;
 }
 
 class LegacyInstallationWorkspaceService {
@@ -264,6 +273,25 @@ class LegacyInstallationWorkspaceService {
   }
 }
 
+export function protectInstallationDetails(
+  details: InstallationDetails,
+  protectedValues = true,
+): InstallationDetails {
+  const result = structuredClone(details);
+  result.accessNotes = (result.accessNotes ?? []).map((note) => ({
+    ...note,
+    content: protectedValues ? MASK : note.content,
+    masked: protectedValues,
+  }));
+  for (const section of result.sections)
+    for (const row of section.rows)
+      for (const field of row.fields) {
+        field.masked = protectedValues && field.secret && field.present;
+        if (field.masked) field.value = MASK;
+      }
+  return result;
+}
+
 function configurationFile(input: unknown) {
   let values;
   try {
@@ -312,7 +340,7 @@ export interface InstallationMaterialization {
 export class InstallationWorkspaceService {
   private legacy: LegacyInstallationWorkspaceService;
   constructor(
-    private base: InstallationDetailsAccess,
+    base: InstallationDetailsAccess,
     private repository: InstallationWorkspaceRepository,
     private options: {
       vault?: () => Promise<LegacyVault>;
@@ -346,25 +374,23 @@ export class InstallationWorkspaceService {
         stateSchema.parse(parsed);
         return { revision: stored.revision, state: undefined };
       }
-      return { revision: stored.revision, state: managedInstallationSchema.parse(parsed) };
+      const state = managedInstallationSchema.parse(parsed);
+      restoreSavedAccessOrigins(state, stored.accessOrigins);
+      return { revision: stored.revision, state };
     } catch {
       throw unavailable();
     }
   }
   private async effective(id: string) {
     const loaded = await this.document(id);
-    // Current-record lookup also rejects archived/deleted installations without opening the import archive.
     const record = await this.options.metadata?.read(id);
-    if (loaded.state) {
-      const state = await this.withDemoAccessOrigins(id, loaded.state);
+    if (loaded.state)
       return {
         ...loaded,
-        state,
         record,
         metadataPatch: {} as Partial<RecordInput>,
         preservedEdits: 0,
       };
-    }
     const prepared = await this.legacy.managed(id, record);
     if (prepared.expectedRevision !== loaded.revision) throw conflict();
     return {
@@ -375,90 +401,21 @@ export class InstallationWorkspaceService {
       preservedEdits: prepared.preservedEdits,
     };
   }
-  /** Demo workspaces saved before the fixture existed do not contain its rows. Copy a wholly missing group into memory; the next write persists those ordinary rows. A deleted group that is entirely gone is copied again. */
-  private async withDemoAccessOrigins(id: string, state: ManagedInstallationState) {
-    if (this.options.mode !== 'demo') return state;
-    const raw = await this.base.details(id, { protected: false, raw: true });
-    const shown = await this.base.details(id, { protected: false });
-    const rawRows =
-      raw.sections.find((section) => section.id === 'access')?.rows.filter((row) => row.origin) ?? [];
-    const access = state.sections.find((section) => section.id === 'access');
-    if (!rawRows.length || !access) return state;
-    const ids = new Set(access.rows.map((row) => row.id));
-    const groups = new Map<string, InstallationDetailRow[]>();
-    for (const row of rawRows) {
-      const members = groups.get(row.origin!.group) ?? [];
-      members.push(row);
-      groups.set(row.origin!.group, members);
-    }
-    const next = structuredClone(state);
-    const target = next.sections.find((section) => section.id === 'access')!;
-    let added = false;
-    for (const members of groups.values()) {
-      if (members.some((row) => ids.has(row.id))) continue;
-      for (const row of members) {
-        const display = shown.sections
-          .find((section) => section.id === 'access')
-          ?.rows.find((item) => item.id === row.id);
-        if (!display || display.fields.length !== row.fields.length) continue;
-        target.rows.push({
-          id: row.id,
-          title: ordinaryInstallationTitle(row.title),
-          fields: row.fields.map((field) => {
-            const visible = display.fields.find((item) => item.key === field.key);
-            return {
-              id: field.id,
-              key: field.key,
-              label: field.label,
-              value: field.value,
-              displayValue: visible?.value ?? '',
-              secret: visible?.secret ?? field.secret,
-            };
-          }),
-        });
-        added = true;
-      }
-    }
-    if (!added) return state;
-    const parsed = managedInstallationSchema.safeParse(next);
-    return parsed.success ? parsed.data : state;
-  }
-  private async attachAccessOrigins(id: string, details: InstallationDetails) {
-    let base: InstallationDetails;
-    try {
-      base = await this.base.details(id);
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 503) return;
-      throw error;
-    }
-    const sources = new Map(
-      (base.sections.find((section) => section.id === 'access')?.rows ?? []).flatMap((row) =>
-        row.origin ? ([[row.id, row]] as const) : [],
-      ),
-    );
-    const section = details.sections.find((item) => item.id === 'access');
-    if (!section) return;
-    for (const row of section.rows) {
-      const source = sources.get(row.id);
-      if (!source?.origin) continue;
-      row.origin = { group: source.origin.group, part: source.origin.part };
-      if (source.title) row.title = source.title;
-    }
-  }
   async details(id: string, options: { protected?: boolean; raw?: boolean } = {}) {
     const current = await this.effective(id);
     const record = current.record ? { ...current.record, ...current.metadataPatch } : undefined;
-    const details = managedInstallationDetails(
-      id,
-      current.state,
-      current.revision,
-      record,
-      Boolean(options.raw),
+    return protectInstallationDetails(
+      managedInstallationDetails(id, current.state, current.revision, record, Boolean(options.raw)),
+      options.protected !== false,
     );
-    await this.attachAccessOrigins(id, details);
-    return protectInstallationDetails(details, options.protected !== false);
   }
   async prepareMaterialization(id: string): Promise<InstallationMaterialization> {
+    if (!(await this.repository.get(id)))
+      throw new ApiError(
+        409,
+        'INSTALLATION_WORKSPACE_ABSENT',
+        '설치 작업본이 없습니다. 빈 문서는 저장하지 않습니다.',
+      );
     const before = await this.document(id),
       current = await this.effective(id);
     if (before.revision !== current.revision) throw conflict();
@@ -482,11 +439,12 @@ export class InstallationWorkspaceService {
       metadataPatch: current.metadataPatch,
       preservedEdits: current.preservedEdits,
     };
-    if (!before.state) result.envelope = await this.encrypt(id, result.nextRevision, state);
+    if (!before.state) result.envelope = (await this.encrypt(id, result.nextRevision, state)).envelope;
     return result;
   }
   private async encrypt(id: string, revision: number, state: ManagedInstallationState) {
-    const serialized = JSON.stringify(managedInstallationSchema.parse(state));
+    const sealed = sealManagedInstallation(managedInstallationSchema.parse(state));
+    const serialized = JSON.stringify(managedInstallationSchema.parse(sealed.document));
     if (Buffer.byteLength(serialized) > 8 * 1_048_576)
       throw new ApiError(
         413,
@@ -494,7 +452,10 @@ export class InstallationWorkspaceService {
         '설치 상세정보의 최대 용량을 초과했습니다.',
       );
     try {
-      return (await this.vault()).encrypt(serialized, context(id, revision));
+      return {
+        envelope: (await this.vault()).encrypt(serialized, context(id, revision)),
+        accessOrigins: sealed.accessOrigins,
+      };
     } catch {
       throw unavailable();
     }
@@ -516,9 +477,9 @@ export class InstallationWorkspaceService {
         '기존 수정 내용을 설치 기본정보에 연결하는 작업이 필요합니다. 자료는 보존됩니다.',
       );
     change(current.state);
-    const envelope = await this.encrypt(id, expected + 1, current.state);
+    const sealed = await this.encrypt(id, expected + 1, current.state);
     await guard?.();
-    await this.repository.save(id, expected, envelope, actor, action);
+    await this.repository.save(id, expected, sealed.envelope, actor, action, sealed.accessOrigins);
   }
   async createRow(id: string, input: unknown, actor: string, guard?: () => Promise<void>) {
     const data = parse(installationRowCreateSchema, input);
@@ -530,16 +491,34 @@ export class InstallationWorkspaceService {
       'row-create',
       (state) => {
         if (managedInstallationCounts(state).rowCount >= 1_000) throw bad();
-        const rowId = `workspace-row-${randomUUID()}`;
-        state.sections
-          .find((section) => section.id === data.sectionId)!
-          .rows.push({
+        const section = state.sections.find((item) => item.id === data.sectionId)!;
+        const grouped =
+          data.sectionId === 'access' && this.repository.persistsAccessOrigins
+            ? newSavedAccessGroups(data.fields)
+            : undefined;
+        if (!grouped) {
+          const rowId = `workspace-row-${randomUUID()}`;
+          section.rows.push({
             id: rowId,
             title: data.title,
             fields: data.fields.map((field) =>
               managedField(data.sectionId, rowId, field.key, field.label, field.value),
             ),
           });
+          return;
+        }
+        if (managedInstallationCounts(state).rowCount + grouped.parts.length > 1_000) throw bad();
+        for (const part of grouped.parts) {
+          const rowId = `workspace-row-${randomUUID()}`;
+          section.rows.push({
+            id: rowId,
+            title: data.title,
+            origin: { group: grouped.group, part: part.part },
+            fields: part.fields.map((field) =>
+              managedField(data.sectionId, rowId, field.key, field.label, field.value),
+            ),
+          });
+        }
       },
       guard,
     );
@@ -716,22 +695,41 @@ export class InstallationWorkspaceService {
 }
 
 export class MemoryInstallationWorkspaceRepository implements InstallationWorkspaceRepository {
+  readonly persistsAccessOrigins = true;
   readonly records = new Map<string, Stored>();
   async get(id: string) {
     const value = this.records.get(id);
     return value ? structuredClone(value) : undefined;
   }
-  async save(id: string, expected: number, envelope: LegacyVaultEnvelope) {
+  async save(
+    id: string,
+    expected: number,
+    envelope: LegacyVaultEnvelope,
+    _actor?: string,
+    _action?: InstallationWorkspaceAction,
+    accessOrigins?: Record<string, InstallationAccessOrigin>,
+  ) {
     if ((this.records.get(id)?.revision ?? 0) !== expected) throw conflict();
     const revision = expected + 1;
-    this.records.set(id, { revision, envelope: structuredClone(envelope) });
+    const next: Stored = { revision, envelope: structuredClone(envelope) };
+    if (accessOrigins && Object.keys(accessOrigins).length)
+      next.accessOrigins = structuredClone(accessOrigins);
+    this.records.set(id, next);
     return revision;
   }
 }
 
 export class PostgresInstallationWorkspaceRepository implements InstallationWorkspaceRepository {
+  private originsColumn?: boolean;
+  private originsProbe?: Promise<boolean>;
   private pool?: Promise<pg.Pool>;
-  private async connection() {
+  constructor(private readonly database?: WorkspaceDb) {}
+  /** Known only after a successful catalog read. Unknown stays false so a new save is not split early. */
+  get persistsAccessOrigins() {
+    return this.originsColumn === true;
+  }
+  private async connection(): Promise<WorkspaceDb> {
+    if (this.database) return this.database;
     return (this.pool ??= (async () => {
       const pool = new pg.Pool({ ...(await databaseConfig(false)), max: 2, allowExitOnIdle: true });
       pool.on('error', () => {});
@@ -748,17 +746,65 @@ export class PostgresInstallationWorkspaceRepository implements InstallationWork
       throw error;
     }));
   }
-  async get(id: string): Promise<Stored | undefined> {
+  private async accessOriginsColumn(): Promise<boolean> {
+    if (this.originsColumn !== undefined) return this.originsColumn;
+    this.originsProbe ??= this.detectAccessOriginsColumn();
     try {
-      return (
+      this.originsColumn = await this.originsProbe;
+      return this.originsColumn;
+    } catch (error) {
+      this.originsProbe = undefined;
+      throw error;
+    }
+  }
+  private async detectAccessOriginsColumn(): Promise<boolean> {
+    let rows: unknown;
+    try {
+      rows = (
         await (
           await this.connection()
         ).query(
-          'SELECT revision,envelope FROM yeta_crm_private.installation_workspace WHERE installation_id=$1',
+          "SELECT column_name FROM information_schema.columns WHERE table_schema = 'yeta_crm_private' AND table_name = 'installation_workspace' AND column_name = 'access_origins'",
+        )
+      ).rows;
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      throw new ApiError(
+        503,
+        'INSTALLATION_ACCESS_ORIGINS_UNKNOWN',
+        '설치 상세의 묶음 저장 구조를 확인하지 못했습니다.',
+      );
+    }
+    if (!Array.isArray(rows) || rows.length > 1)
+      throw new ApiError(
+        503,
+        'INSTALLATION_ACCESS_ORIGINS_UNKNOWN',
+        '설치 상세의 묶음 저장 구조를 확인하지 못했습니다.',
+      );
+    return rows.length === 1;
+  }
+  async get(id: string): Promise<Stored | undefined> {
+    const withOrigins = await this.accessOriginsColumn();
+    try {
+      const row = (
+        await (
+          await this.connection()
+        ).query(
+          withOrigins
+            ? 'SELECT revision,envelope,access_origins FROM yeta_crm_private.installation_workspace WHERE installation_id=$1'
+            : 'SELECT revision,envelope FROM yeta_crm_private.installation_workspace WHERE installation_id=$1',
           [id],
         )
       ).rows[0];
-    } catch {
+      if (!row) return undefined;
+      const accessOrigins = withOrigins ? columnAccessOrigins(row.access_origins) : undefined;
+      return {
+        revision: row.revision,
+        envelope: row.envelope,
+        ...(accessOrigins ? { accessOrigins } : {}),
+      };
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
       throw unavailable();
     }
   }
@@ -768,7 +814,9 @@ export class PostgresInstallationWorkspaceRepository implements InstallationWork
     envelope: LegacyVaultEnvelope,
     actor: string,
     action: InstallationWorkspaceAction,
+    accessOrigins?: Record<string, InstallationAccessOrigin>,
   ) {
+    const withOrigins = await this.accessOriginsColumn();
     const client = await (await this.connection()).connect();
     try {
       await client.query('BEGIN');
@@ -795,8 +843,12 @@ export class PostgresInstallationWorkspaceRepository implements InstallationWork
       if (!canManageBusiness(account))
         throw new ApiError(403, 'WRITE_PERMISSION_REQUIRED', '등록·수정 권한이 필요합니다.');
       await client.query(
-        'INSERT INTO yeta_crm_private.installation_workspace(installation_id,revision,envelope,updated_by) VALUES($1,$2,$3,$4) ON CONFLICT(installation_id) DO UPDATE SET revision=EXCLUDED.revision,envelope=EXCLUDED.envelope,updated_by=EXCLUDED.updated_by,updated_at=now()',
-        [id, expected + 1, envelope, actor],
+        withOrigins
+          ? 'INSERT INTO yeta_crm_private.installation_workspace(installation_id,revision,envelope,updated_by,access_origins) VALUES($1,$2,$3,$4,$5) ON CONFLICT(installation_id) DO UPDATE SET revision=EXCLUDED.revision,envelope=EXCLUDED.envelope,updated_by=EXCLUDED.updated_by,access_origins=EXCLUDED.access_origins,updated_at=now()'
+          : 'INSERT INTO yeta_crm_private.installation_workspace(installation_id,revision,envelope,updated_by) VALUES($1,$2,$3,$4) ON CONFLICT(installation_id) DO UPDATE SET revision=EXCLUDED.revision,envelope=EXCLUDED.envelope,updated_by=EXCLUDED.updated_by,updated_at=now()',
+        withOrigins
+          ? [id, expected + 1, envelope, actor, columnAccessOrigins(accessOrigins) ?? null]
+          : [id, expected + 1, envelope, actor],
       );
       await client.query(
         'INSERT INTO yeta_crm_private.installation_workspace_audit(installation_ref_hash,actor_user_id,action,revision) VALUES($1,$2,$3,$4)',
@@ -813,6 +865,10 @@ export class PostgresInstallationWorkspaceRepository implements InstallationWork
     }
   }
   async close() {
+    if (this.database) {
+      await this.database.end?.();
+      return;
+    }
     await this.pool?.then((pool) => pool.end());
   }
 }

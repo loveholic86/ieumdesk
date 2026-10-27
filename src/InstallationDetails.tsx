@@ -1304,7 +1304,7 @@ export default function InstallationDetails({
     const created = saved.sections
       .find((item) => item.id === 'access')
       ?.rows.find((row) => !previousIds.has(row.id));
-    if (created) setAccessRowId(created.id);
+    if (created) setAccessRowId(created.origin?.group ?? created.id);
   };
   const beginAccessRecord = () => {
     if (!canManage || interactionBusy || policyPending || editingActive) return;
@@ -1547,7 +1547,7 @@ export default function InstallationDetails({
     content = sectionConfig.map((config) => {
       const sourceSection = visibleDetails!.sections.find((item) => item.id === config.id)!;
       const section = visibleInstallationSection(sourceSection);
-      const accessItems = config.id === 'access' ? accessRecordItems(sourceSection.rows) : [];
+      const accessItems = config.id === 'access' ? accessRecordItems(section.rows) : [];
       const selectedAccessItem = accessItems.find((item) => item.id === accessRowId) ?? accessItems[0];
       const selectedAccessRows = (selectedAccessItem?.rows ?? [])
         .map((row) => section.rows.find((item) => item.id === row.id))

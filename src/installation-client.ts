@@ -219,9 +219,15 @@ const accessPartOrder: Record<string, number> = { address: 0, vpn: 1, access: 2 
 
 /** One migrated source is one list item. Other rows stay individual items. */
 export function accessRecordItems(rows: readonly InstallationDetailRow[]) {
+  const visibleRows = visibleInstallationSection({
+    id: 'access',
+    title: '접근 정보',
+    imported: false,
+    rows: [...rows],
+  }).rows;
   const items: { id: string; rows: InstallationDetailRow[] }[] = [];
   const seen = new Set<string>();
-  for (const row of rows) {
+  for (const row of visibleRows) {
     const group = row.origin?.group;
     if (!group) {
       items.push({ id: row.id, rows: [row] });
@@ -231,7 +237,7 @@ export function accessRecordItems(rows: readonly InstallationDetailRow[]) {
     seen.add(group);
     items.push({
       id: group,
-      rows: rows
+      rows: visibleRows
         .filter((item) => item.origin?.group === group)
         .slice()
         .sort(

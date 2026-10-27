@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { ApiError } from './errors.ts';
 import { installationWorkspaceField } from './installation-details.ts';
@@ -55,11 +55,18 @@ const fieldSchema = z
     secret: z.boolean(),
   })
   .strict();
+const accessOriginSchema = z
+  .object({
+    group: z.string().regex(/^[a-f0-9]{64}$/),
+    part: z.enum(['address', 'vpn', 'access']),
+  })
+  .strict();
 const rowSchema = z
   .object({
     id: z.string().min(1).max(100),
     title: z.string().max(120),
     managed: z.literal('metadata').optional(),
+    origin: accessOriginSchema.optional(),
     fields: z.array(fieldSchema).min(1).max(80),
   })
   .strict();
@@ -108,6 +115,79 @@ export const managedInstallationSchema = z
   });
 export type ManagedInstallationState = z.infer<typeof managedInstallationSchema>;
 export type ManagedInstallationRow = ManagedInstallationState['sections'][number]['rows'][number];
+export type InstallationAccessOrigin = z.infer<typeof accessOriginSchema>;
+
+const savedAccessPartKeys = {
+  address: [
+    'domainurl',
+    'ssh_port',
+    'external_ip',
+    'internal_ip',
+    'netmask',
+    'gateway',
+    'dns1',
+    'dns2',
+    'ssl_apply_yn',
+    'ssl_manage_type',
+    'ssl_applydate',
+    'ssl_pwd',
+  ],
+  vpn: ['vpnsv_ip', 'vpnsv_id', 'vpnsv_pwd'],
+  access: [
+    'access_type',
+    'rootpath',
+    'os_root_id',
+    'os_root_pwd',
+    'os_user_id',
+    'os_user_pwd',
+    'os_login_etc',
+    'access_etc',
+    'access_reqst_date',
+    'access_reqst_enddate',
+    'access_url',
+    'access_id',
+    'access_pwd',
+  ],
+} as const;
+
+/** Origin exists only when a new save itself spans more than one access part. */
+export function newSavedAccessGroups<T extends { key: string }>(fields: readonly T[]) {
+  const known = new Set<string>(Object.values(savedAccessPartKeys).flat());
+  if (fields.some((field) => !known.has(field.key))) return undefined;
+  const parts = (['address', 'vpn', 'access'] as const)
+    .map((part) => ({
+      part,
+      fields: fields.filter((field) => (savedAccessPartKeys[part] as readonly string[]).includes(field.key)),
+    }))
+    .filter((part) => part.fields.length > 0);
+  if (parts.length < 2) return undefined;
+  return { group: createHash('sha256').update(randomUUID()).digest('hex'), parts };
+}
+
+/** Drop origin from the encrypted document. main's strict row schema rejects that key. */
+export function sealManagedInstallation(state: ManagedInstallationState) {
+  const document = structuredClone(state);
+  const accessOrigins: Record<string, InstallationAccessOrigin> = {};
+  for (const section of document.sections)
+    for (const row of section.rows)
+      if (row.origin) {
+        accessOrigins[row.id] = row.origin;
+        delete row.origin;
+      }
+  return { document, accessOrigins };
+}
+
+export function restoreSavedAccessOrigins(state: ManagedInstallationState, stored: unknown) {
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return state;
+  const saved = stored as Record<string, unknown>;
+  for (const section of state.sections)
+    for (const row of section.rows) {
+      if (row.origin) continue;
+      const parsed = accessOriginSchema.safeParse(saved[row.id]);
+      if (parsed.success) row.origin = parsed.data;
+    }
+  return state;
+}
 
 const metadataLabels: Record<InstallationMetadataKey, string> = {
   systemCode: '시스템 코드',
@@ -330,7 +410,7 @@ export function managedInstallationDetails(
   record?: Record<string, unknown>,
   raw = false,
 ): InstallationDetails {
-  return {
+  const built: InstallationDetails = {
     id,
     imported: false,
     revision,
@@ -346,6 +426,7 @@ export function managedInstallationDetails(
           id: row.id,
           title: row.title,
           ...(row.managed ? { managed: row.managed } : {}),
+          ...(row.origin ? { origin: { group: row.origin.group, part: row.origin.part } } : {}),
           fields: row.fields.map((field) => ({
             id: field.id,
             key: field.key,
@@ -366,6 +447,7 @@ export function managedInstallationDetails(
       }),
     })),
   };
+  return built;
 }
 
 export function managedInstallationCounts(state: ManagedInstallationState) {
