@@ -18,6 +18,7 @@ import { LegacyReader } from '../server/legacy-reader.ts';
 import { openLegacyVault, type LegacyVault, type LegacyVaultEnvelope } from '../server/legacy-vault.ts';
 import { createMaterializer, materializeInstallations } from '../scripts/materialize-installations.ts';
 import { FileInstallationWorkspaceRepository } from '../server/installation-workspace-file.ts';
+import { accessRecordItems, accessServerFields } from '../src/installation-client.ts';
 import { english } from '../src/locales/en.ts';
 
 const sections: [ManagedInstallationState['sections'][number]['id'], string][] = [
@@ -549,7 +550,7 @@ test('materialize execution is retired before any read or encrypted save', async
   assert.equal(queries.length, 0);
 });
 
-test('a new access save stores one server row and a common slot without access origins', async () => {
+test('a new access save stores one server row with its VPN and no access origins', async () => {
   const opened = await vault();
   const id = 'inst-new-save';
   const empty = accessState();
@@ -591,22 +592,21 @@ test('a new access save stores one server row and a common slot without access o
     const stored = await repository.get(id);
     const plain = JSON.parse(opened.vault.decrypt(stored!.envelope, workspaceContext(id, stored!.revision)));
     const savedRows = plain.sections.find((section: { id: string }) => section.id === 'access').rows;
-    assert.equal(savedRows.length, 2);
+    assert.equal(savedRows.length, 1);
     assert.ok(savedRows.every((row: { origin?: unknown }) => !Object.hasOwn(row, 'origin')));
     assert.equal(stored!.accessOrigins, undefined);
-    const serverRow = savedRows.find((row: { id: string }) => row.id !== 'access-common');
-    const commonRow = savedRows.find((row: { id: string }) => row.id === 'access-common');
+    const [serverRow] = savedRows;
+    assert.match(serverRow.serverId, /^[a-f\d]{32}$/);
     assert.deepEqual(serverRow.fields.map((field: { key: string }) => field.key).sort(), [
       'access_url',
       'domainurl',
-    ]);
-    assert.deepEqual(commonRow.fields.map((field: { key: string }) => field.key).sort(), [
       'vpnsv_ip',
       'vpnsv_pwd',
     ]);
     const details = await service.details(id, { protected: false, raw: true });
     const rows = details.sections.find((section) => section.id === 'access')!.rows;
-    assert.ok(rows.every((row) => row.origin === undefined));
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.serverId, serverRow.serverId);
     assert.equal(reads.count, 0);
     await service.createRow(
       id,
@@ -623,12 +623,7 @@ test('a new access save stores one server row and a common slot without access o
       .find((section) => section.id === 'access')!
       .rows.find((row) => row.title === '단일 접속');
     assert.equal(manual?.origin, undefined);
-    assert.equal(
-      after.sections
-        .find((section) => section.id === 'access')!
-        .rows.filter((row) => row.id === 'access-common').length,
-      1,
-    );
+    assert.match(manual?.serverId ?? '', /^[a-f\d]{32}$/);
     assert.equal(reads.count, 0);
     await service.createRow(
       id,
@@ -636,7 +631,7 @@ test('a new access save stores one server row and a common slot without access o
         revision: after.revision,
         sectionId: 'access',
         title: '공통만',
-        fields: [{ key: 'vpnsv_id', label: 'VPN 아이디', value: 'ops' }],
+        fields: [{ key: 'access_etc', label: '접근 비고', value: '설치 전역 메모' }],
       },
       'actor',
     );
@@ -647,8 +642,87 @@ test('a new access save stores one server row and a common slot without access o
     assert.equal(
       commonRows
         .find((row) => row.id === 'access-common')
-        ?.fields.some((field) => field.key === 'vpnsv_id' && field.value === 'ops'),
+        ?.fields.some((field) => field.key === 'access_etc' && field.value === '설치 전역 메모'),
       true,
+    );
+    // VPN is server-scoped now: a VPN-only create is its own linked server, never installation-wide.
+    await service.createRow(
+      id,
+      {
+        revision: commonOnly.revision,
+        sectionId: 'access',
+        title: 'VPN만',
+        fields: [{ key: 'vpnsv_id', label: 'VPN 아이디', value: 'ops' }],
+      },
+      'actor',
+    );
+    const vpnOnly = await service.details(id, { protected: false, raw: true });
+    const vpnRows = vpnOnly.sections.find((section) => section.id === 'access')!.rows;
+    assert.equal(vpnRows.filter((row) => row.title === 'VPN만').length, 1);
+    assert.match(vpnRows.find((row) => row.title === 'VPN만')?.serverId ?? '', /^[a-f\d]{32}$/);
+    assert.equal(
+      vpnRows.find((row) => row.id === 'access-common')?.fields.some((field) => field.key === 'vpnsv_id'),
+      false,
+    );
+  } finally {
+    await rm(opened.root, { recursive: true, force: true });
+  }
+});
+
+test('a legacy origin-less part trio reads as one server and is linked on the next save', async () => {
+  const opened = await vault();
+  const id = 'inst-legacy-parts';
+  const state = accessState();
+  // No origin and no serverId: the reported shape is three rows titled 접속 주소 / VPN / 접근 정보.
+  const titles: Record<string, string> = {
+    'address-row': '접속 주소',
+    'vpn-row': 'VPN',
+    'access-row': '접근 정보',
+  };
+  for (const row of state.sections.find((section) => section.id === 'access')!.rows)
+    row.title = titles[row.id] ?? row.title;
+  const service = new InstallationWorkspaceService(
+    {
+      async details() {
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async secrets() {
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async audit() {},
+    },
+    store(opened.vault, id, state),
+    { vault: async () => opened.vault },
+  );
+  try {
+    const before = await service.details(id, { protected: false, raw: true });
+    const rows = before.sections.find((section) => section.id === 'access')!.rows;
+    const items = accessRecordItems(rows);
+    assert.equal(items.length, 1);
+    assert.deepEqual(
+      items[0]?.rows.map((row) => row.id),
+      ['address-row', 'vpn-row', 'access-row'],
+    );
+    assert.deepEqual(
+      accessServerFields(items[0]?.rows ?? [])
+        .map((item) => item.key)
+        .sort(),
+      ['access_url', 'domainurl', 'vpnsv_ip'],
+    );
+    await service.updateRow(id, 'vpn-row', { revision: 1, values: { vpnsv_ip: '203.0.113.11' } }, 'actor');
+    const after = await service.details(id, { protected: false, raw: true });
+    const linked = after.sections.find((section) => section.id === 'access')!.rows;
+    const serverId = linked.find((row) => row.id === 'vpn-row')?.serverId;
+    assert.match(serverId ?? '', /^[a-f\d]{32}$/);
+    assert.deepEqual(
+      linked.map((row) => row.serverId),
+      [serverId, serverId, serverId],
+    );
+    assert.equal(accessRecordItems(linked).length, 1);
+    // Linking is metadata only: titles and values stay as stored.
+    assert.deepEqual(
+      linked.map((row) => row.title),
+      ['접속 주소', 'VPN', '접근 정보'],
     );
   } finally {
     await rm(opened.root, { recursive: true, force: true });
@@ -776,7 +850,7 @@ function postgresDouble(accessOriginsColumn = true) {
   };
 }
 
-test('postgres save does not write a new access origin group for a server row', async () => {
+test('postgres save keeps VPN on the server row and writes no access origin group', async () => {
   const opened = await vault();
   const database = postgresDouble();
   const repository = new PostgresInstallationWorkspaceRepository(database);
@@ -820,13 +894,13 @@ test('postgres save does not write a new access origin group for a server row', 
     const stored = await repository.get(id);
     const plain = JSON.parse(opened.vault.decrypt(stored!.envelope, workspaceContext(id, stored!.revision)));
     const savedRows = plain.sections.find((section: { id: string }) => section.id === 'access').rows;
-    assert.equal(savedRows.length, 2);
+    assert.equal(savedRows.length, 1);
     assert.ok(savedRows.every((row: { origin?: unknown }) => !Object.hasOwn(row, 'origin')));
     assert.equal(database.rows.get(id)?.access_origins, null);
     assert.equal(stored!.accessOrigins, undefined);
     const details = await service.details(id, { protected: false, raw: true });
     const rows = details.sections.find((section) => section.id === 'access')!.rows;
-    assert.equal(rows.filter((row) => row.id === 'access-common').length, 1);
+    assert.equal(rows.filter((row) => row.id === 'access-common').length, 0);
     assert.ok(rows.every((row) => row.origin === undefined));
   } finally {
     await repository.close();
@@ -834,7 +908,7 @@ test('postgres save does not write a new access origin group for a server row', 
   }
 });
 
-test('postgres without the access origins column still stores one server row and the common slot', async () => {
+test('postgres without the access origins column still stores one linked server row', async () => {
   const opened = await vault();
   const database = postgresDouble(false);
   const repository = new PostgresInstallationWorkspaceRepository(database);
@@ -876,13 +950,13 @@ test('postgres without the access origins column still stores one server row and
     const stored = await repository.get(id);
     const plain = JSON.parse(opened.vault.decrypt(stored!.envelope, workspaceContext(id, stored!.revision)));
     const savedRows = plain.sections.find((section: { id: string }) => section.id === 'access').rows;
-    assert.equal(savedRows.length, 2);
+    assert.equal(savedRows.length, 1);
     assert.ok(savedRows.every((row: { origin?: unknown }) => !Object.hasOwn(row, 'origin')));
     assert.equal(stored!.accessOrigins, undefined);
     const details = await service.details(id, { protected: false, raw: true });
     const visible = details.sections.find((section) => section.id === 'access')!.rows;
-    assert.equal(visible.length, 2);
-    assert.equal(visible.filter((row) => row.id === 'access-common').length, 1);
+    assert.equal(visible.length, 1);
+    assert.equal(visible.filter((row) => row.id === 'access-common').length, 0);
     assert.ok(visible.every((row) => row.origin === undefined));
     assert.equal(repository.persistsAccessOrigins, false);
     const workspaceSql = database.statements.filter(
@@ -935,7 +1009,7 @@ test('postgres column detection failure does not read or write the workspace', a
   assert.ok(sql.length >= 2);
 });
 
-test('a repository that cannot persist the sidecar still stores one server row and the common slot', async () => {
+test('a repository that cannot persist the sidecar still stores one linked server row', async () => {
   const opened = await vault();
   const id = 'inst-no-sidecar';
   class DroppingRepository implements InstallationWorkspaceRepository {
@@ -985,12 +1059,12 @@ test('a repository that cannot persist the sidecar still stores one server row a
     const stored = await repository.get();
     const plain = JSON.parse(opened.vault.decrypt(stored!.envelope, workspaceContext(id, stored!.revision)));
     const savedRows = plain.sections.find((section: { id: string }) => section.id === 'access').rows;
-    assert.equal(savedRows.length, 2);
+    assert.equal(savedRows.length, 1);
     assert.ok(savedRows.every((row: { origin?: unknown }) => !Object.hasOwn(row, 'origin')));
     const details = await service.details(id, { protected: false, raw: true });
     const rows = details.sections.find((section) => section.id === 'access')!.rows;
-    assert.equal(rows.length, 2);
-    assert.equal(rows.filter((row) => row.id === 'access-common').length, 1);
+    assert.equal(rows.length, 1);
+    assert.equal(rows.filter((row) => row.id === 'access-common').length, 0);
     assert.ok(rows.every((row) => row.origin === undefined));
   } finally {
     await rm(opened.root, { recursive: true, force: true });

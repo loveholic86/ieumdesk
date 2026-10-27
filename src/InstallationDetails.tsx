@@ -32,7 +32,6 @@ import type { Company } from './types';
 import {
   accessCommonRowId,
   accessEtcKey,
-  accessVpnKeys,
   type InstallationDetails as InstallationDetailsDto,
   type InstallationDetailField,
   type InstallationDetailRow,
@@ -209,9 +208,6 @@ const accessAddressKeys = [
   'address',
 ] as const;
 const accessCommonLabels: Record<string, string> = {
-  vpnsv_ip: 'VPN 서버 IP',
-  vpnsv_id: 'VPN 아이디',
-  vpnsv_pwd: 'VPN 비밀번호',
   access_etc: '접근 비고',
 };
 type AccessRecordItem = ReturnType<typeof accessRecordItems>[number];
@@ -710,7 +706,7 @@ function AccessServerDetail({
   );
 }
 
-const commonEditorKeys = [...accessVpnKeys, accessEtcKey] as const;
+const commonEditorKeys = [accessEtcKey] as const;
 
 function shownCommonValue(field: InstallationDetailField | undefined, policyPending: boolean) {
   if (!field || field.masked || (policyPending && field.secret)) return '';
@@ -736,17 +732,14 @@ function AccessCommonForm({
   const initial = Object.fromEntries(
     commonEditorKeys.map((key) => {
       const explicit = slot?.fields.find((field) => field.key === key);
-      const shown =
-        explicit ?? (key === accessEtcKey ? common.etc : common.vpn.find((field) => field.key === key));
+      const shown = explicit ?? common.etc;
       return [key, shownCommonValue(shown, policyPending)];
     }),
   );
   const [draft, setDraft] = useState(initial);
   useInstallationDirty(commonEditorKeys.some((key) => (draft[key] ?? '') !== initial[key]));
   const masked = (key: string) => {
-    const field =
-      slot?.fields.find((item) => item.key === key) ??
-      (key === accessEtcKey ? common.etc : common.vpn.find((item) => item.key === key));
+    const field = slot?.fields.find((item) => item.key === key) ?? common.etc;
     return Boolean(field?.masked || (policyPending && field?.secret));
   };
   return (
@@ -760,24 +753,13 @@ function AccessCommonForm({
       {commonEditorKeys.map((key) => (
         <label key={key}>
           {t(accessCommonLabels[key])}
-          {key === accessEtcKey ? (
-            <textarea
-              value={draft[key] ?? ''}
-              maxLength={16384}
-              disabled={busy || policyPending}
-              onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}
-            />
-          ) : (
-            <input
-              type={key === 'vpnsv_pwd' ? 'password' : 'text'}
-              value={draft[key] ?? ''}
-              maxLength={16384}
-              autoComplete="off"
-              disabled={busy || policyPending}
-              placeholder={masked(key) ? t('보호된 값') : undefined}
-              onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}
-            />
-          )}
+          <textarea
+            value={draft[key] ?? ''}
+            maxLength={16384}
+            disabled={busy || policyPending}
+            placeholder={masked(key) ? t('보호된 값') : undefined}
+            onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}
+          />
         </label>
       ))}
       <InstallationEditorActions>
@@ -817,10 +799,6 @@ function AccessCommonPanel({
 }) {
   useLocale();
   const common = accessInstallationCommon(rows);
-  const vpnFields = accessVpnKeys.flatMap((key) => {
-    const field = common.vpn.find((item) => item.key === key);
-    return field ? [field] : [];
-  });
   return (
     <section className="installation-data-card installation-option-b installation-access-common">
       <header className="installation-card-heading">
@@ -837,17 +815,6 @@ function AccessCommonPanel({
           </div>
         )}
       </header>
-      {common.held.length > 0 && (
-        <p className="installation-access-hold" role="status">
-          {t('VPN 값이 서로 달라 설치 공통으로 합치지 않았습니다. 저장된 값은 그대로 두었습니다.')}{' '}
-          {common.held
-            .map(
-              (item) =>
-                `${item.title} (${item.keys.map((key) => t(accessCommonLabels[key] ?? key)).join(', ')})`,
-            )
-            .join(' · ')}
-        </p>
-      )}
       {editing ? (
         <AccessCommonForm
           rows={rows}
@@ -858,19 +825,6 @@ function AccessCommonPanel({
         />
       ) : (
         <div className="installation-option-groups">
-          <section className="installation-option-group">
-            <h4 className="installation-option-group-title">{t('VPN')}</h4>
-            {vpnFields.length ? (
-              <OptionTable
-                fields={vpnFields}
-                sectionId="access"
-                policyPending={policyPending}
-                codeOptions={codeOptions}
-              />
-            ) : (
-              <p className="installation-missing">{t('미등록')}</p>
-            )}
-          </section>
           <section className="installation-option-group">
             <h4 className="installation-option-group-title">{t('비고')}</h4>
             {common.etc ? (
@@ -1432,7 +1386,7 @@ export default function InstallationDetails({
     const created = saved.sections
       .find((item) => item.id === 'access')
       ?.rows.find((row) => row.id !== accessCommonRowId && !previousIds.has(row.id));
-    if (created) setAccessRowId(created.id);
+    if (created) setAccessRowId(created.serverId ?? created.id);
   };
   const saveAccessCommon = async (draft: Record<string, string>) => {
     if (!visibleDetails) return;
@@ -1441,8 +1395,7 @@ export default function InstallationDetails({
     const common = accessInstallationCommon(rows);
     const changed = commonEditorKeys.filter((key) => {
       const explicit = slot?.fields.find((field) => field.key === key);
-      const shown =
-        explicit ?? (key === accessEtcKey ? common.etc : common.vpn.find((field) => field.key === key));
+      const shown = explicit ?? common.etc;
       if ((shown?.masked || (policyPending && shown?.secret)) && !(draft[key] ?? '').length) return false;
       return (draft[key] ?? '') !== shownCommonValue(shown, policyPending);
     });

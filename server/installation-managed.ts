@@ -61,12 +61,15 @@ const accessOriginSchema = z
     part: z.enum(['address', 'vpn', 'access']),
   })
   .strict();
+/** Server parent link stored in the document so it survives a missing 017 sidecar column. */
+const accessServerIdSchema = z.string().regex(/^[a-f0-9]{32}$/);
 const rowSchema = z
   .object({
     id: z.string().min(1).max(100),
     title: z.string().max(120),
     managed: z.literal('metadata').optional(),
     origin: accessOriginSchema.optional(),
+    serverId: accessServerIdSchema.optional(),
     fields: z.array(fieldSchema).min(1).max(80),
   })
   .strict();
@@ -221,6 +224,9 @@ export function buildManagedInstallation(
       rows: section.rows.map((row) => ({
         id: row.id,
         title: ordinaryInstallationTitle(row.title),
+        // Keep the server parent link so a migrated multi-part server stays one unit.
+        ...(row.serverId ? { serverId: row.serverId } : {}),
+        ...(section.id === 'access' && row.origin ? { origin: { ...row.origin } } : {}),
         fields: row.fields.map((field) => {
           const shown = display.sections
             .find((item) => item.id === section.id)
@@ -379,6 +385,7 @@ export function managedInstallationDetails(
           id: row.id,
           title: row.title,
           ...(row.managed ? { managed: row.managed } : {}),
+          ...(row.serverId ? { serverId: row.serverId } : {}),
           ...(row.origin ? { origin: { group: row.origin.group, part: row.origin.part } } : {}),
           fields: row.fields.map((field) => ({
             id: field.id,

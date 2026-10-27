@@ -26,6 +26,7 @@ import {
   installationInputDefinition,
   installationSectionChangeCount,
 } from './installation-editor';
+import { accessPartLabels, accessRowPart } from './installation-types';
 import type {
   InstallationDetailField,
   InstallationDetails,
@@ -184,7 +185,10 @@ export default function InstallationSectionEditor({
   const noteChanged = (note: NonNullable<InstallationDetails['accessNotes']>[number]) =>
     Object.hasOwn(notes, note.id) && (note.masked || notes[note.id] !== note.content);
   const titleChanged = (row: (typeof section.rows)[number]) =>
-    !row.origin && Object.hasOwn(titles, row.id) && titles[row.id] !== (row.title ?? section.title);
+    !row.origin &&
+    !row.serverId &&
+    Object.hasOwn(titles, row.id) &&
+    titles[row.id] !== (row.title ?? section.title);
   const matches = (field: InstallationDetailField) =>
     (!search ||
       [field.label, field.key, installationFieldLabel(field)]
@@ -921,11 +925,11 @@ export default function InstallationSectionEditor({
                       disabled={busy || policyPending}
                     >
                       <legend>
-                        {row.origin
-                          ? recordTitle || t('서버 {0}', [index + 1])
+                        {row.origin || row.serverId
+                          ? `${recordTitle || t('서버 {0}', [index + 1])} · ${t(accessPartLabels[accessRowPart(row)])}`
                           : installationRowTitle(row) || t('{0} 기록', [index + 1])}
                       </legend>
-                      {row.origin
+                      {row.origin || row.serverId
                         ? null
                         : row.managed !== 'metadata' && (
                             <label className="installation-section-edit-title">

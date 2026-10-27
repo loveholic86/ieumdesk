@@ -105,7 +105,7 @@ function originRow(
   return { id: part, origin: { group: 'a'.repeat(64), part }, fields };
 }
 
-test('an origin group reads as one server and leaves VPN out of the server fields', async () => {
+test('an origin group reads as one server and keeps its VPN on the server', async () => {
   const { accessInstallationCommon, accessRecordItems, accessServerFields } =
     await import('../src/installation-client.ts');
   const address = originRow('address', [
@@ -140,6 +140,9 @@ test('an origin group reads as one server and leaves VPN out of the server field
       'external_ip',
       'ssl_apply_yn',
       'ssh_port',
+      'vpnsv_ip',
+      'vpnsv_id',
+      'vpnsv_pwd',
       'access_type',
       'access_url',
       'rootpath',
@@ -147,10 +150,6 @@ test('an origin group reads as one server and leaves VPN out of the server field
     ],
   );
   const common = accessInstallationCommon([address, vpn, access]);
-  assert.deepEqual(
-    common.vpn.map((item) => item.key),
-    ['vpnsv_ip', 'vpnsv_id', 'vpnsv_pwd'],
-  );
   assert.equal(common.etc?.value, '남김');
   assert.equal(
     access.fields.some((item) => item.key === 'access_etc'),

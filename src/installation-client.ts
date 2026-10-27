@@ -2,7 +2,7 @@ import {
   accessCommonFieldKeys,
   accessCommonRowId,
   accessEtcKey,
-  accessVpnKeys,
+  accessServerUnits,
   type InstallationDetails,
   type InstallationDetailField,
   type InstallationDetailRow,
@@ -245,12 +245,6 @@ function accessFilled(field: InstallationDetailField) {
   return field.masked || field.value.trim().length > 0;
 }
 
-function sameAccessValue(left: InstallationDetailField, right: InstallationDetailField) {
-  if (left.masked && right.masked) return true;
-  if (left.masked || right.masked) return false;
-  return left.value === right.value;
-}
-
 function genericAccessTitle(title: string) {
   return genericAccessTitles.has(title) || /^이관 원본\s+(?:address|vpn|access|접근 정보)$/i.test(title);
 }
@@ -264,7 +258,7 @@ export function accessServerTitle(rows: readonly Pick<InstallationDetailRow, 'ti
   return '';
 }
 
-/** Address and access fields for one server card. VPN and access remarks stay installation-wide. */
+/** Address, VPN, and access fields for one server card. Only the access remark is installation-wide. */
 export function accessServerFields(rows: readonly InstallationDetailRow[]) {
   const seen = new Set<string>();
   const fields: InstallationDetailField[] = [];
@@ -277,71 +271,22 @@ export function accessServerFields(rows: readonly InstallationDetailRow[]) {
   return fields;
 }
 
-/** One server per list row. An origin group is one server. Rows without an origin are never merged. */
-export function accessRecordItems(rows: readonly InstallationDetailRow[]) {
-  const visibleRows = visibleAccessRows(rows);
-  const items: { id: string; rows: InstallationDetailRow[] }[] = [];
-  const grouped = new Map<string, { id: string; rows: InstallationDetailRow[] }>();
-  for (const row of visibleRows) {
-    if (row.id === accessCommonRowId || row.origin?.part === 'vpn') continue;
-    if (!row.fields.some((field) => !accessCommonFieldKeys.has(field.key))) continue;
-    const group = row.origin?.group;
-    if (!group) {
-      items.push({ id: row.id, rows: [row] });
-      continue;
-    }
-    const existing = grouped.get(group);
-    if (existing) {
-      existing.rows.push(row);
-      continue;
-    }
-    const item = { id: group, rows: [row] };
-    grouped.set(group, item);
-    items.push(item);
-  }
-  return items.map((item, index) => ({ ...item, index: index + 1 }));
+export type AccessRecordItem = { id: string; rows: InstallationDetailRow[]; index: number };
+
+/** One server per list row. A server link is one server; migration parts merge only as one run. */
+export function accessRecordItems(rows: readonly InstallationDetailRow[]): AccessRecordItem[] {
+  return accessServerUnits(visibleAccessRows(rows));
 }
 
-export type AccessHeldField = { id: string; title: string; keys: string[] };
-
-/** Read-only installation VPN and access remarks. Does not rewrite stored rows. */
+/** Read-only installation access remark. VPN stays on its server. Does not rewrite stored rows. */
 export function accessInstallationCommon(rows: readonly InstallationDetailRow[]) {
   const visibleRows = visibleAccessRows(rows);
   const slot = visibleRows.find((row) => row.id === accessCommonRowId);
-  const vpn: InstallationDetailField[] = [];
-  const held = new Map<string, AccessHeldField>();
-  const hold = (row: InstallationDetailRow, key: string) => {
-    const current = held.get(row.id) ?? {
-      id: row.id,
-      title: row.title?.trim() || '접근 정보',
-      keys: [] as string[],
-    };
-    if (!current.keys.includes(key)) current.keys.push(key);
-    held.set(row.id, current);
-  };
-  for (const key of accessVpnKeys) {
-    const explicit = slot?.fields.find((field) => field.key === key);
-    if (explicit) {
-      if (accessFilled(explicit)) vpn.push(explicit);
-      continue;
-    }
-    const found: { row: InstallationDetailRow; field: InstallationDetailField }[] = [];
-    for (const row of visibleRows) {
-      if (row.id === accessCommonRowId) continue;
-      const field = row.fields.find((item) => item.key === key);
-      if (field && accessFilled(field)) found.push({ row, field });
-    }
-    if (!found.length) continue;
-    const [first] = found;
-    if (found.some((item) => !sameAccessValue(item.field, first.field))) {
-      for (const item of found) hold(item.row, key);
-      continue;
-    }
-    vpn.push(first.field);
-  }
   const explicitEtc = slot?.fields.find((field) => field.key === accessEtcKey);
   let etc: InstallationDetailField | undefined;
-  if (!explicitEtc) {
+  if (explicitEtc) {
+    if (accessFilled(explicitEtc)) etc = explicitEtc;
+  } else {
     for (const row of visibleRows) {
       if (row.id === accessCommonRowId) continue;
       const field = row.fields.find((item) => item.key === accessEtcKey);
@@ -350,8 +295,8 @@ export function accessInstallationCommon(rows: readonly InstallationDetailRow[])
         break;
       }
     }
-  } else if (accessFilled(explicitEtc)) etc = explicitEtc;
-  return { vpn, etc, held: [...held.values()] };
+  }
+  return { etc };
 }
 
 /** Keep the selected access rows, plus rows created after editing started. One record, or any other tab, stays whole. */
@@ -383,7 +328,10 @@ export function installationDetailsForAccessEdit<T extends InstallationDetails>(
   const section = details.sections.find((item) => item.id === 'access');
   if (!section) return details;
   const items = accessRecordItems(section.rows);
-  const selected = items.find((item) => item.id === selectedId) ?? items[0];
+  const selected =
+    items.find((item) => item.id === selectedId) ??
+    items.find((item) => item.rows.some((row) => row.id === selectedId)) ??
+    items[0];
   const scoped = installationAccessEditingDetails(
     details,
     selected?.rows.map((row) => row.id) ?? [],
@@ -632,8 +580,8 @@ export function prepareInstallationRow(
     return { values: changed };
   }
   const patch = { values: changed, removeFields: [...new Set(removed)], addFields: fields };
-  // Origin titles stay as stored. The editor shows a fixed label and must not PATCH title.
-  return row?.origin
+  // A server's title is the server unit's name. Child rows never PATCH it individually.
+  return row?.origin || row?.serverId
     ? patch
     : row
       ? { title: normalizedTitle, ...patch }
