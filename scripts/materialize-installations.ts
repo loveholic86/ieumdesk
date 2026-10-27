@@ -227,6 +227,7 @@ export function createMaterializer(
   schemaFile?: string,
   operationalOnly = false,
 ): InstallationWorkspaceService {
+  fail('RETIRED');
   const forbidden = async (): Promise<never> => fail('PREPARATION_WRITE_FORBIDDEN');
   type Metadata = InstallationMetadataRow;
   type Workspace = NonNullable<Awaited<ReturnType<InstallationWorkspaceRepository['get']>>>;
@@ -391,6 +392,7 @@ export async function materializeInstallations(
   factory: (client: SqlClient, vault: LegacyVault) => Materializer = createMaterializer,
   closeConnection?: () => Promise<void>,
 ) {
+  fail('RETIRED');
   let release: (() => Promise<void>) | undefined;
   let transaction = false,
     commitAttempted = false,
@@ -651,6 +653,7 @@ export async function materializeInstallations(
 }
 
 async function main() {
+  fail('RETIRED');
   const args = parseMaterializationArguments(process.argv.slice(2));
   const vault = await openLegacyVault({ createIfMissing: false });
   const client = new pg.Client({

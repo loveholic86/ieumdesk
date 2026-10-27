@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { CatalogService } from '../server/catalog.ts';
@@ -13,7 +13,8 @@ import {
 } from '../server/installation-workspace.ts';
 import { LegacyReader } from '../server/legacy-reader.ts';
 import { openLegacyVault, type LegacyVault, type LegacyVaultEnvelope } from '../server/legacy-vault.ts';
-import { createMaterializer } from '../scripts/materialize-installations.ts';
+import { createMaterializer, materializeInstallations } from '../scripts/materialize-installations.ts';
+import { FileInstallationWorkspaceRepository } from '../server/installation-workspace-file.ts';
 import { english } from '../src/locales/en.ts';
 
 const sections: [ManagedInstallationState['sections'][number]['id'], string][] = [
@@ -477,79 +478,140 @@ test('installation-managed does not group a manually added adjacent row', async 
   }
 });
 
-test('materialize plan uses real v1 preparation and leaves v2 unread from originals', async () => {
-  const opened = await vault();
-  const v1 = 'inst-v1';
-  const v2 = 'inst-v2';
-  const v1Envelope = opened.vault.encrypt(
-    JSON.stringify({ version: 1, added: [], deleted: [], patches: {} }),
-    workspaceContext(v1, 1),
-  );
-  const v2Envelope = opened.vault.encrypt(JSON.stringify(accessState()), workspaceContext(v2, 1));
+test('materialize execution is retired before any read or encrypted save', async () => {
   const queries: string[] = [];
   const client = {
     async query(sql: string) {
       queries.push(sql);
-      if (/legacy_items/.test(sql)) return { rows: [] };
-      if (/legacy_archive|legacy_runs/.test(sql)) throw new Error('UNEXPECTED_SOURCE_READ');
-      if (sql.includes('yeta_crm.records'))
-        return {
-          rows: [
-            { id: v1, data: { systemCode: 'DEMO-SYS-2' }, protected_data: null },
-            { id: v2, data: { systemCode: 'DEMO-CURRENT' }, protected_data: null },
-          ],
-        };
-      if (sql.includes('installation_workspace'))
-        return {
-          rows: [
-            { installation_id: v1, revision: 1, envelope: v1Envelope },
-            { installation_id: v2, revision: 1, envelope: v2Envelope },
-          ],
-        };
       throw new Error(`UNEXPECTED_SOURCE_READ ${sql}`);
     },
   };
-  try {
-    const operational = createMaterializer(client, opened.vault, undefined, true);
-    const current = await operational.details(v2, { protected: false, raw: true });
-    assert.ok(
-      current.sections
-        .find((section) => section.id === 'access')!
-        .rows.every((row) => row.origin === undefined),
-    );
-    assert.equal(queries.some((sql) => /legacy_/.test(sql)), false);
-    const preparedV2 = await operational.prepareMaterialization(v2);
-    assert.equal(preparedV2.alreadyMaterialized, true);
-    assert.equal(preparedV2.envelope, undefined);
-    assert.equal(queries.some((sql) => /legacy_/.test(sql)), false);
+  const files = {
+    async lock() {
+      throw new Error('LOCK_MUST_NOT_RUN');
+    },
+    async capture() {
+      throw new Error('CAPTURE_MUST_NOT_RUN');
+    },
+  };
+  assert.throws(() => createMaterializer(client, {} as LegacyVault), /INSTALLATION_MATERIALIZATION_RETIRED/);
+  await assert.rejects(
+    () =>
+      materializeInstallations(client, {} as LegacyVault, files, {
+        apply: true,
+        expectedCount: 1,
+        expectedFingerprint: 'ab'.repeat(32),
+      }),
+    /INSTALLATION_MATERIALIZATION_RETIRED/,
+  );
+  await assert.rejects(
+    () => materializeInstallations(client, {} as LegacyVault, files, { apply: false, expectedCount: 0 }),
+    /INSTALLATION_MATERIALIZATION_RETIRED/,
+  );
+  assert.equal(queries.length, 0);
+});
 
-    const planning = createMaterializer(client, opened.vault);
-    const preparedV1 = await planning.prepareMaterialization(v1);
-    assert.equal(preparedV1.alreadyMaterialized, false);
-    assert.ok(preparedV1.envelope);
-    assert.equal(queries.filter((sql) => /legacy_items/.test(sql)).length, 1);
-    const state = JSON.parse(opened.vault.decrypt(preparedV1.envelope!, workspaceContext(v1, preparedV1.nextRevision)));
-    const access = state.sections.find((section: { id: string }) => section.id === 'access');
-    assert.equal(access.rows.length, 3);
-    assert.match(access.rows[0].id, /^row-[a-f0-9]{32}$/);
-    assert.equal(access.rows[0].origin.group, access.rows[1].origin.group);
+test('a new multi-part access save groups outside the ciphertext', async () => {
+  const opened = await vault();
+  const id = 'inst-new-save';
+  const empty = accessState();
+  for (const section of empty.sections) section.rows = [];
+  const repository = new FileInstallationWorkspaceRepository(path.join(opened.root, 'workspaces'));
+  const envelope = opened.vault.encrypt(JSON.stringify(empty), workspaceContext(id, 1));
+  await repository.save(id, 0, envelope, 'actor', 'row-create');
+  const reads = { count: 0 };
+  const service = new InstallationWorkspaceService(
+    {
+      async details() {
+        reads.count += 1;
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async secrets() {
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async audit() {},
+    },
+    repository,
+    { vault: async () => opened.vault },
+  );
+  try {
+    await service.createRow(
+      id,
+      {
+        revision: 1,
+        sectionId: 'access',
+        title: '신규 접근',
+        fields: [
+          { key: 'domainurl', label: '도메인 URL', value: 'https://demo.example' },
+          { key: 'vpnsv_ip', label: 'VPN 서버 IP', value: '203.0.113.10' },
+          { key: 'vpnsv_pwd', label: 'VPN 비밀번호', value: 'demo-vpn-secret' },
+          { key: 'access_url', label: '접근 URL', value: 'https://demo.example/gate' },
+        ],
+      },
+      'actor',
+    );
+    const stored = await repository.get(id);
+    const plain = JSON.parse(opened.vault.decrypt(stored!.envelope, workspaceContext(id, stored!.revision)));
+    const savedRows = plain.sections.find((section: { id: string }) => section.id === 'access').rows;
+    assert.equal(savedRows.length, 3);
+    assert.ok(savedRows.every((row: { origin?: unknown }) => !Object.hasOwn(row, 'origin')));
+    assert.equal(Object.keys(stored!.accessOrigins ?? {}).length, 3);
+    const details = await service.details(id, { protected: false, raw: true });
+    const rows = details.sections.find((section) => section.id === 'access')!.rows;
     assert.deepEqual(
-      access.rows.map((row: { origin: { part: string } }) => row.origin.part),
+      rows.map((row) => row.origin?.part),
       ['address', 'vpn', 'access'],
     );
-
-    const invalid = {
-      async query(sql: string) {
-        if (/legacy_items/.test(sql)) return { rows: [{ target_id: v1 }, { target_id: v1 }] };
-        return client.query(sql);
+    assert.equal(rows[0].origin?.group, rows[1].origin?.group);
+    assert.equal(rows[1].origin?.group, rows[2].origin?.group);
+    assert.match(rows[0].origin?.group ?? '', /^[a-f0-9]{64}$/);
+    assert.equal(reads.count, 0);
+    await service.createRow(
+      id,
+      {
+        revision: stored!.revision,
+        sectionId: 'access',
+        title: '단일 접속',
+        fields: [{ key: 'domainurl', label: '도메인 URL', value: 'https://demo.example/manual' }],
       },
-    };
-    await assert.rejects(
-      () => createMaterializer(invalid, opened.vault).prepareMaterialization(v1),
-      /INSTALLATION_MATERIALIZATION_SOURCE_LINK_INVALID/,
+      'actor',
     );
+    const after = await service.details(id, { protected: false, raw: true });
+    const manual = after.sections.find((section) => section.id === 'access')!.rows.find((row) => row.title === '단일 접속');
+    assert.equal(manual?.origin, undefined);
+    assert.equal(reads.count, 0);
   } finally {
     await rm(opened.root, { recursive: true, force: true });
+  }
+});
+
+test('legacy vault env override creates a private key in a clean directory', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'ieum-vault-env-'));
+  const loose = path.join(root, 'loose');
+  const sealed = path.join(root, 'sealed');
+  await mkdir(loose);
+  await mkdir(sealed);
+  await chmod(loose, 0o755);
+  await chmod(sealed, 0o755);
+  const keyFile = path.join(loose, 'vault.key');
+  const previous = process.env.LEGACY_VAULT_KEY_FILE;
+  process.env.LEGACY_VAULT_KEY_FILE = keyFile;
+  try {
+    assert.equal((await stat(loose)).mode & 0o777, 0o755);
+    const opened = await openLegacyVault({ createIfMissing: true });
+    const context = workspaceContext('env-override', 1);
+    assert.equal(opened.decrypt(opened.encrypt('kept', context), context), 'kept');
+    assert.equal((await stat(loose)).mode & 0o777, 0o700);
+    assert.equal((await stat(keyFile)).mode & 0o777, 0o600);
+    await assert.rejects(
+      () => openLegacyVault({ keyFile: path.join(sealed, 'missing.key'), createIfMissing: false }),
+      (error: Error) => error.message === 'LEGACY_VAULT_KEY_DIRECTORY_UNSAFE',
+    );
+    assert.equal((await stat(sealed)).mode & 0o777, 0o755);
+  } finally {
+    if (previous === undefined) delete process.env.LEGACY_VAULT_KEY_FILE;
+    else process.env.LEGACY_VAULT_KEY_FILE = previous;
+    await rm(root, { recursive: true, force: true });
   }
 });
 

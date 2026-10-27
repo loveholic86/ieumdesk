@@ -5,6 +5,7 @@ import {
   installationAccessEditingDetails,
   installationDetailsForAccessEdit,
   prepareInstallationSectionOperations,
+  visibleInstallationSection,
 } from '../src/installation-client.ts';
 import type {
   InstallationAccessOriginPart,
@@ -261,4 +262,46 @@ test('installation detail keeps one footer edit entry and no per-record edit mod
   assert.equal(editor.includes("t('{0} 수정', [t(label)])"), false);
   assert.equal(editor.includes('matches(field, Boolean(row.origin))'), false);
   assert.equal(editor.includes('installationEditorGroupVisible'), true);
+});
+
+test('retired access controls stay stored and leave the visible section', () => {
+  const section = {
+    id: 'access' as const,
+    title: '접근 정보',
+    imported: false,
+    rows: [
+      {
+        id: 'row-1',
+        title: '접근',
+        fields: [
+          field('url', 'domainurl', 'https://demo.example'),
+          field('login', 'access_id', 'kept-id'),
+          field('secret', 'access_pwd', 'kept-secret'),
+          field('requested', 'access_reqst_date', '2026-01-01'),
+          field('gate', 'access_url', 'https://demo.example/gate'),
+        ],
+      },
+    ],
+  };
+  const visible = visibleInstallationSection(section);
+  assert.deepEqual(
+    visible.rows[0]?.fields.map((item) => item.key),
+    ['domainurl', 'access_url'],
+  );
+  assert.deepEqual(
+    section.rows[0]?.fields.map((item) => item.key),
+    ['domainurl', 'access_id', 'access_pwd', 'access_reqst_date', 'access_url'],
+  );
+  const retiredOnly = visibleInstallationSection({
+    ...section,
+    rows: [
+      {
+        ...section.rows[0],
+        fields: section.rows[0].fields.filter((item) => item.key !== 'domainurl' && item.key !== 'access_url'),
+      },
+    ],
+  });
+  assert.deepEqual(retiredOnly.rows, []);
+  const server = { id: 'server' as const, title: '서버', imported: false, rows: section.rows };
+  assert.equal(visibleInstallationSection(server), server);
 });

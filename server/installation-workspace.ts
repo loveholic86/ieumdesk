@@ -24,8 +24,12 @@ import {
   managedInstallationDetails,
   managedInstallationSchema,
   managedMetadataRowId,
+  newSavedAccessGroups,
+  restoreSavedAccessOrigins,
+  sealManagedInstallation,
   installationAccessNoteIdSchema,
   installationAccessNoteContentSchema,
+  type InstallationAccessOrigin,
   type ManagedInstallationState,
 } from './installation-managed.ts';
 
@@ -124,7 +128,11 @@ const stateSchema = z
   })
   .strict();
 type State = z.infer<typeof stateSchema>;
-export type InstallationWorkspaceStored = { revision: number; envelope: LegacyVaultEnvelope };
+export type InstallationWorkspaceStored = {
+  revision: number;
+  envelope: LegacyVaultEnvelope;
+  accessOrigins?: Record<string, InstallationAccessOrigin>;
+};
 type Stored = InstallationWorkspaceStored;
 export type InstallationWorkspaceAction =
   'row-create' | 'row-update' | 'row-delete' | 'materialize' | 'note-create' | 'note-update' | 'note-delete';
@@ -136,6 +144,7 @@ export interface InstallationWorkspaceRepository {
     envelope: LegacyVaultEnvelope,
     actorUserId: string,
     action: InstallationWorkspaceAction,
+    accessOrigins?: Record<string, InstallationAccessOrigin>,
   ): Promise<number>;
   close?(): Promise<void>;
 }
@@ -344,7 +353,9 @@ export class InstallationWorkspaceService {
         stateSchema.parse(parsed);
         return { revision: stored.revision, state: undefined };
       }
-      return { revision: stored.revision, state: managedInstallationSchema.parse(parsed) };
+      const state = managedInstallationSchema.parse(parsed);
+      restoreSavedAccessOrigins(state, stored.accessOrigins);
+      return { revision: stored.revision, state };
     } catch {
       throw unavailable();
     }
@@ -407,11 +418,12 @@ export class InstallationWorkspaceService {
       metadataPatch: current.metadataPatch,
       preservedEdits: current.preservedEdits,
     };
-    if (!before.state) result.envelope = await this.encrypt(id, result.nextRevision, state);
+    if (!before.state) result.envelope = (await this.encrypt(id, result.nextRevision, state)).envelope;
     return result;
   }
   private async encrypt(id: string, revision: number, state: ManagedInstallationState) {
-    const serialized = JSON.stringify(managedInstallationSchema.parse(state));
+    const sealed = sealManagedInstallation(managedInstallationSchema.parse(state));
+    const serialized = JSON.stringify(managedInstallationSchema.parse(sealed.document));
     if (Buffer.byteLength(serialized) > 8 * 1_048_576)
       throw new ApiError(
         413,
@@ -419,7 +431,10 @@ export class InstallationWorkspaceService {
         '설치 상세정보의 최대 용량을 초과했습니다.',
       );
     try {
-      return (await this.vault()).encrypt(serialized, context(id, revision));
+      return {
+        envelope: (await this.vault()).encrypt(serialized, context(id, revision)),
+        accessOrigins: sealed.accessOrigins,
+      };
     } catch {
       throw unavailable();
     }
@@ -441,9 +456,9 @@ export class InstallationWorkspaceService {
         '기존 수정 내용을 설치 기본정보에 연결하는 작업이 필요합니다. 자료는 보존됩니다.',
       );
     change(current.state);
-    const envelope = await this.encrypt(id, expected + 1, current.state);
+    const sealed = await this.encrypt(id, expected + 1, current.state);
     await guard?.();
-    await this.repository.save(id, expected, envelope, actor, action);
+    await this.repository.save(id, expected, sealed.envelope, actor, action, sealed.accessOrigins);
   }
   async createRow(id: string, input: unknown, actor: string, guard?: () => Promise<void>) {
     const data = parse(installationRowCreateSchema, input);
@@ -455,16 +470,31 @@ export class InstallationWorkspaceService {
       'row-create',
       (state) => {
         if (managedInstallationCounts(state).rowCount >= 1_000) throw bad();
-        const rowId = `workspace-row-${randomUUID()}`;
-        state.sections
-          .find((section) => section.id === data.sectionId)!
-          .rows.push({
+        const section = state.sections.find((item) => item.id === data.sectionId)!;
+        const grouped = data.sectionId === 'access' ? newSavedAccessGroups(data.fields) : undefined;
+        if (!grouped) {
+          const rowId = `workspace-row-${randomUUID()}`;
+          section.rows.push({
             id: rowId,
             title: data.title,
             fields: data.fields.map((field) =>
               managedField(data.sectionId, rowId, field.key, field.label, field.value),
             ),
           });
+          return;
+        }
+        if (managedInstallationCounts(state).rowCount + grouped.parts.length > 1_000) throw bad();
+        for (const part of grouped.parts) {
+          const rowId = `workspace-row-${randomUUID()}`;
+          section.rows.push({
+            id: rowId,
+            title: data.title,
+            origin: { group: grouped.group, part: part.part },
+            fields: part.fields.map((field) =>
+              managedField(data.sectionId, rowId, field.key, field.label, field.value),
+            ),
+          });
+        }
       },
       guard,
     );
@@ -646,10 +676,20 @@ export class MemoryInstallationWorkspaceRepository implements InstallationWorksp
     const value = this.records.get(id);
     return value ? structuredClone(value) : undefined;
   }
-  async save(id: string, expected: number, envelope: LegacyVaultEnvelope) {
+  async save(
+    id: string,
+    expected: number,
+    envelope: LegacyVaultEnvelope,
+    _actor?: string,
+    _action?: InstallationWorkspaceAction,
+    accessOrigins?: Record<string, InstallationAccessOrigin>,
+  ) {
     if ((this.records.get(id)?.revision ?? 0) !== expected) throw conflict();
     const revision = expected + 1;
-    this.records.set(id, { revision, envelope: structuredClone(envelope) });
+    const next: Stored = { revision, envelope: structuredClone(envelope) };
+    if (accessOrigins && Object.keys(accessOrigins).length)
+      next.accessOrigins = structuredClone(accessOrigins);
+    this.records.set(id, next);
     return revision;
   }
 }

@@ -5,6 +5,7 @@ import { lstat, mkdir, open, realpath, rename, unlink, type FileHandle } from 'n
 import path from 'node:path';
 import { ApiError } from './errors.ts';
 import type { LegacyVaultEnvelope } from './legacy-vault.ts';
+import type { InstallationAccessOrigin } from './installation-managed.ts';
 import type {
   InstallationWorkspaceRepository,
   InstallationWorkspaceAction,
@@ -90,7 +91,15 @@ export class FileInstallationWorkspaceRepository implements InstallationWorkspac
         typeof value.envelope !== 'object'
       )
         throw unavailable();
-      return { revision: value.revision as number, envelope: value.envelope as LegacyVaultEnvelope };
+      const accessOrigins =
+        value.accessOrigins && typeof value.accessOrigins === 'object' && !Array.isArray(value.accessOrigins)
+          ? (value.accessOrigins as Record<string, InstallationAccessOrigin>)
+          : undefined;
+      return {
+        revision: value.revision as number,
+        envelope: value.envelope as LegacyVaultEnvelope,
+        ...(accessOrigins ? { accessOrigins } : {}),
+      };
     } catch (error) {
       if (missing(error)) return undefined;
       if (error instanceof ApiError) throw error;
@@ -109,6 +118,7 @@ export class FileInstallationWorkspaceRepository implements InstallationWorkspac
     envelope: LegacyVaultEnvelope,
     actorUserId: string,
     action: InstallationWorkspaceAction,
+    accessOrigins?: Record<string, InstallationAccessOrigin>,
   ) {
     await this.root(true);
     const file = this.filename(id),
@@ -147,6 +157,7 @@ export class FileInstallationWorkspaceRepository implements InstallationWorkspac
           JSON.stringify({
             revision: expected + 1,
             envelope,
+            ...(accessOrigins && Object.keys(accessOrigins).length ? { accessOrigins } : {}),
             updatedBy: actorUserId,
             action,
             updatedAt: new Date().toISOString(),

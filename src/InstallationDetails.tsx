@@ -396,13 +396,13 @@ const cardGroups: Record<InstallationSectionId, readonly CardGroup[]> = {
     cardGroup('notes', '비고', 'note ct_etc setup_etc'),
   ],
   access: [
-    cardGroup('connection', '접속', 'access_type access_url domainurl access_id access_pwd'),
+    cardGroup('connection', '접속', 'access_type access_url domainurl'),
     cardGroup('network', '네트워크', 'ssh_port external_ip internal_ip netmask gateway dns1 dns2'),
     cardGroup('ssl', 'SSL', 'ssl_apply_yn ssl_manage_type ssl_applydate ssl_pwd'),
     cardGroup('vpn', 'VPN', 'vpnsv_ip vpnsv_id vpnsv_pwd'),
     cardGroup('path', '설치 경로', 'rootpath'),
     cardGroup('os', 'OS 계정', 'os_root_id os_root_pwd os_user_id os_user_pwd os_login_etc'),
-    cardGroup('period', '기간', 'access_reqst_date access_reqst_enddate'),
+    cardGroup('period', '기간', 'access_reqst_enddate'),
     cardGroup('notes', '비고', 'access_etc'),
   ],
   server: [
@@ -1304,7 +1304,7 @@ export default function InstallationDetails({
     const created = saved.sections
       .find((item) => item.id === 'access')
       ?.rows.find((row) => !previousIds.has(row.id));
-    if (created) setAccessRowId(created.id);
+    if (created) setAccessRowId(created.origin?.group ?? created.id);
   };
   const beginAccessRecord = () => {
     if (!canManage || interactionBusy || policyPending || editingActive) return;
@@ -1547,7 +1547,7 @@ export default function InstallationDetails({
     content = sectionConfig.map((config) => {
       const sourceSection = visibleDetails!.sections.find((item) => item.id === config.id)!;
       const section = visibleInstallationSection(sourceSection);
-      const accessItems = config.id === 'access' ? accessRecordItems(sourceSection.rows) : [];
+      const accessItems = config.id === 'access' ? accessRecordItems(section.rows) : [];
       const selectedAccessItem = accessItems.find((item) => item.id === accessRowId) ?? accessItems[0];
       const selectedAccessRows = (selectedAccessItem?.rows ?? [])
         .map((row) => section.rows.find((item) => item.id === row.id))

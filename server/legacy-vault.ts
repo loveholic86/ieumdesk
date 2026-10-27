@@ -184,13 +184,26 @@ async function privateDirectory(directory: string, create: boolean) {
       await mkdir(directory, { recursive: true, mode: 0o700 });
       metadata = await lstat(directory);
     }
-    if (
-      !metadata.isDirectory() ||
-      metadata.isSymbolicLink() ||
-      (metadata.mode & 0o7777) !== 0o700 ||
-      metadata.uid !== process.getuid!()
-    )
+    if (!metadata.isDirectory() || metadata.isSymbolicLink() || metadata.uid !== process.getuid!())
       throw failure('LEGACY_VAULT_KEY_DIRECTORY_UNSAFE');
+    if ((metadata.mode & 0o7777) !== 0o700) {
+      // mkdir honors umask, so a clean directory can be 0755. Tighten only when creating a key.
+      if (!create) throw failure('LEGACY_VAULT_KEY_DIRECTORY_UNSAFE');
+      const handle = await open(directory, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+      try {
+        await handle.chmod(0o700);
+        metadata = await handle.stat();
+      } finally {
+        await handle.close();
+      }
+      if (
+        !metadata.isDirectory() ||
+        metadata.isSymbolicLink() ||
+        (metadata.mode & 0o7777) !== 0o700 ||
+        metadata.uid !== process.getuid!()
+      )
+        throw failure('LEGACY_VAULT_KEY_DIRECTORY_UNSAFE');
+    }
   } catch (error) {
     if (error instanceof VaultError) throw error;
     throw failure('LEGACY_VAULT_KEY_DIRECTORY_UNSAFE');
