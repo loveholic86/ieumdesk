@@ -115,6 +115,7 @@ export default function InstallationSectionEditor({
   const localId = (prefix: string) => `${prefix}-${Date.now()}-${++localSequence.current}`;
   const [values, setValues] = useState<Record<string, string>>({});
   const [titles, setTitles] = useState<Record<string, string>>({});
+  const [displayNames, setDisplayNames] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [addedRows, setAddedRows] = useState<NonNullable<InstallationSectionDraft['addedRows']>>([]);
   const [removedRows, setRemovedRows] = useState<string[]>([]);
@@ -156,6 +157,7 @@ export default function InstallationSectionEditor({
   const draft: InstallationSectionDraft = {
     values,
     titles,
+    displayNames,
     notes,
     addedRows,
     removedRows,
@@ -175,7 +177,13 @@ export default function InstallationSectionEditor({
     addedNotes.length +
     removedNotes.length +
     Object.values(addedFields).reduce((sum, fields) => sum + fields.length, 0) +
-    Object.values(removedFields).reduce((sum, fields) => sum + fields.length, 0);
+    Object.values(removedFields).reduce((sum, fields) => sum + fields.length, 0) +
+    (sectionId === 'access'
+      ? section.rows.filter(
+          (row) =>
+            Object.hasOwn(displayNames, row.id) && displayNames[row.id].trim() !== (row.displayName ?? ''),
+        ).length + addedRows.filter((row) => Boolean(displayNames[row.localId]?.trim())).length
+      : 0);
   const hasDeletions =
     removedRows.length +
       removedNotes.length +
@@ -189,6 +197,11 @@ export default function InstallationSectionEditor({
     !row.serverId &&
     Object.hasOwn(titles, row.id) &&
     titles[row.id] !== (row.title ?? section.title);
+  /** Server display name. It survives a link, unlike the part titles a unit is grouped by. */
+  const displayNameChanged = (row: (typeof section.rows)[number]) =>
+    sectionId === 'access' &&
+    Object.hasOwn(displayNames, row.id) &&
+    displayNames[row.id].trim() !== (row.displayName ?? '');
   const matches = (field: InstallationDetailField) =>
     (!search ||
       [field.label, field.key, installationFieldLabel(field)]
@@ -773,6 +786,7 @@ export default function InstallationSectionEditor({
                   if (
                     !fields.length &&
                     !titleChanged(row) &&
+                    !displayNameChanged(row) &&
                     !removed.length &&
                     !rowDeleting &&
                     !addedFields[row.id]?.length
@@ -780,11 +794,15 @@ export default function InstallationSectionEditor({
                     return null;
                   return (
                     <section key={row.id} className="installation-review-record">
-                      <h5>{installationRowTitle(row)}</h5>
+                      <h5>{displayNames[row.id]?.trim() || row.displayName || installationRowTitle(row)}</h5>
                       {rowDeleting && (
                         <p className="installation-inline-edit-state is-delete">{t('기록 삭제 예정')}</p>
                       )}
                       <dl>
+                        {displayNameChanged(row) &&
+                          diff(t('표시명'), row.displayName ?? '', displayNames[row.id].trim(), false, () =>
+                            setDisplayNames((current) => omit(current, [row.id])),
+                          )}
                         {titleChanged(row) &&
                           diff(t('구분명'), row.title ?? section.title, titles[row.id], false, () =>
                             setTitles((current) => omit(current, [row.id])),
@@ -849,7 +867,7 @@ export default function InstallationSectionEditor({
                 })}
                 {addedRows.map((row) => (
                   <section key={row.localId} className="installation-review-record">
-                    <h5>{row.title || t('새 기록')}</h5>
+                    <h5>{displayNames[row.localId]?.trim() || row.title || t('새 기록')}</h5>
                     <p>
                       {t('기록 추가 예정')} · {t('{0}개 항목', [row.fields.length])}
                     </p>
@@ -917,7 +935,14 @@ export default function InstallationSectionEditor({
                   const showTitle = titleChanged(row) && changedOnly && !search;
                   const deleting = removedRows.includes(row.id);
                   const createdFields = addedFields[row.id] ?? [];
-                  if (!fields.length && !showTitle && !deleting && !createdFields.length) return null;
+                  if (
+                    !fields.length &&
+                    !showTitle &&
+                    !displayNameChanged(row) &&
+                    !deleting &&
+                    !createdFields.length
+                  )
+                    return null;
                   return (
                     <fieldset
                       key={row.id}
@@ -925,10 +950,39 @@ export default function InstallationSectionEditor({
                       disabled={busy || policyPending}
                     >
                       <legend>
-                        {row.origin || row.serverId
-                          ? `${recordTitle || t('서버 {0}', [index + 1])} · ${t(accessPartLabels[accessRowPart(row)])}`
+                        {sectionId === 'access'
+                          ? [
+                              displayNames[row.id]?.trim() ||
+                                row.displayName ||
+                                recordTitle ||
+                                t('서버 {0}', [index + 1]),
+                              t(accessPartLabels[accessRowPart(row)]),
+                            ].join(' · ')
                           : installationRowTitle(row) || t('{0} 기록', [index + 1])}
                       </legend>
+                      {sectionId === 'access' ? (
+                        <label className="installation-section-edit-title">
+                          {t('표시명')}
+                          <input
+                            value={displayNames[row.id] ?? row.displayName ?? ''}
+                            maxLength={120}
+                            placeholder={t('예: 운영 1호기, QA 도메인')}
+                            disabled={deleting}
+                            onChange={(event) =>
+                              setDisplayNames((current) => ({ ...current, [row.id]: event.target.value }))
+                            }
+                          />
+                          {displayNameChanged(row) && (
+                            <button
+                              type="button"
+                              className="text-button"
+                              onClick={() => setDisplayNames((current) => omit(current, [row.id]))}
+                            >
+                              {t('입력 취소')}
+                            </button>
+                          )}
+                        </label>
+                      ) : null}
                       {row.origin || row.serverId
                         ? null
                         : row.managed !== 'metadata' && (
@@ -1012,6 +1066,19 @@ export default function InstallationSectionEditor({
                     disabled={busy || policyPending}
                   >
                     <legend>{t('새 기록 {0}', [index + 1])}</legend>
+                    {sectionId === 'access' && (
+                      <label className="installation-section-edit-title">
+                        {t('표시명')}
+                        <input
+                          value={displayNames[row.localId] ?? ''}
+                          maxLength={120}
+                          placeholder={t('예: 운영 1호기, QA 도메인')}
+                          onChange={(event) =>
+                            setDisplayNames((current) => ({ ...current, [row.localId]: event.target.value }))
+                          }
+                        />
+                      </label>
+                    )}
                     <label className="installation-section-edit-title">
                       {t('구분명')}
                       <input
@@ -1238,7 +1305,10 @@ export default function InstallationSectionEditor({
                   </fieldset>
                 ))}
                 {!section.rows.some(
-                  (row) => row.fields.some(matches) || (titleChanged(row) && changedOnly && !search),
+                  (row) =>
+                    row.fields.some(matches) ||
+                    (titleChanged(row) && changedOnly && !search) ||
+                    (displayNameChanged(row) && changedOnly && !search),
                 ) &&
                   !addedRows.length &&
                   !addedNotes.length &&

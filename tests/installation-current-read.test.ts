@@ -669,6 +669,104 @@ test('a new access save stores one server row with its VPN and no access origins
   }
 });
 
+test('a display name set before the link spreads to the whole server unit on save', async () => {
+  const opened = await vault();
+  const id = 'inst-display-name-early';
+  const state = accessState();
+  const titles: Record<string, string> = {
+    'address-row': '접속 주소',
+    'vpn-row': 'VPN',
+    'access-row': '접근 정보',
+  };
+  for (const row of state.sections.find((section) => section.id === 'access')!.rows)
+    row.title = titles[row.id] ?? row.title;
+  const service = new InstallationWorkspaceService(
+    {
+      async details() {
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async secrets() {
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async audit() {},
+    },
+    store(opened.vault, id, state),
+    { vault: async () => opened.vault },
+  );
+  try {
+    // One row receives the name while the unit is still grouped by title only.
+    await service.updateRow(id, 'access-row', { revision: 1, displayName: '검증 2호기' }, 'actor');
+    const after = await service.details(id, { protected: false, raw: true });
+    const rows = after.sections.find((section) => section.id === 'access')!.rows;
+    assert.deepEqual(
+      rows.map((row) => row.displayName),
+      ['검증 2호기', '검증 2호기', '검증 2호기'],
+    );
+    assert.deepEqual(
+      rows.map((row) => row.title),
+      ['접속 주소', 'VPN', '접근 정보'],
+    );
+    assert.equal(accessRecordItems(rows).length, 1);
+  } finally {
+    await rm(opened.root, { recursive: true, force: true });
+  }
+});
+
+test('a server display name is stored on the document without touching part titles', async () => {
+  const opened = await vault();
+  const id = 'inst-display-name';
+  const state = accessState();
+  const titles: Record<string, string> = {
+    'address-row': '접속 주소',
+    'vpn-row': 'VPN',
+    'access-row': '접근 정보',
+  };
+  for (const row of state.sections.find((section) => section.id === 'access')!.rows)
+    row.title = titles[row.id] ?? row.title;
+  const service = new InstallationWorkspaceService(
+    {
+      async details() {
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async secrets() {
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async audit() {},
+    },
+    store(opened.vault, id, state),
+    { vault: async () => opened.vault },
+  );
+  try {
+    // The first save links the legacy trio, then the display name is written on the unit.
+    await service.updateRow(id, 'vpn-row', { revision: 1, values: { vpnsv_ip: '203.0.113.11' } }, 'actor');
+    const linked = await service.details(id, { protected: false, raw: true });
+    const serverId = linked.sections
+      .find((section) => section.id === 'access')!
+      .rows.find((row) => row.id === 'vpn-row')?.serverId;
+    assert.match(serverId ?? '', /^[a-f\d]{32}$/);
+    await service.updateRow(
+      id,
+      'address-row',
+      { revision: linked.revision, displayName: '운영 1호기' },
+      'actor',
+    );
+    const after = await service.details(id, { protected: false, raw: true });
+    const rows = after.sections.find((section) => section.id === 'access')!.rows;
+    assert.deepEqual(
+      rows.map((row) => row.displayName),
+      ['운영 1호기', '운영 1호기', '운영 1호기'],
+    );
+    // Titles keep their part meaning, so the unit still groups and no legacy row is renamed.
+    assert.deepEqual(
+      rows.map((row) => row.title),
+      ['접속 주소', 'VPN', '접근 정보'],
+    );
+    assert.equal(accessRecordItems(rows).length, 1);
+  } finally {
+    await rm(opened.root, { recursive: true, force: true });
+  }
+});
+
 test('a legacy origin-less part trio reads as one server and is linked on the next save', async () => {
   const opened = await vault();
   const id = 'inst-legacy-parts';

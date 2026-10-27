@@ -52,9 +52,12 @@ import {
 } from './installation-code-options';
 import { runInstallationSavePlan } from './installation-save-flow';
 import {
+  accessColumnField,
   accessInstallationCommon,
   accessRecordItems,
+  accessRecordLabel,
   accessServerFields,
+  accessServerDisplayName,
   accessServerTitle,
   installationAccessEditingDetails,
   installationDetailsForAccessEdit,
@@ -198,15 +201,6 @@ function passwordField(field: { key: string; label: string }) {
   return /pwd|password|passwd|비밀번호|비번|패스워드/i.test(`${field.key} ${field.label}`);
 }
 
-const accessAddressKeys = [
-  'access_url',
-  'domainurl',
-  'external_ip',
-  'internal_ip',
-  'gateway',
-  'hostname',
-  'address',
-] as const;
 const accessCommonLabels: Record<string, string> = {
   access_etc: '접근 비고',
 };
@@ -220,17 +214,8 @@ function accessField(rows: readonly InstallationDetailRow[], key: string) {
   return undefined;
 }
 
-function accessListAddress(rows: readonly InstallationDetailRow[]) {
-  for (const key of accessAddressKeys)
-    for (const row of rows) {
-      const field = row.fields.find((item) => item.key === key);
-      if (field && !passwordField(field)) return field;
-    }
-  return undefined;
-}
-
 function accessItemTitle(item: AccessRecordItem) {
-  return accessServerTitle(item.rows) || t('서버 {0}', [item.index]);
+  return accessRecordLabel(item.rows, t('서버 {0}', [item.index]));
 }
 
 function AccessListCell({
@@ -310,25 +295,31 @@ function AccessRecordList({
             <tr>
               <th scope="col">{t('서버')}</th>
               <th scope="col">{t('접근 유형')}</th>
-              <th scope="col">{t('접속 주소')}</th>
+              <th scope="col">{t('도메인 URL')}</th>
+              <th scope="col">{t('외부 IP')}</th>
+              <th scope="col">{t('외부 PORT')}</th>
               <th scope="col">{t('접근 종료일')}</th>
             </tr>
           </thead>
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td colSpan={4}>{t('등록된 서버가 없습니다.')}</td>
+                <td colSpan={6}>{t('등록된 서버가 없습니다.')}</td>
               </tr>
             ) : null}
             {items.map((item) => {
               const typeField = accessField(item.rows, 'access_type');
-              const addressField = accessListAddress(item.rows);
+              const domainField = accessColumnField(item.rows, 'domainurl');
+              const externalIpField = accessColumnField(item.rows, 'external_ip');
+              const portField = accessColumnField(item.rows, 'ssh_port');
               const endField = accessField(item.rows, 'access_reqst_enddate');
               const title = accessItemTitle(item);
               const label = [
                 `${t('서버')} ${title}`,
                 `${t('접근 유형')} ${spoken(typeField)}`,
-                `${t('접속 주소')} ${spoken(addressField)}`,
+                `${t('도메인 URL')} ${spoken(domainField)}`,
+                `${t('외부 IP')} ${spoken(externalIpField)}`,
+                `${t('외부 PORT')} ${spoken(portField)}`,
                 `${t('접근 종료일')} ${spoken(endField)}`,
               ].join(', ');
               return (
@@ -356,7 +347,21 @@ function AccessRecordList({
                   </td>
                   <td>
                     <AccessListCell
-                      field={addressField}
+                      field={domainField}
+                      policyPending={policyPending}
+                      codeOptions={codeOptions}
+                    />
+                  </td>
+                  <td>
+                    <AccessListCell
+                      field={externalIpField}
+                      policyPending={policyPending}
+                      codeOptions={codeOptions}
+                    />
+                  </td>
+                  <td>
+                    <AccessListCell
+                      field={portField}
                       policyPending={policyPending}
                       codeOptions={codeOptions}
                     />
@@ -705,7 +710,6 @@ function AccessServerDetail({
     />
   );
 }
-
 const commonEditorKeys = [accessEtcKey] as const;
 
 function shownCommonValue(field: InstallationDetailField | undefined, policyPending: boolean) {

@@ -34,6 +34,8 @@ export function installationComparableValue(
 export type InstallationSectionDraft = {
   values: Record<string, string>;
   titles: Record<string, string>;
+  /** Server display names, keyed by the row id the editor shows. Never stored as a title. */
+  displayNames?: Record<string, string>;
   notes: Record<string, string>;
   addedRows?: Array<{
     localId: string;
@@ -88,6 +90,7 @@ export function prepareInstallationSectionOperations(
     const additions = draft.addedFields?.[row.id] ?? [];
     const removed = draft.removedFields?.[row.id] ?? [];
     const draftedTitle = draft.titles[row.id];
+    const draftedName = draft.displayNames?.[row.id];
     if (
       row.managed === 'metadata' &&
       (removedRows.has(row.id) ||
@@ -125,9 +128,10 @@ export function prepareInstallationSectionOperations(
       });
       continue;
     }
-    const payload = prepareInstallationRow(row, title, values, removed, additions);
+    const payload = prepareInstallationRow(row, title, values, removed, additions, draftedName);
     const changed = Boolean(
       (payload.title !== undefined && payload.title !== row.title) ||
+      payload.displayName !== undefined ||
       (payload.values && Object.keys(payload.values).length) ||
       payload.removeFields?.length ||
       payload.addFields?.length,
@@ -142,12 +146,24 @@ export function prepareInstallationSectionOperations(
       });
   }
   for (const row of draft.addedRows ?? []) {
-    const body = prepareInstallationRow(undefined, row.title, {}, [], row.fields);
+    const body = prepareInstallationRow(
+      undefined,
+      row.title,
+      {},
+      [],
+      row.fields,
+      draft.displayNames?.[row.localId],
+    );
     operations.push({
       kind: 'row-create',
       localId: row.localId,
       fieldLocalIds: row.fields.map((field) => field.localId ?? ''),
-      body: { sectionId, title: body.title!, fields: body.fields! },
+      body: {
+        sectionId,
+        title: body.title!,
+        fields: body.fields!,
+        ...(body.displayName ? { displayName: body.displayName } : {}),
+      },
     });
   }
   if (sectionId === 'access') {
@@ -258,6 +274,15 @@ export function accessServerTitle(rows: readonly Pick<InstallationDetailRow, 'ti
   return '';
 }
 
+/** Server display name set by the user. Kept apart from stored titles. */
+export function accessServerDisplayName(rows: readonly Pick<InstallationDetailRow, 'displayName'>[]) {
+  for (const row of rows) {
+    const name = row.displayName?.trim();
+    if (name) return name;
+  }
+  return '';
+}
+
 /** Address, VPN, and access fields for one server card. Only the access remark is installation-wide. */
 export function accessServerFields(rows: readonly InstallationDetailRow[]) {
   const seen = new Set<string>();
@@ -269,6 +294,23 @@ export function accessServerFields(rows: readonly InstallationDetailRow[]) {
       fields.push(field);
     }
   return fields;
+}
+
+/** First filled value of a column key across one server's rows. An empty field never wins. */
+export function accessColumnField(rows: readonly InstallationDetailRow[], key: string) {
+  for (const row of rows) {
+    const field = row.fields.find((item) => item.key === key);
+    if (field && accessFilled(field)) return field;
+  }
+  return undefined;
+}
+
+/** Server display name, then a stored title that names this server, then the caller's fallback. */
+export function accessRecordLabel(
+  rows: readonly Pick<InstallationDetailRow, 'title' | 'displayName'>[],
+  fallback: string,
+) {
+  return accessServerDisplayName(rows) || accessServerTitle(rows) || fallback;
 }
 
 export type AccessRecordItem = { id: string; rows: InstallationDetailRow[]; index: number };
@@ -507,6 +549,7 @@ export function installationFieldMasked(
 export type NewInstallationField = { key: string; label: string; value: string };
 export type RowDraftPayload = {
   title?: string;
+  displayName?: string;
   values?: Record<string, string>;
   removeFields?: string[];
   addFields?: NewInstallationField[];
@@ -530,8 +573,14 @@ export function prepareInstallationRow(
   values: Record<string, string>,
   removed: string[],
   added: NewInstallationField[],
+  displayName?: string,
 ): RowDraftPayload {
   const normalizedTitle = title.trim();
+  const normalizedDisplayName = displayName?.trim();
+  if (normalizedDisplayName && normalizedDisplayName.length > 120)
+    throw new Error('표시명은 120자 이내로 입력해 주세요.');
+  if (normalizedDisplayName && /[\u0000-\u001f\u007f]/.test(normalizedDisplayName))
+    throw new Error('표시명에 제어문자를 쓸 수 없습니다.');
   if (
     row?.managed === 'metadata' &&
     (normalizedTitle !== row.title || removed.length > 0 || added.length > 0)
@@ -580,10 +629,15 @@ export function prepareInstallationRow(
     return { values: changed };
   }
   const patch = { values: changed, removeFields: [...new Set(removed)], addFields: fields };
-  // A server's title is the server unit's name. Child rows never PATCH it individually.
+  const nameChange =
+    normalizedDisplayName !== undefined && normalizedDisplayName !== (row?.displayName ?? '')
+      ? { displayName: normalizedDisplayName }
+      : {};
+  // The stored title keeps its part meaning. A user-facing name travels as displayName, so
+  // renaming a server never breaks the title-based grouping of a migrated server unit.
   return row?.origin || row?.serverId
-    ? patch
+    ? { ...nameChange, ...patch }
     : row
-      ? { title: normalizedTitle, ...patch }
-      : { title: normalizedTitle, fields };
+      ? { title: normalizedTitle, ...nameChange, ...patch }
+      : { title: normalizedTitle, ...nameChange, fields };
 }

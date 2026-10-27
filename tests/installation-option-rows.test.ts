@@ -222,3 +222,101 @@ test('protected vpn and note locks stay 12px outside option-b', async () => {
   const panelAt = source.indexOf('<AccessCommonPanel');
   assert.ok(browserAt > 0 && panelAt > browserAt);
 });
+
+test('the access list shows domain URL, external IP, and external port columns', async () => {
+  const source = readFileSync(new URL('../src/InstallationDetails.tsx', import.meta.url), 'utf8');
+  const head = source.slice(
+    source.indexOf('className="installation-data-table installation-access-list"'),
+    source.indexOf('</thead>'),
+  );
+  for (const label of ['도메인 URL', '외부 IP', '외부 PORT', '접근 종료일'])
+    assert.match(head, new RegExp(`<th scope="col">\\{t\\('${label}'\\)\\}</th>`));
+  // The single connection-address column is gone.
+  assert.equal(head.includes("t('접속 주소')"), false);
+  assert.equal((head.match(/<th scope="col">/g) ?? []).length, 6);
+  const { accessColumnField } = await import('../src/installation-client.ts');
+  const rows: InstallationDetailRow[] = [
+    {
+      id: 'address-row',
+      title: '접속 주소',
+      fields: [
+        field('domainurl', 'https://demo.example'),
+        field('external_ip', '203.0.113.10'),
+        field('ssh_port', '2222'),
+      ],
+    },
+  ];
+  assert.equal(accessColumnField(rows, 'domainurl')?.value, 'https://demo.example');
+  assert.equal(accessColumnField(rows, 'external_ip')?.value, '203.0.113.10');
+  assert.equal(accessColumnField(rows, 'ssh_port')?.value, '2222');
+});
+
+test('an empty access_url never hides a filled domain URL', async () => {
+  const { accessColumnField } = await import('../src/installation-client.ts');
+  const rows: InstallationDetailRow[] = [
+    {
+      id: 'address-row',
+      title: '접속 주소',
+      fields: [
+        { ...field('empty-url', ''), present: false },
+        field('domainurl', 'https://demo.example'),
+        field('external_ip', '203.0.113.10'),
+      ],
+    },
+    {
+      id: 'access-row',
+      title: '접근 정보',
+      fields: [{ ...field('empty-access-url', ''), present: false }],
+    },
+  ];
+  assert.equal(accessColumnField(rows, 'access_url'), undefined);
+  assert.equal(accessColumnField(rows, 'domainurl')?.value, 'https://demo.example');
+  assert.equal(accessColumnField(rows, 'external_ip')?.value, '203.0.113.10');
+  // A masked value is a real value: it is shown as protected, not treated as empty.
+  const masked: InstallationDetailRow = {
+    id: 'masked-row',
+    fields: [{ ...field('masked-url', '••••••••'), masked: true }],
+  };
+  assert.equal(accessColumnField([masked], 'masked-url')?.masked, true);
+});
+
+test('a server display name is stored apart from the part titles that group it', async () => {
+  const { accessRecordLabel, accessRecordItems, accessServerFields } =
+    await import('../src/installation-client.ts');
+  const rows: InstallationDetailRow[] = [
+    {
+      id: 'address-row',
+      title: '접속 주소',
+      serverId: 'a'.repeat(32),
+      displayName: '운영 1호기',
+      fields: [field('domainurl', 'https://demo.example')],
+    },
+    {
+      id: 'vpn-row',
+      title: 'VPN',
+      serverId: 'a'.repeat(32),
+      displayName: '운영 1호기',
+      fields: [field('vpnsv_ip', '203.0.113.20')],
+    },
+    {
+      id: 'access-row',
+      title: '접근 정보',
+      serverId: 'a'.repeat(32),
+      displayName: '운영 1호기',
+      fields: [field('access_type', '원격')],
+    },
+  ];
+  const items = accessRecordItems(rows);
+  assert.equal(items.length, 1);
+  assert.equal(accessRecordLabel(items[0].rows, '서버 1'), '운영 1호기');
+  // The grouping titles are untouched, so display name editing cannot break the link.
+  assert.deepEqual(
+    items[0].rows.map((row) => row.title),
+    ['접속 주소', 'VPN', '접근 정보'],
+  );
+  assert.deepEqual(
+    accessServerFields(items[0].rows).map((item) => item.key),
+    ['domainurl', 'vpnsv_ip', 'access_type'],
+  );
+  assert.equal(accessRecordLabel([{ id: 'bare' }], '서버 2'), '서버 2');
+});

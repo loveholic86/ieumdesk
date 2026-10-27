@@ -23,6 +23,16 @@ export const accessVpnKeys = ['vpnsv_ip', 'vpnsv_id', 'vpnsv_pwd'] as const;
 export const accessEtcKey = 'access_etc';
 export const accessCommonFieldKeys = new Set<string>([accessEtcKey]);
 
+/** List columns of the access table, in order. Only the access remark is installation-wide. */
+export const accessListColumns = [
+  { key: 'server', label: '서버' },
+  { key: 'access_type', label: '접근 유형' },
+  { key: 'domainurl', label: '도메인 URL' },
+  { key: 'external_ip', label: '외부 IP' },
+  { key: 'ssh_port', label: '외부 PORT' },
+  { key: 'access_reqst_enddate', label: '접근 종료일' },
+] as const;
+
 const accessAddressKeys = new Set([
   'domainurl',
   'ssh_port',
@@ -141,6 +151,11 @@ export interface InstallationAccessOrigin {
 export interface InstallationDetailRow {
   id: string;
   title?: string;
+  /**
+   * Server display name set by the user. Stored separately from `title`, so renaming a server
+   * never disturbs the part titles that group a migrated server unit.
+   */
+  displayName?: string;
   managed?: 'metadata';
   /** Server parent link stored in the encrypted document, so it survives a missing 017 column. */
   serverId?: string;

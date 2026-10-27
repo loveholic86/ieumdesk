@@ -67,6 +67,11 @@ const titleSchema = z
   .max(120)
   .refine((value) => !/[\x00-\x1f\x7f]/.test(value));
 const inputField = z.object({ key: keySchema, label: titleSchema, value: valueSchema }).strict();
+const displayNameSchema = z
+  .string()
+  .trim()
+  .max(120)
+  .refine((value) => !/[\x00-\x1f\x7f]/.test(value));
 const sectionSchema = z.enum(['installation', 'access', 'server', 'yeta', 'sap', 'settings', 'files']);
 const revisionSchema = z.number().int().min(0).max(2_147_483_646);
 export const installationRowCreateSchema = z
@@ -74,6 +79,7 @@ export const installationRowCreateSchema = z
     revision: revisionSchema,
     sectionId: sectionSchema,
     title: titleSchema,
+    displayName: displayNameSchema.optional(),
     fields: z.array(inputField).min(1).max(80),
   })
   .strict();
@@ -85,6 +91,7 @@ export const installationRowPatchSchema = z
       .regex(/^[a-f\d]{64}$/)
       .optional(),
     title: titleSchema.optional(),
+    displayName: displayNameSchema.optional(),
     values: z.record(keySchema, valueSchema).optional(),
     removeFields: z.array(keySchema).max(80).optional(),
     addFields: z.array(inputField).max(80).optional(),
@@ -93,6 +100,7 @@ export const installationRowPatchSchema = z
   .refine(
     (value) =>
       value.title !== undefined ||
+      value.displayName !== undefined ||
       Object.keys(value.values ?? {}).length > 0 ||
       Boolean(value.removeFields?.length) ||
       Boolean(value.addFields?.length),
@@ -212,6 +220,7 @@ function accessServerId() {
 /**
  * Record the server link for legacy rows that only group by title, so the next read and every
  * later save keep one server unit without rewriting any stored value or title.
+ * A display name set before the link existed spreads to the whole unit the same way.
  */
 export function linkAccessServerUnits(state: ManagedInstallationState) {
   const section = state.sections.find((item) => item.id === 'access');
@@ -219,9 +228,12 @@ export function linkAccessServerUnits(state: ManagedInstallationState) {
   for (const unit of accessServerUnits(section.rows)) {
     if (unit.rows.length < 2) continue;
     const serverId = unit.rows.find((row) => row.serverId)?.serverId ?? accessServerId();
+    const displayName = unit.rows.find((row) => row.displayName)?.displayName;
     for (const row of unit.rows) {
       const target = section.rows.find((item) => item.id === row.id);
-      if (target && !target.serverId) target.serverId = serverId;
+      if (!target) continue;
+      if (!target.serverId) target.serverId = serverId;
+      if (displayName && !target.displayName) target.displayName = displayName;
     }
   }
 }
@@ -551,6 +563,7 @@ export class InstallationWorkspaceService {
           section.rows.push({
             id: rowId,
             title: data.title,
+            ...(data.displayName ? { displayName: data.displayName } : {}),
             // The parent link is what makes this row one server even after a later VPN edit.
             ...(data.sectionId === 'access' ? { serverId: accessServerId() } : {}),
             fields: serverFields.map((field) =>
@@ -621,6 +634,16 @@ export class InstallationWorkspaceService {
         const length = row.fields.length - removed.size + (data.addFields?.length ?? 0);
         if (length < 1 || length > 80) throw bad();
         if (data.title !== undefined) row.title = data.title;
+        if (data.displayName !== undefined) {
+          // A display name belongs to the server unit, not to one part row. Copy it to every
+          // row of the unit so it survives a later part edit and never touches the stored titles
+          // that group a migrated server.
+          const unit = row.serverId ? section.rows.filter((item) => item.serverId === row.serverId) : [row];
+          for (const item of unit) {
+            if (data.displayName) item.displayName = data.displayName;
+            else delete item.displayName;
+          }
+        }
         row.fields = row.fields
           .filter((field) => !removed.has(field.key))
           .map((field) => {
