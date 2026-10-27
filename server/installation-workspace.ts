@@ -720,9 +720,14 @@ export class MemoryInstallationWorkspaceRepository implements InstallationWorksp
 }
 
 export class PostgresInstallationWorkspaceRepository implements InstallationWorkspaceRepository {
-  readonly persistsAccessOrigins = true;
+  private originsColumn?: boolean;
+  private originsProbe?: Promise<boolean>;
   private pool?: Promise<pg.Pool>;
   constructor(private readonly database?: WorkspaceDb) {}
+  /** Known only after a successful catalog read. Unknown stays false so a new save is not split early. */
+  get persistsAccessOrigins() {
+    return this.originsColumn === true;
+  }
   private async connection(): Promise<WorkspaceDb> {
     if (this.database) return this.database;
     return (this.pool ??= (async () => {
@@ -741,24 +746,65 @@ export class PostgresInstallationWorkspaceRepository implements InstallationWork
       throw error;
     }));
   }
+  private async accessOriginsColumn(): Promise<boolean> {
+    if (this.originsColumn !== undefined) return this.originsColumn;
+    this.originsProbe ??= this.detectAccessOriginsColumn();
+    try {
+      this.originsColumn = await this.originsProbe;
+      return this.originsColumn;
+    } catch (error) {
+      this.originsProbe = undefined;
+      throw error;
+    }
+  }
+  private async detectAccessOriginsColumn(): Promise<boolean> {
+    let rows: unknown;
+    try {
+      rows = (
+        await (
+          await this.connection()
+        ).query(
+          "SELECT column_name FROM information_schema.columns WHERE table_schema = 'yeta_crm_private' AND table_name = 'installation_workspace' AND column_name = 'access_origins'",
+        )
+      ).rows;
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      throw new ApiError(
+        503,
+        'INSTALLATION_ACCESS_ORIGINS_UNKNOWN',
+        '설치 상세의 묶음 저장 구조를 확인하지 못했습니다.',
+      );
+    }
+    if (!Array.isArray(rows) || rows.length > 1)
+      throw new ApiError(
+        503,
+        'INSTALLATION_ACCESS_ORIGINS_UNKNOWN',
+        '설치 상세의 묶음 저장 구조를 확인하지 못했습니다.',
+      );
+    return rows.length === 1;
+  }
   async get(id: string): Promise<Stored | undefined> {
+    const withOrigins = await this.accessOriginsColumn();
     try {
       const row = (
         await (
           await this.connection()
         ).query(
-          'SELECT revision,envelope,access_origins FROM yeta_crm_private.installation_workspace WHERE installation_id=$1',
+          withOrigins
+            ? 'SELECT revision,envelope,access_origins FROM yeta_crm_private.installation_workspace WHERE installation_id=$1'
+            : 'SELECT revision,envelope FROM yeta_crm_private.installation_workspace WHERE installation_id=$1',
           [id],
         )
       ).rows[0];
       if (!row) return undefined;
-      const accessOrigins = columnAccessOrigins(row.access_origins);
+      const accessOrigins = withOrigins ? columnAccessOrigins(row.access_origins) : undefined;
       return {
         revision: row.revision,
         envelope: row.envelope,
         ...(accessOrigins ? { accessOrigins } : {}),
       };
-    } catch {
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
       throw unavailable();
     }
   }
@@ -770,6 +816,7 @@ export class PostgresInstallationWorkspaceRepository implements InstallationWork
     action: InstallationWorkspaceAction,
     accessOrigins?: Record<string, InstallationAccessOrigin>,
   ) {
+    const withOrigins = await this.accessOriginsColumn();
     const client = await (await this.connection()).connect();
     try {
       await client.query('BEGIN');
@@ -796,8 +843,12 @@ export class PostgresInstallationWorkspaceRepository implements InstallationWork
       if (!canManageBusiness(account))
         throw new ApiError(403, 'WRITE_PERMISSION_REQUIRED', '등록·수정 권한이 필요합니다.');
       await client.query(
-        'INSERT INTO yeta_crm_private.installation_workspace(installation_id,revision,envelope,updated_by,access_origins) VALUES($1,$2,$3,$4,$5) ON CONFLICT(installation_id) DO UPDATE SET revision=EXCLUDED.revision,envelope=EXCLUDED.envelope,updated_by=EXCLUDED.updated_by,access_origins=EXCLUDED.access_origins,updated_at=now()',
-        [id, expected + 1, envelope, actor, columnAccessOrigins(accessOrigins) ?? null],
+        withOrigins
+          ? 'INSERT INTO yeta_crm_private.installation_workspace(installation_id,revision,envelope,updated_by,access_origins) VALUES($1,$2,$3,$4,$5) ON CONFLICT(installation_id) DO UPDATE SET revision=EXCLUDED.revision,envelope=EXCLUDED.envelope,updated_by=EXCLUDED.updated_by,access_origins=EXCLUDED.access_origins,updated_at=now()'
+          : 'INSERT INTO yeta_crm_private.installation_workspace(installation_id,revision,envelope,updated_by) VALUES($1,$2,$3,$4) ON CONFLICT(installation_id) DO UPDATE SET revision=EXCLUDED.revision,envelope=EXCLUDED.envelope,updated_by=EXCLUDED.updated_by,updated_at=now()',
+        withOrigins
+          ? [id, expected + 1, envelope, actor, columnAccessOrigins(accessOrigins) ?? null]
+          : [id, expected + 1, envelope, actor],
       );
       await client.query(
         'INSERT INTO yeta_crm_private.installation_workspace_audit(installation_ref_hash,actor_user_id,action,revision) VALUES($1,$2,$3,$4)',

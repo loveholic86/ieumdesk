@@ -646,10 +646,17 @@ test('access origin migration adds a nullable sidecar and does not rewrite rows'
   assert.match(runner, /017_installation_access_origins\.sql/);
 });
 
-function postgresDouble() {
+function postgresDouble(accessOriginsColumn = true) {
   const rows = new Map<string, { revision: number; envelope: unknown; access_origins: unknown }>();
+  const statements: string[] = [];
   const query = async (sql: string, params: unknown[] = []) => {
     const text = sql.replace(/\s+/g, ' ').trim();
+    statements.push(text);
+    if (text.includes('information_schema.columns'))
+      return accessOriginsColumn
+        ? { rows: [{ column_name: 'access_origins' }], rowCount: 1 }
+        : { rows: [], rowCount: 0 };
+    if (!accessOriginsColumn && text.includes('access_origins')) throw new Error(`unexpected sql ${text}`);
     if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [], rowCount: 0 };
     if (text.startsWith('SELECT pg_advisory_xact_lock')) return { rows: [], rowCount: 1 };
     if (text.includes('FROM yeta_crm.records')) return { rows: [{ present: 1 }], rowCount: 1 };
@@ -659,7 +666,10 @@ function postgresDouble() {
       const row = rows.get(String(params[0]));
       return { rows: row ? [{ revision: row.revision }] : [], rowCount: row ? 1 : 0 };
     }
-    if (text.startsWith('SELECT revision,envelope,access_origins')) {
+    if (
+      text.startsWith('SELECT revision,envelope,access_origins') ||
+      text.startsWith('SELECT revision,envelope FROM')
+    ) {
       const row = rows.get(String(params[0]));
       return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
     }
@@ -668,7 +678,7 @@ function postgresDouble() {
       rows.set(String(id), {
         revision: revision as number,
         envelope,
-        access_origins: accessOrigins,
+        access_origins: accessOriginsColumn ? accessOrigins : undefined,
       });
       return { rows: [], rowCount: 1 };
     }
@@ -679,6 +689,7 @@ function postgresDouble() {
   const client = { query, release() {} };
   return {
     rows,
+    statements,
     query,
     async connect() {
       return client;
@@ -708,8 +719,9 @@ test('postgres save and get round-trip access origins for a new multi-part row',
     { vault: async () => opened.vault },
   );
   try {
-    assert.equal(repository.persistsAccessOrigins, true);
+    assert.equal(repository.persistsAccessOrigins, false);
     await repository.save(id, 0, envelope, '00000000-0000-4000-8000-000000000001', 'row-create');
+    assert.equal(repository.persistsAccessOrigins, true);
     assert.equal(database.rows.get(id)?.access_origins, null);
     await service.createRow(
       id,
@@ -743,6 +755,96 @@ test('postgres save and get round-trip access origins for a new multi-part row',
     await repository.close();
     await rm(opened.root, { recursive: true, force: true });
   }
+});
+
+test('postgres without the access origins column keeps a multi-part save as one row', async () => {
+  const opened = await vault();
+  const database = postgresDouble(false);
+  const repository = new PostgresInstallationWorkspaceRepository(database);
+  const id = 'inst-postgres-before-column';
+  const empty = accessState();
+  for (const section of empty.sections) section.rows = [];
+  const envelope = opened.vault.encrypt(JSON.stringify(empty), workspaceContext(id, 1));
+  const service = new InstallationWorkspaceService(
+    {
+      async details() {
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async secrets() {
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async audit() {},
+    },
+    repository,
+    { vault: async () => opened.vault },
+  );
+  try {
+    await repository.save(id, 0, envelope, '00000000-0000-4000-8000-000000000001', 'row-create');
+    assert.equal(repository.persistsAccessOrigins, false);
+    assert.equal(database.rows.get(id)?.access_origins, undefined);
+    await service.createRow(
+      id,
+      {
+        revision: 1,
+        sectionId: 'access',
+        title: '신규 접근',
+        fields: [
+          { key: 'domainurl', label: '도메인 URL', value: 'https://demo.example' },
+          { key: 'vpnsv_ip', label: 'VPN 서버 IP', value: '203.0.113.10' },
+          { key: 'access_url', label: '접근 URL', value: 'https://demo.example/gate' },
+        ],
+      },
+      '00000000-0000-4000-8000-000000000001',
+    );
+    const stored = await repository.get(id);
+    const plain = JSON.parse(opened.vault.decrypt(stored!.envelope, workspaceContext(id, stored!.revision)));
+    const savedRows = plain.sections.find((section: { id: string }) => section.id === 'access').rows;
+    assert.equal(savedRows.length, 1);
+    assert.equal(Object.hasOwn(savedRows[0], 'origin'), false);
+    assert.equal(stored!.accessOrigins, undefined);
+    const details = await service.details(id, { protected: false, raw: true });
+    const visible = details.sections.find((section) => section.id === 'access')!.rows;
+    assert.equal(visible.length, 1);
+    assert.equal(visible[0]?.origin, undefined);
+    assert.equal(repository.persistsAccessOrigins, false);
+    const workspaceSql = database.statements.filter(
+      (text) => text.includes('yeta_crm_private.installation_workspace') && !text.includes('information_schema'),
+    );
+    assert.equal(workspaceSql.some((text) => text.includes('access_origins')), false);
+    assert.ok(workspaceSql.length > 0);
+  } finally {
+    await repository.close();
+    await rm(opened.root, { recursive: true, force: true });
+  }
+});
+
+test('postgres column detection failure does not read or write the workspace', async () => {
+  const sql: string[] = [];
+  const database = {
+    async query(text: string) {
+      sql.push(text);
+      if (text.includes('information_schema.columns')) throw new Error('catalog unavailable');
+      throw new Error('workspace sql ran');
+    },
+    async connect() {
+      throw new Error('connect must not run');
+    },
+  };
+  const repository = new PostgresInstallationWorkspaceRepository(database);
+  const rejected = (error: unknown) =>
+    error instanceof ApiError && error.code === 'INSTALLATION_ACCESS_ORIGINS_UNKNOWN';
+  await assert.rejects(() => repository.get('inst-probe'), rejected);
+  await assert.rejects(
+    () =>
+      repository.save('inst-probe', 0, { ciphertext: '', nonce: '', tag: '', keyId: '', sha256: '' }, 'actor', 'row-create'),
+    rejected,
+  );
+  assert.equal(repository.persistsAccessOrigins, false);
+  assert.equal(
+    sql.every((text) => text.includes('information_schema.columns')),
+    true,
+  );
+  assert.ok(sql.length >= 2);
 });
 
 test('a repository that cannot persist the sidecar keeps a multi-part save as one row', async () => {
