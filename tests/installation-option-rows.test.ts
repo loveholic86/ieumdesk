@@ -223,17 +223,25 @@ test('protected vpn and note locks stay 12px outside option-b', async () => {
   assert.ok(browserAt > 0 && panelAt > browserAt);
 });
 
-test('the access list shows domain URL, external IP, and external port columns', async () => {
+test('the access list shows exactly the five server columns and no end date', async () => {
   const source = readFileSync(new URL('../src/InstallationDetails.tsx', import.meta.url), 'utf8');
   const head = source.slice(
     source.indexOf('className="installation-data-table installation-access-list"'),
     source.indexOf('</thead>'),
   );
-  for (const label of ['도메인 URL', '외부 IP', '외부 PORT', '접근 종료일'])
+  for (const label of ['서버', '접근 유형', '도메인 URL', '외부 IP', '외부 PORT'])
     assert.match(head, new RegExp(`<th scope="col">\\{t\\('${label}'\\)\\}</th>`));
-  // The single connection-address column is gone.
+  // The end date column and the single connection-address column are both gone.
+  assert.equal(head.includes("t('접근 종료일')"), false);
   assert.equal(head.includes("t('접속 주소')"), false);
-  assert.equal((head.match(/<th scope="col">/g) ?? []).length, 6);
+  assert.equal((head.match(/<th scope="col">/g) ?? []).length, 5);
+  const { accessListColumns } = await import('../src/installation-types.ts');
+  assert.deepEqual(
+    accessListColumns.map((column) => column.label),
+    ['서버', '접근 유형', '도메인 URL', '외부 IP', '외부 PORT'],
+  );
+  // The detail and editor still carry the end date field itself.
+  assert.match(source, /cardGroup\('period', '기간', 'access_reqst_date access_reqst_enddate'\)/);
   const { accessColumnField } = await import('../src/installation-client.ts');
   const rows: InstallationDetailRow[] = [
     {
@@ -319,4 +327,41 @@ test('a server display name is stored apart from the part titles that group it',
     ['domainurl', 'vpnsv_ip', 'access_type'],
   );
   assert.equal(accessRecordLabel([{ id: 'bare' }], '서버 2'), '서버 2');
+});
+
+test('the shared access remark is edited inside Edit information and saved on its own', async () => {
+  const view = readFileSync(new URL('../src/InstallationDetails.tsx', import.meta.url), 'utf8');
+  const editor = readFileSync(new URL('../src/InstallationSectionEditor.tsx', import.meta.url), 'utf8');
+  // The separate entry is gone: the panel only reads, and points to the edit screen.
+  assert.equal(view.includes("t('공통 정보 수정')"), false);
+  assert.equal(view.includes('onEdit={() =>'), false);
+  assert.match(view, /<h3>\{t\('설치 공통'\)\}<\/h3>/);
+  assert.match(view, /t\('정보 수정에서 편집합니다\.'\)/);
+  // The collapsible installation-wide remark lives at the bottom of the edit screen.
+  assert.match(editor, /<details className="installation-access-common-inline"/);
+  assert.match(editor, /t\('설치 전역 · 모든 서버에 공통'\)/);
+  assert.match(editor, /'설치 공통 비고 저장'/);
+  assert.match(editor, /sectionId === 'access' && onSaveAccessCommon/);
+  // Its save is separate from the server-row save plan.
+  assert.match(view, /onSaveAccessCommon=\{[\s\S]{0,200}saveAccessCommonDraft\(draft, source\)/);
+  assert.match(view, /const saveAccessCommonDraft = async \(/);
+});
+
+test('the end date stays editable in the detail and the editor, only the list column left', async () => {
+  const view = readFileSync(new URL('../src/InstallationDetails.tsx', import.meta.url), 'utf8');
+  const labels = readFileSync(new URL('../src/installation-labels.ts', import.meta.url), 'utf8');
+  // Detail card still groups the end date with the request dates.
+  assert.match(view, /cardGroup\('period', '기간', 'access_reqst_date access_reqst_enddate'\)/);
+  // The editor menu still lets the field be reached.
+  assert.match(
+    readFileSync(new URL('../src/installation-editor.ts', import.meta.url), 'utf8'),
+    /group\('notes', '비고·참고사항', 'access_etc'\)/,
+  );
+  // The list column definition is the only place the end date was dropped.
+  const { accessListColumns } = await import('../src/installation-types.ts');
+  assert.equal(
+    accessListColumns.some((column) => column.key === 'access_reqst_enddate'),
+    false,
+  );
+  assert.equal(labels.includes("'access_reqst_enddate'"), false);
 });

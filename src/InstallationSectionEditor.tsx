@@ -8,6 +8,7 @@ import {
   installationRowTitle,
 } from './installation-labels';
 import {
+  accessInstallationCommon,
   visibleInstallationSection,
   type InstallationSectionOperation,
   type InstallationSectionDraft,
@@ -26,7 +27,7 @@ import {
   installationInputDefinition,
   installationSectionChangeCount,
 } from './installation-editor';
-import { accessPartLabels, accessRowPart } from './installation-types';
+import { accessCommonRowId, accessEtcKey, accessPartLabels, accessRowPart } from './installation-types';
 import type {
   InstallationDetailField,
   InstallationDetails,
@@ -79,11 +80,101 @@ type Props = {
       previous: InstallationDetails,
     ) => void,
   ) => Promise<{ uncertain?: InstallationSectionOperation; confirmedDetails?: InstallationDetails } | void>;
+  /**
+   * Installation-wide access remark. Saved on its own, separate from the server rows, so a
+   * shared note change never rides along with a server save.
+   */
+  onSaveAccessCommon?: (source: InstallationDetails, draft: Record<string, string>) => Promise<boolean>;
   onRefresh: () => Promise<boolean>;
   recordTitle?: string;
 };
 const omit = (values: Record<string, string>, keys: string[]) =>
   Object.fromEntries(Object.entries(values).filter(([key]) => !keys.includes(key)));
+
+const commonEditorKeys = [accessEtcKey] as const;
+
+/**
+ * Installation-wide access remark. Collapsed by default and saved on its own, so it is never
+ * mistaken for a field of the selected server and never rides along with a server save.
+ */
+function InstallationAccessCommonSection({
+  details,
+  busy,
+  policyPending,
+  onSave,
+}: {
+  details: InstallationDetails;
+  busy: boolean;
+  policyPending: boolean;
+  onSave: (source: InstallationDetails, draft: Record<string, string>) => Promise<boolean>;
+}) {
+  useLocale();
+  const rows = details.sections.find((item) => item.id === 'access')?.rows ?? [];
+  const slot = rows.find((row) => row.id === accessCommonRowId);
+  const common = accessInstallationCommon(rows);
+  const initial = Object.fromEntries(
+    commonEditorKeys.map((key) => {
+      const explicit = slot?.fields.find((field) => field.key === key);
+      const shown = explicit ?? common.etc;
+      const masked = Boolean(shown?.masked || (policyPending && shown?.secret));
+      return [key, !shown || masked ? '' : shown.value];
+    }),
+  );
+  const [draft, setDraft] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  useInstallationDirty(commonEditorKeys.some((key) => (draft[key] ?? '') !== initial[key]));
+  const masked = (key: string) => {
+    const field = slot?.fields.find((item) => item.key === key) ?? common.etc;
+    return Boolean(field?.masked || (policyPending && field?.secret));
+  };
+  return (
+    <details className="installation-access-common-inline" data-installation-common-section>
+      <summary>
+        <span>{t('설치 공통 비고')}</span>
+        <span className="installation-access-common-scope">{t('설치 전역 · 모든 서버에 공통')}</span>
+      </summary>
+      <div className="installation-access-common-inline-body">
+        <p className="installation-access-common-note">
+          {t('이 비고는 서버 한 대가 아니라 설치 전체에 적용됩니다. 저장도 서버 정보와 따로 됩니다.')}
+        </p>
+        {commonEditorKeys.map((key) => (
+          <label key={key}>
+            {t('설치 공통 비고')}
+            <textarea
+              value={draft[key] ?? ''}
+              maxLength={16384}
+              disabled={busy || policyPending || saving}
+              placeholder={masked(key) ? t('보호된 값') : undefined}
+              onChange={(event) => {
+                setSaved(false);
+                setDraft((current) => ({ ...current, [key]: event.target.value }));
+              }}
+            />
+          </label>
+        ))}
+        <div className="installation-access-common-inline-actions">
+          <button
+            type="button"
+            className="button primary"
+            disabled={busy || policyPending || saving}
+            onClick={() => {
+              setSaving(true);
+              void onSave(details, draft).then((ok) => {
+                setSaving(false);
+                setSaved(ok);
+              });
+            }}
+          >
+            <Check size={15} />
+            {t(saving ? '저장 중…' : '설치 공통 비고 저장')}
+          </button>
+          {saved && <span role="status">{t('설치 공통 비고를 저장했습니다.')}</span>}
+        </div>
+      </div>
+    </details>
+  );
+}
 
 export default function InstallationSectionEditor({
   details,
@@ -104,6 +195,7 @@ export default function InstallationSectionEditor({
   onRetryOptionRegistration,
   onDismissOptionRegistration,
   onSave,
+  onSaveAccessCommon,
   onRefresh,
   recordTitle,
 }: Props) {
@@ -1319,6 +1411,14 @@ export default function InstallationSectionEditor({
             )}
           </div>
         </div>
+        {sectionId === 'access' && onSaveAccessCommon && (
+          <InstallationAccessCommonSection
+            details={details}
+            busy={busy}
+            policyPending={policyPending}
+            onSave={onSaveAccessCommon}
+          />
+        )}
         {error && (
           <p ref={errorMessage} className="installation-action-error" role="alert" tabIndex={-1}>
             {t(error)}

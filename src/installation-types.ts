@@ -30,7 +30,6 @@ export const accessListColumns = [
   { key: 'domainurl', label: '도메인 URL' },
   { key: 'external_ip', label: '외부 IP' },
   { key: 'ssh_port', label: '외부 PORT' },
-  { key: 'access_reqst_enddate', label: '접근 종료일' },
 ] as const;
 
 const accessAddressKeys = new Set([

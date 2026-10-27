@@ -1667,6 +1667,13 @@ export const english: Record<string, string> = {
   '설치 공통': 'Shared for this installation',
   '공통 정보 수정': 'Edit shared information',
   '공통 정보 저장': 'Save shared information',
+  '정보 수정에서 편집합니다.': 'Edit this in Edit information.',
+  '설치 공통 비고': 'Installation-wide remark',
+  '설치 전역 · 모든 서버에 공통': 'Installation-wide · shared by every server',
+  '이 비고는 서버 한 대가 아니라 설치 전체에 적용됩니다. 저장도 서버 정보와 따로 됩니다.':
+    'This remark applies to the whole installation, not one server. It also saves separately from server information.',
+  '설치 공통 비고 저장': 'Save installation-wide remark',
+  '설치 공통 비고를 저장했습니다.': 'Saved the installation-wide remark.',
   '설치 공통 정보를 저장했습니다.': 'Saved the shared installation information.',
   '등록된 서버가 없습니다.': 'No servers yet.',
   'VPN 값이 서로 달라 설치 공통으로 합치지 않았습니다. 저장된 값은 그대로 두었습니다.':
