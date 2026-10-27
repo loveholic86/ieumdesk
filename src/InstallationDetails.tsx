@@ -53,6 +53,7 @@ import {
 import { runInstallationSavePlan } from './installation-save-flow';
 import {
   accessColumnField,
+  accessCommonSaveTarget,
   accessInstallationCommon,
   accessRecordItems,
   accessRecordLabel,
@@ -60,6 +61,7 @@ import {
   accessServerDisplayName,
   accessServerTitle,
   installationAccessEditingDetails,
+  installationAccessEditScope,
   installationDetailsForAccessEdit,
   validateInstallationDetails,
   installationFieldMasked,
@@ -986,7 +988,10 @@ export default function InstallationDetails({
   const [sectionEditing, setSectionEditing] = useState<{
     scopeKey: string;
     sectionId: InstallationSectionId;
+    /** Server editing scope: only the selected server's rows. Never used to seed shared fields. */
     details: VersionedDetails;
+    /** Unscoped details, so installation-wide values (access_etc) are read and saved correctly. */
+    fullDetails?: VersionedDetails;
     recordTitle?: string;
     rowIds?: readonly string[];
     baselineIds?: readonly string[];
@@ -1224,6 +1229,7 @@ export default function InstallationDetails({
     body: Record<string, unknown>,
     success: string,
     revision: number,
+    options: { keepEditingScope?: boolean } = {},
   ): Promise<VersionedDetails | false> => {
     if (
       !canManage ||
@@ -1253,7 +1259,18 @@ export default function InstallationDetails({
       // A settings poll may be in flight; fetch again under the confirmed policy instead of reusing its response.
       if (!identity.current.policyPending) setCached({ scopeKey, details: result });
       else setRetry((value) => value + 1);
-      setSectionEditing(null);
+      if (options.keepEditingScope) {
+        // Keep the editor open on the new revision, so a later server save is not a stale write.
+        setSectionEditing((current) =>
+          current?.scopeKey === scopeKey
+            ? {
+                ...current,
+                details: installationAccessEditScope(result, current.rowIds, current.baselineIds),
+                fullDetails: result,
+              }
+            : current,
+        );
+      } else setSectionEditing(null);
       setStatus(success);
       onChanged?.();
       return result;
@@ -1289,7 +1306,11 @@ export default function InstallationDetails({
       ?.rows.find((row) => row.id !== accessCommonRowId && !previousIds.has(row.id));
     if (created) setAccessRowId(created.serverId ?? created.id);
   };
-  /** Save only the installation-wide remark. Called from the editor's collapsible section too. */
+  /**
+   * Save only the installation-wide remark. Seeded and written from the unscoped details, so a
+   * remark stored on a server row (the SK legacy shape) is updated in place instead of being
+   * missed and re-created as a new shared row. The editor stays open on the returned revision.
+   */
   const saveAccessCommonDraft = async (
     draft: Record<string, string>,
     source: InstallationDetailsDto,
@@ -1297,6 +1318,7 @@ export default function InstallationDetails({
     const rows = source.sections.find((item) => item.id === 'access')?.rows ?? [];
     const slot = rows.find((row) => row.id === accessCommonRowId);
     const common = accessInstallationCommon(rows);
+    const target = accessCommonSaveTarget(rows);
     const changed = commonEditorKeys.filter((key) => {
       const explicit = slot?.fields.find((field) => field.key === key);
       const shown = explicit ?? common.etc;
@@ -1310,30 +1332,37 @@ export default function InstallationDetails({
       value: draft[key] ?? '',
     }));
     const revision = source.revision;
+    const targetRow = target.kind === 'create' ? undefined : rows.find((row) => row.id === target.rowId);
     const values = Object.fromEntries(
       fields
-        .filter((field) => slot?.fields.some((item) => item.key === field.key))
+        .filter((field) => targetRow?.fields.some((item) => item.key === field.key))
         .map((field) => [field.key, field.value]),
     );
-    const addFields = fields.filter((field) => !slot?.fields.some((item) => item.key === field.key));
-    const saved = slot
-      ? await mutate(
-          `${base}/rows/${encodeURIComponent(slot.id)}`,
-          'PATCH',
-          {
-            ...(Object.keys(values).length ? { values } : {}),
-            ...(addFields.length ? { addFields } : {}),
-          },
-          '설치 공통 정보를 저장했습니다.',
-          revision,
-        )
-      : await mutate(
-          `${base}/rows`,
-          'POST',
-          { sectionId: 'access', title: '설치 공통', fields },
-          '설치 공통 정보를 저장했습니다.',
-          revision,
-        );
+    const addFields =
+      target.kind === 'slot'
+        ? fields.filter((field) => !targetRow?.fields.some((item) => item.key === field.key))
+        : [];
+    const saved =
+      target.kind === 'create'
+        ? await mutate(
+            `${base}/rows`,
+            'POST',
+            { sectionId: 'access', title: '설치 공통', fields },
+            '설치 공통 정보를 저장했습니다.',
+            revision,
+            { keepEditingScope: true },
+          )
+        : await mutate(
+            `${base}/rows/${encodeURIComponent(target.rowId)}`,
+            'PATCH',
+            {
+              ...(Object.keys(values).length ? { values } : {}),
+              ...(addFields.length ? { addFields } : {}),
+            },
+            '설치 공통 정보를 저장했습니다.',
+            revision,
+            { keepEditingScope: true },
+          );
     return Boolean(saved);
   };
   const beginAccessRecord = () => {
@@ -1458,7 +1487,8 @@ export default function InstallationDetails({
             current?.scopeKey === scopeKey
               ? {
                   ...current,
-                  details: installationAccessEditingDetails(latest, current.rowIds, current.baselineIds),
+                  details: installationAccessEditScope(latest, current.rowIds, current.baselineIds),
+                  fullDetails: latest,
                 }
               : current,
           );
@@ -1519,7 +1549,8 @@ export default function InstallationDetails({
         current?.scopeKey === scopeKey
           ? {
               ...current,
-              details: installationAccessEditingDetails(result, current.rowIds, current.baselineIds),
+              details: installationAccessEditScope(result, current.rowIds, current.baselineIds),
+              fullDetails: result,
             }
           : current,
       );
@@ -1682,6 +1713,7 @@ export default function InstallationDetails({
             <InstallationSectionEditor
               key={`${scopeKey}:${config.id}`}
               details={visibleSectionEditing.details}
+              accessCommonDetails={visibleSectionEditing.fullDetails ?? visibleSectionEditing.details}
               recordTitle={visibleSectionEditing.recordTitle}
               sectionId={config.id}
               busy={busy}
@@ -1702,7 +1734,8 @@ export default function InstallationDetails({
               onSave={saveSection}
               onSaveAccessCommon={
                 config.id === 'access'
-                  ? async (source, draft) => {
+                  ? async (_source, draft) => {
+                      const source = visibleSectionEditing.fullDetails ?? _source;
                       const saved = await saveAccessCommonDraft(draft, source);
                       return saved;
                     }
@@ -1995,6 +2028,7 @@ export default function InstallationDetails({
                             scopeKey,
                             sectionId: tab,
                             details: installationDetailsForAccessEdit(visibleDetails, selected?.id ?? ''),
+                            fullDetails: visibleDetails,
                             recordTitle: selected ? accessItemTitle(selected) : undefined,
                             rowIds: selected ? selected.rows.map((row) => row.id) : [],
                             baselineIds: rows.map((row) => row.id),

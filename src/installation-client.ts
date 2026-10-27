@@ -341,6 +341,23 @@ export function accessInstallationCommon(rows: readonly InstallationDetailRow[])
   return { etc };
 }
 
+/**
+ * Where a shared remark edit belongs. The explicit slot wins; otherwise the value already stored
+ * on a server row is updated in place, so a legacy install is not given a second shared row.
+ */
+export function accessCommonSaveTarget(
+  rows: readonly InstallationDetailRow[],
+): { kind: 'slot' | 'legacyRow'; rowId: string } | { kind: 'create' } {
+  const visibleRows = visibleAccessRows(rows);
+  if (visibleRows.some((row) => row.id === accessCommonRowId))
+    return { kind: 'slot', rowId: accessCommonRowId };
+  for (const row of visibleRows) {
+    const field = row.fields.find((item) => item.key === accessEtcKey);
+    if (field && accessFilled(field)) return { kind: 'legacyRow', rowId: row.id };
+  }
+  return { kind: 'create' };
+}
+
 /** Keep the selected access rows, plus rows created after editing started. One record, or any other tab, stays whole. */
 export function installationAccessEditingDetails<T extends InstallationDetails>(
   details: T,
@@ -374,11 +391,23 @@ export function installationDetailsForAccessEdit<T extends InstallationDetails>(
     items.find((item) => item.id === selectedId) ??
     items.find((item) => item.rows.some((row) => row.id === selectedId)) ??
     items[0];
-  const scoped = installationAccessEditingDetails(
+  return installationAccessEditScope(
     details,
     selected?.rows.map((row) => row.id) ?? [],
     section.rows.map((row) => row.id),
   );
+}
+
+/**
+ * Rows of the selected server, with the installation-wide fields stripped. This is the server
+ * editing scope only: the shared remark is seeded and saved from the unscoped details.
+ */
+export function installationAccessEditScope<T extends InstallationDetails>(
+  details: T,
+  rowIds: readonly string[] | undefined,
+  baselineIds: readonly string[] | undefined,
+): T {
+  const scoped = installationAccessEditingDetails(details, rowIds, baselineIds);
   return {
     ...scoped,
     sections: scoped.sections.map((item) =>

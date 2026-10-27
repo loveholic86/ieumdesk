@@ -18,7 +18,13 @@ import { LegacyReader } from '../server/legacy-reader.ts';
 import { openLegacyVault, type LegacyVault, type LegacyVaultEnvelope } from '../server/legacy-vault.ts';
 import { createMaterializer, materializeInstallations } from '../scripts/materialize-installations.ts';
 import { FileInstallationWorkspaceRepository } from '../server/installation-workspace-file.ts';
-import { accessRecordItems, accessServerFields } from '../src/installation-client.ts';
+import {
+  accessCommonSaveTarget,
+  accessInstallationCommon,
+  accessRecordItems,
+  accessServerFields,
+  installationDetailsForAccessEdit,
+} from '../src/installation-client.ts';
 import { english } from '../src/locales/en.ts';
 
 const sections: [ManagedInstallationState['sections'][number]['id'], string][] = [
@@ -707,6 +713,77 @@ test('a display name set before the link spreads to the whole server unit on sav
       ['접속 주소', 'VPN', '접근 정보'],
     );
     assert.equal(accessRecordItems(rows).length, 1);
+  } finally {
+    await rm(opened.root, { recursive: true, force: true });
+  }
+});
+
+test('a legacy shared remark on a server row seeds and updates in place, with no new shared row', async () => {
+  const opened = await vault();
+  const id = 'inst-sk-common';
+  // The SK shape: access_etc sits on a server row and there is no access-common slot row.
+  const state = accessState();
+  const accessSection = state.sections.find((section) => section.id === 'access')!;
+  for (const row of accessSection.rows)
+    row.title =
+      { 'address-row': '접속 주소', 'vpn-row': 'VPN', 'access-row': '접근 정보' }[row.id] ?? row.title;
+  const etcRow = accessSection.rows.find((row) => row.id === 'access-row')!;
+  etcRow.fields.push(managedField('access', etcRow.id, 'access_etc', '접근 비고', '기존 설치 비고'));
+  assert.equal(
+    accessSection.rows.some((row) => row.id === 'access-common'),
+    false,
+  );
+
+  const service = new InstallationWorkspaceService(
+    {
+      async details() {
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async secrets() {
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async audit() {},
+    },
+    store(opened.vault, id, state),
+    { vault: async () => opened.vault },
+  );
+  try {
+    const full = await service.details(id, { protected: false, raw: true });
+    const fullRows = full.sections.find((section) => section.id === 'access')!.rows;
+    // 1) The editor scope must still show the existing shared remark.
+    assert.equal(accessInstallationCommon(fullRows).etc?.value, '기존 설치 비고');
+    const scoped = installationDetailsForAccessEdit(full, 'row:address-row');
+    assert.equal(
+      accessInstallationCommon(scoped.sections.find((section) => section.id === 'access')!.rows).etc,
+      undefined,
+    );
+    // 2) Saving from the unscoped details reaches the existing value, so it is unchanged.
+    assert.equal(accessInstallationCommon(fullRows).etc?.value, '기존 설치 비고');
+    // 2b) The save target is the row that already holds the remark, never a new shared row.
+    assert.deepEqual(accessCommonSaveTarget(fullRows), { kind: 'legacyRow', rowId: 'access-row' });
+    assert.deepEqual(
+      accessCommonSaveTarget([
+        ...fullRows,
+        {
+          id: 'access-common',
+          title: '설치 공통',
+          fields: [managedField('access', 'access-common', 'access_etc', '접근 비고', '슬롯값')],
+        },
+      ]),
+      { kind: 'slot', rowId: 'access-common' },
+    );
+    // 3) A real edit is written where the value lives, without creating a second shared row.
+    await service.updateRow(
+      id,
+      'access-row',
+      { revision: full.revision, values: { access_etc: '바뀐 설치 비고' } },
+      'actor',
+    );
+    const after = await service.details(id, { protected: false, raw: true });
+    const rows = after.sections.find((section) => section.id === 'access')!.rows;
+    assert.equal(accessInstallationCommon(rows).etc?.value, '바뀐 설치 비고');
+    assert.equal(rows.filter((row) => row.id === 'access-common').length, 0);
+    assert.equal(rows.length, 3);
   } finally {
     await rm(opened.root, { recursive: true, force: true });
   }

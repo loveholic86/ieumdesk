@@ -86,6 +86,7 @@ type Props = {
    */
   onSaveAccessCommon?: (source: InstallationDetails, draft: Record<string, string>) => Promise<boolean>;
   onRefresh: () => Promise<boolean>;
+  accessCommonDetails?: InstallationDetails;
   recordTitle?: string;
 };
 const omit = (values: Record<string, string>, keys: string[]) =>
@@ -178,6 +179,7 @@ function InstallationAccessCommonSection({
 
 export default function InstallationSectionEditor({
   details,
+  accessCommonDetails,
   sectionId,
   busy,
   policyPending,
@@ -1413,7 +1415,7 @@ export default function InstallationSectionEditor({
         </div>
         {sectionId === 'access' && onSaveAccessCommon && (
           <InstallationAccessCommonSection
-            details={details}
+            details={accessCommonDetails ?? details}
             busy={busy}
             policyPending={policyPending}
             onSave={onSaveAccessCommon}

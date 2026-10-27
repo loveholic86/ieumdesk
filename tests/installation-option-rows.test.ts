@@ -342,9 +342,10 @@ test('the shared access remark is edited inside Edit information and saved on it
   assert.match(editor, /t\('설치 전역 · 모든 서버에 공통'\)/);
   assert.match(editor, /'설치 공통 비고 저장'/);
   assert.match(editor, /sectionId === 'access' && onSaveAccessCommon/);
-  // Its save is separate from the server-row save plan.
-  assert.match(view, /onSaveAccessCommon=\{[\s\S]{0,200}saveAccessCommonDraft\(draft, source\)/);
+  // Its save is separate from the server-row save plan and uses the unscoped details.
+  assert.match(view, /onSaveAccessCommon=\{[\s\S]{0,260}const source = visibleSectionEditing\.fullDetails/);
   assert.match(view, /const saveAccessCommonDraft = async \(/);
+  assert.match(view, /accessCommonDetails=\{visibleSectionEditing\.fullDetails/);
 });
 
 test('the end date stays editable in the detail and the editor, only the list column left', async () => {
