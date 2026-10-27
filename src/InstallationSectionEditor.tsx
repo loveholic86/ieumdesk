@@ -121,9 +121,11 @@ function InstallationAccessCommonSection({
       return [key, !shown || masked ? '' : shown.value];
     }),
   );
+  const commonId = useId();
   const [draft, setDraft] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   useInstallationDirty(commonEditorKeys.some((key) => (draft[key] ?? '') !== initial[key]));
   const masked = (key: string) => {
     const field = slot?.fields.find((item) => item.key === key) ?? common.etc;
@@ -140,11 +142,19 @@ function InstallationAccessCommonSection({
           {t('이 비고는 서버 한 대가 아니라 설치 전체에 적용됩니다. 저장도 서버 정보와 따로 됩니다.')}
         </p>
         {commonEditorKeys.map((key) => (
-          <label key={key}>
-            {t('설치 공통 비고')}
+          <div key={key} className="installation-inline-edit-field">
+            <div className="installation-inline-edit-field-heading">
+              <label htmlFor={`${commonId}-common-${key}`}>{t('설치 공통 비고')}</label>
+              <span className="installation-inline-edit-value-meta">
+                {t('{0} / 16,384자{1}', [(draft[key] ?? '').length.toLocaleString(), ''])}
+              </span>
+            </div>
             <textarea
+              id={`${commonId}-common-${key}`}
+              className="installation-access-common-textarea"
               value={draft[key] ?? ''}
               maxLength={16384}
+              rows={expanded ? 16 : 6}
               disabled={busy || policyPending || saving}
               placeholder={masked(key) ? t('보호된 값') : undefined}
               onChange={(event) => {
@@ -152,7 +162,20 @@ function InstallationAccessCommonSection({
                 setDraft((current) => ({ ...current, [key]: event.target.value }));
               }}
             />
-          </label>
+            <div className="installation-inline-edit-value-meta">
+              {!expanded && (
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={busy || policyPending || saving}
+                  onClick={() => setExpanded(true)}
+                >
+                  <Maximize2 size={14} />
+                  {t('크게 편집')}
+                </button>
+              )}
+            </div>
+          </div>
         ))}
         <div className="installation-access-common-inline-actions">
           <button

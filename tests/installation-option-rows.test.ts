@@ -366,3 +366,40 @@ test('the end date stays editable in the detail and the editor, only the list co
   );
   assert.equal(labels.includes("'access_reqst_enddate'"), false);
 });
+
+test('the installation-wide remark editor is as large as the other access fields', async () => {
+  const editor = readFileSync(new URL('../src/InstallationSectionEditor.tsx', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../src/installation-details.css', import.meta.url), 'utf8');
+  // Six rows by default, sixteen when expanded, matching the other long field editors.
+  assert.match(editor, /rows=\{expanded \? 16 : 6\}/);
+  assert.match(editor, /t\('크게 편집'\)/);
+  assert.match(editor, /'\{0\} \/ 16,384자\{1\}'/);
+  assert.match(editor, /installation-access-common-textarea/);
+  // The shared remark keeps the same field chrome (heading + counter) as other fields.
+  assert.match(editor, /installation-inline-edit-field-heading/);
+  assert.match(
+    css,
+    /\.installation-inline-editor \.installation-access-common-textarea,[\s\S]*?min-height: 260px;/,
+  );
+  assert.match(css, /\.installation-access-common-textarea \{[^}]*max-height: none;/s);
+  assert.match(css, /\.installation-access-common-textarea \{[^}]*resize: vertical;/s);
+  // It is no longer the small default textarea.
+  assert.equal(
+    /\.installation-access-common-inline-body textarea \{[^}]*min-height: 84px;/s.test(css),
+    false,
+  );
+});
+
+test('the larger remark editor keeps the shared save wiring intact', async () => {
+  const view = readFileSync(new URL('../src/InstallationDetails.tsx', import.meta.url), 'utf8');
+  const editor = readFileSync(new URL('../src/InstallationSectionEditor.tsx', import.meta.url), 'utf8');
+  // Seed and save still use the unscoped details.
+  assert.match(view, /accessCommonDetails=\{visibleSectionEditing\.fullDetails/);
+  assert.match(view, /const source = visibleSectionEditing\.fullDetails/);
+  // The save target still decides slot / legacy row / create.
+  assert.match(view, /accessCommonSaveTarget\(rows\)/);
+  assert.match(view, /target\.kind === 'create'/);
+  assert.match(view, /keepEditingScope: true/);
+  // Sizing only: the common save still goes through the same callback.
+  assert.match(editor, /onSave\(details, draft\)/);
+});

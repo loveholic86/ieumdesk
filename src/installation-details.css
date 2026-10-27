@@ -593,7 +593,7 @@
 }
 .installation-access-common-inline-body {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   padding: 0 16px 16px;
 }
 .installation-access-common-note {
@@ -602,15 +602,30 @@
   font-size: 12px;
   line-height: 18px;
 }
-.installation-access-common-inline-body label {
-  display: grid;
-  gap: 4px;
-  font-size: 13px;
+.installation-access-common-inline-body .installation-inline-edit-field {
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
-.installation-access-common-inline-body textarea {
+/* Beats `.installation-inline-editor textarea` (min-height 88px, max-height 420px). */
+.installation-inline-editor .installation-access-common-textarea,
+.installation-access-common-inline-body .installation-access-common-textarea {
   width: 100%;
   box-sizing: border-box;
-  min-height: 84px;
+  min-height: 260px;
+  max-height: none;
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 23px;
+  resize: vertical;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.installation-access-common-inline-body .installation-inline-edit-value-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 .installation-access-common-inline-actions {
   display: flex;
