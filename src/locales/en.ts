@@ -1014,6 +1014,7 @@ export const english: Record<string, string> = {
     'Edit the fields in this record. Expand the editor for longer content.',
   구분명: 'Label',
   표시명: 'Display name',
+  '이 서버의 모든 항목에 함께 적용됩니다.': 'Applies to every part of this server.',
   '예: 운영 1호기, QA 도메인': 'e.g. Prod unit 1, QA domain',
   '수정 항목 검색': 'Search fields',
   '항목 이름·키로 찾기': 'Find by field name or key',

@@ -403,3 +403,33 @@ test('the larger remark editor keeps the shared save wiring intact', async () =>
   // Sizing only: the common save still goes through the same callback.
   assert.match(editor, /onSave\(details, draft\)/);
 });
+
+test('the server display name is edited once at the top of the access edit form', async () => {
+  const source = readFileSync(new URL('../src/InstallationSectionEditor.tsx', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../src/installation-details.css', import.meta.url), 'utf8');
+  // One server-level block, placed before the group layout.
+  assert.match(source, /data-access-server-name/);
+  assert.match(source, /t\('이 서버의 모든 항목에 함께 적용됩니다\.'\)/);
+  const nameAt = source.indexOf('data-access-server-name');
+  const layoutAt = source.indexOf('className="installation-group-layout"');
+  assert.ok(nameAt > 0 && layoutAt > nameAt, 'display name block must sit above the group layout');
+  // The per-row inputs are gone, so the name is not repeated for each part row.
+  assert.equal((source.match(/\{t\('표시명'\)\}/g) ?? []).length, 1);
+  assert.match(css, /\.installation-access-server-name \{/);
+});
+
+test('moving the display name keeps its save path and the shared-remark regressions', async () => {
+  const view = readFileSync(new URL('../src/InstallationDetails.tsx', import.meta.url), 'utf8');
+  const client = readFileSync(new URL('../src/installation-client.ts', import.meta.url), 'utf8');
+  const editor = readFileSync(new URL('../src/InstallationSectionEditor.tsx', import.meta.url), 'utf8');
+  // displayName still travels as its own payload field, not as the stored title.
+  assert.match(client, /displayName: normalizedDisplayName/);
+  assert.match(view, /accessCommonDetails=\{visibleSectionEditing\.fullDetails/);
+  assert.match(view, /accessCommonSaveTarget\(rows\)/);
+  // The shared remark editor stays large.
+  assert.match(editor, /rows=\{expanded \? 16 : 6\}/);
+  assert.match(
+    readFileSync(new URL('../src/installation-details.css', import.meta.url), 'utf8'),
+    /min-height: 260px;/,
+  );
+});

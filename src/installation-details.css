@@ -569,6 +569,42 @@
   color: var(--theme-muted, #6d89ac);
   font-size: 12px;
 }
+/* Server-level name, shown once above the part rows it applies to. */
+.installation-access-server-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--theme-border, #d5e0ee);
+  border-radius: 10px;
+  background: var(--theme-surface, #fff);
+}
+.installation-access-server-name label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 420px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--theme-text, #24344a);
+}
+.installation-access-server-name input {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 520px;
+  height: 38px;
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.installation-access-server-name-scope {
+  margin: 0;
+  color: var(--theme-muted, #6d89ac);
+  font-size: 12px;
+}
 .installation-access-common-inline {
   margin-top: 18px;
   border: 1px solid var(--theme-border, #d5e0ee);

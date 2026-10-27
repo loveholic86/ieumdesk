@@ -319,6 +319,13 @@ export default function InstallationSectionEditor({
     sectionId === 'access' &&
     Object.hasOwn(displayNames, row.id) &&
     displayNames[row.id].trim() !== (row.displayName ?? '');
+  /**
+   * One server unit shares one display name, so it is edited once at the top of the form.
+   * A migrated unit has several part rows, so prefer the row that already carries the name.
+   */
+  const serverNameTarget =
+    sectionId === 'access' ? (section.rows.find((row) => row.displayName) ?? section.rows[0]) : undefined;
+  const displayNameRowDeleting = serverNameTarget ? removedRows.includes(serverNameTarget.id) : false;
   const matches = (field: InstallationDetailField) =>
     (!search ||
       [field.label, field.key, installationFieldLabel(field)]
@@ -864,6 +871,35 @@ export default function InstallationSectionEditor({
             </button>
           )}
         </div>
+        {sectionId === 'access' && serverNameTarget && (
+          <div className="installation-access-server-name" data-access-server-name>
+            <label htmlFor={`${id}-server-name`}>
+              {t('표시명')}
+              <input
+                id={`${id}-server-name`}
+                value={displayNames[serverNameTarget.id] ?? serverNameTarget.displayName ?? ''}
+                maxLength={120}
+                placeholder={t('예: 운영 1호기, QA 도메인')}
+                disabled={busy || policyPending || Boolean(displayNameRowDeleting)}
+                onChange={(event) =>
+                  setDisplayNames((current) => ({ ...current, [serverNameTarget.id]: event.target.value }))
+                }
+              />
+            </label>
+            <p className="installation-access-server-name-scope">
+              {t('이 서버의 모든 항목에 함께 적용됩니다.')}
+            </p>
+            {displayNameChanged(serverNameTarget) && (
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setDisplayNames((current) => omit(current, [serverNameTarget.id]))}
+              >
+                {t('입력 취소')}
+              </button>
+            )}
+          </div>
+        )}
         <div className="installation-group-layout">
           <nav className="installation-group-nav" aria-label={t('수정 항목 그룹')}>
             {groups.map((group) => (
@@ -1077,29 +1113,6 @@ export default function InstallationSectionEditor({
                             ].join(' · ')
                           : installationRowTitle(row) || t('{0} 기록', [index + 1])}
                       </legend>
-                      {sectionId === 'access' ? (
-                        <label className="installation-section-edit-title">
-                          {t('표시명')}
-                          <input
-                            value={displayNames[row.id] ?? row.displayName ?? ''}
-                            maxLength={120}
-                            placeholder={t('예: 운영 1호기, QA 도메인')}
-                            disabled={deleting}
-                            onChange={(event) =>
-                              setDisplayNames((current) => ({ ...current, [row.id]: event.target.value }))
-                            }
-                          />
-                          {displayNameChanged(row) && (
-                            <button
-                              type="button"
-                              className="text-button"
-                              onClick={() => setDisplayNames((current) => omit(current, [row.id]))}
-                            >
-                              {t('입력 취소')}
-                            </button>
-                          )}
-                        </label>
-                      ) : null}
                       {row.origin || row.serverId
                         ? null
                         : row.managed !== 'metadata' && (
@@ -1183,19 +1196,6 @@ export default function InstallationSectionEditor({
                     disabled={busy || policyPending}
                   >
                     <legend>{t('새 기록 {0}', [index + 1])}</legend>
-                    {sectionId === 'access' && (
-                      <label className="installation-section-edit-title">
-                        {t('표시명')}
-                        <input
-                          value={displayNames[row.localId] ?? ''}
-                          maxLength={120}
-                          placeholder={t('예: 운영 1호기, QA 도메인')}
-                          onChange={(event) =>
-                            setDisplayNames((current) => ({ ...current, [row.localId]: event.target.value }))
-                          }
-                        />
-                      </label>
-                    )}
                     <label className="installation-section-edit-title">
                       {t('구분명')}
                       <input
