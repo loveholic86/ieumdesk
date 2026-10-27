@@ -153,7 +153,8 @@ test('installation-details keeps archive safety on current table rows', async ()
   };
   const envelopes = () =>
     tables.flatMap((table) => {
-      const keys = table === 'setup_cominfo_tb' ? [adjacentKey, setupKey] : [table === 'setup_tb' ? setupKey : '1'];
+      const keys =
+        table === 'setup_cominfo_tb' ? [adjacentKey, setupKey] : [table === 'setup_tb' ? setupKey : '1'];
       return keys.map((sourceKey) => ({
         source_table: table,
         source_key: sourceKey,
@@ -234,7 +235,12 @@ test('installation-details keeps archive safety on current table rows', async ()
       sourceCounts: { ...batch.sourceCounts, setting_file_tb: 9 },
     };
     const closed = new InstallationDetailsService(
-      { ...repository, async installation(id: string) { return { id, data: { systemCode: 'DEMO-CURRENT' }, batch: mismatch }; } },
+      {
+        ...repository,
+        async installation(id: string) {
+          return { id, data: { systemCode: 'DEMO-CURRENT' }, batch: mismatch };
+        },
+      },
       { vault: async () => opened.vault, schemaFile: schemaPath, now: () => now },
     );
     await assert.rejects(
@@ -243,14 +249,22 @@ test('installation-details keeps archive safety on current table rows', async ()
     );
     let tamperReads = 0;
     const tampered = new InstallationDetailsService(
-      { ...repository, async archives() { return envelopes(); } },
+      {
+        ...repository,
+        async archives() {
+          return envelopes();
+        },
+      },
       {
         schemaFile: schemaPath,
         now: () => now,
         vault: async () => ({
           keyId: opened.vault.keyId,
           encrypt: opened.vault.encrypt.bind(opened.vault),
-          decrypt(envelope: LegacyVaultEnvelope, context: { source: string; table: string; primaryKey: string; batchId: string }) {
+          decrypt(
+            envelope: LegacyVaultEnvelope,
+            context: { source: string; table: string; primaryKey: string; batchId: string },
+          ) {
             const plain = opened.vault.decrypt(envelope, context);
             if (context.table === 'setup_cominfo_tb' && context.primaryKey === adjacentKey) {
               tamperReads += 1;
@@ -311,7 +325,12 @@ test('installation-workspace keeps existing row ids and does not swallow origina
     { vault: async () => opened.vault },
   );
   try {
-    await service.updateRow(id, rowId, { revision: 1, values: { domainurl: 'https://demo.example/kept' } }, 'actor');
+    await service.updateRow(
+      id,
+      rowId,
+      { revision: 1, values: { domainurl: 'https://demo.example/kept' } },
+      'actor',
+    );
     assert.equal(reads.count, 2);
     const details = await service.details(id, { protected: false, raw: true });
     assert.equal(reads.count, 2);
@@ -424,7 +443,15 @@ test('installation-managed does not group a manually added adjacent row', async 
       async audit() {},
     },
     store(opened.vault, id, grouped),
-    { vault: async () => opened.vault, metadata: { async read() { return { systemCode: 'DEMO-CURRENT' }; }, async update() {} } },
+    {
+      vault: async () => opened.vault,
+      metadata: {
+        async read() {
+          return { systemCode: 'DEMO-CURRENT' };
+        },
+        async update() {},
+      },
+    },
   );
   const ungrouped = new InstallationWorkspaceService(
     {
@@ -438,7 +465,15 @@ test('installation-managed does not group a manually added adjacent row', async 
       async audit() {},
     },
     store(opened.vault, 'inst-plain', plain),
-    { vault: async () => opened.vault, metadata: { async read() { return {}; }, async update() {} } },
+    {
+      vault: async () => opened.vault,
+      metadata: {
+        async read() {
+          return {};
+        },
+        async update() {},
+      },
+    },
   );
   try {
     const before = await service.details(id, { protected: false, raw: true });
@@ -514,7 +549,7 @@ test('materialize execution is retired before any read or encrypted save', async
   assert.equal(queries.length, 0);
 });
 
-test('a new multi-part access save groups outside the ciphertext', async () => {
+test('a new access save stores one server row and a common slot without access origins', async () => {
   const opened = await vault();
   const id = 'inst-new-save';
   const empty = accessState();
@@ -556,18 +591,22 @@ test('a new multi-part access save groups outside the ciphertext', async () => {
     const stored = await repository.get(id);
     const plain = JSON.parse(opened.vault.decrypt(stored!.envelope, workspaceContext(id, stored!.revision)));
     const savedRows = plain.sections.find((section: { id: string }) => section.id === 'access').rows;
-    assert.equal(savedRows.length, 3);
+    assert.equal(savedRows.length, 2);
     assert.ok(savedRows.every((row: { origin?: unknown }) => !Object.hasOwn(row, 'origin')));
-    assert.equal(Object.keys(stored!.accessOrigins ?? {}).length, 3);
+    assert.equal(stored!.accessOrigins, undefined);
+    const serverRow = savedRows.find((row: { id: string }) => row.id !== 'access-common');
+    const commonRow = savedRows.find((row: { id: string }) => row.id === 'access-common');
+    assert.deepEqual(serverRow.fields.map((field: { key: string }) => field.key).sort(), [
+      'access_url',
+      'domainurl',
+    ]);
+    assert.deepEqual(commonRow.fields.map((field: { key: string }) => field.key).sort(), [
+      'vpnsv_ip',
+      'vpnsv_pwd',
+    ]);
     const details = await service.details(id, { protected: false, raw: true });
     const rows = details.sections.find((section) => section.id === 'access')!.rows;
-    assert.deepEqual(
-      rows.map((row) => row.origin?.part),
-      ['address', 'vpn', 'access'],
-    );
-    assert.equal(rows[0].origin?.group, rows[1].origin?.group);
-    assert.equal(rows[1].origin?.group, rows[2].origin?.group);
-    assert.match(rows[0].origin?.group ?? '', /^[a-f0-9]{64}$/);
+    assert.ok(rows.every((row) => row.origin === undefined));
     assert.equal(reads.count, 0);
     await service.createRow(
       id,
@@ -580,9 +619,37 @@ test('a new multi-part access save groups outside the ciphertext', async () => {
       'actor',
     );
     const after = await service.details(id, { protected: false, raw: true });
-    const manual = after.sections.find((section) => section.id === 'access')!.rows.find((row) => row.title === '단일 접속');
+    const manual = after.sections
+      .find((section) => section.id === 'access')!
+      .rows.find((row) => row.title === '단일 접속');
     assert.equal(manual?.origin, undefined);
+    assert.equal(
+      after.sections
+        .find((section) => section.id === 'access')!
+        .rows.filter((row) => row.id === 'access-common').length,
+      1,
+    );
     assert.equal(reads.count, 0);
+    await service.createRow(
+      id,
+      {
+        revision: after.revision,
+        sectionId: 'access',
+        title: '공통만',
+        fields: [{ key: 'vpnsv_id', label: 'VPN 아이디', value: 'ops' }],
+      },
+      'actor',
+    );
+    const commonOnly = await service.details(id, { protected: false, raw: true });
+    const commonRows = commonOnly.sections.find((section) => section.id === 'access')!.rows;
+    assert.equal(commonRows.filter((row) => row.id === 'access-common').length, 1);
+    assert.equal(commonRows.filter((row) => row.title === '공통만').length, 0);
+    assert.equal(
+      commonRows
+        .find((row) => row.id === 'access-common')
+        ?.fields.some((field) => field.key === 'vpnsv_id' && field.value === 'ops'),
+      true,
+    );
   } finally {
     await rm(opened.root, { recursive: true, force: true });
   }
@@ -615,13 +682,25 @@ test('legacy vault creates a private key directory and rejects an existing unsaf
       () => openLegacyVault({ keyFile: path.join(sealed, 'missing.key'), createIfMissing: false }),
       (error: Error) => error.message === 'LEGACY_VAULT_KEY_MISSING',
     );
-    assert.equal(await stat(path.join(sealed, 'missing.key')).then(() => true, () => false), false);
+    assert.equal(
+      await stat(path.join(sealed, 'missing.key')).then(
+        () => true,
+        () => false,
+      ),
+      false,
+    );
     assert.equal((await stat(sealed)).mode & 0o777, 0o700);
     await assert.rejects(
       () => openLegacyVault({ keyFile: path.join(absent, 'vault.key'), createIfMissing: false }),
       (error: Error) => error.message === 'LEGACY_VAULT_KEY_MISSING',
     );
-    assert.equal(await stat(absent).then(() => true, () => false), false);
+    assert.equal(
+      await stat(absent).then(
+        () => true,
+        () => false,
+      ),
+      false,
+    );
     const keyFile = path.join(root, 'fresh', 'vault.key');
     process.env.LEGACY_VAULT_KEY_FILE = keyFile;
     const opened = await openLegacyVault({ createIfMissing: true });
@@ -697,7 +776,7 @@ function postgresDouble(accessOriginsColumn = true) {
   };
 }
 
-test('postgres save and get round-trip access origins for a new multi-part row', async () => {
+test('postgres save does not write a new access origin group for a server row', async () => {
   const opened = await vault();
   const database = postgresDouble();
   const repository = new PostgresInstallationWorkspaceRepository(database);
@@ -741,23 +820,21 @@ test('postgres save and get round-trip access origins for a new multi-part row',
     const stored = await repository.get(id);
     const plain = JSON.parse(opened.vault.decrypt(stored!.envelope, workspaceContext(id, stored!.revision)));
     const savedRows = plain.sections.find((section: { id: string }) => section.id === 'access').rows;
-    assert.equal(savedRows.length, 3);
+    assert.equal(savedRows.length, 2);
     assert.ok(savedRows.every((row: { origin?: unknown }) => !Object.hasOwn(row, 'origin')));
-    assert.equal(Object.keys(stored!.accessOrigins ?? {}).length, 3);
+    assert.equal(database.rows.get(id)?.access_origins, null);
+    assert.equal(stored!.accessOrigins, undefined);
     const details = await service.details(id, { protected: false, raw: true });
     const rows = details.sections.find((section) => section.id === 'access')!.rows;
-    assert.deepEqual(
-      rows.map((row) => row.origin?.part),
-      ['address', 'vpn', 'access'],
-    );
-    assert.equal(rows[0].origin?.group, rows[2].origin?.group);
+    assert.equal(rows.filter((row) => row.id === 'access-common').length, 1);
+    assert.ok(rows.every((row) => row.origin === undefined));
   } finally {
     await repository.close();
     await rm(opened.root, { recursive: true, force: true });
   }
 });
 
-test('postgres without the access origins column keeps a multi-part save as one row', async () => {
+test('postgres without the access origins column still stores one server row and the common slot', async () => {
   const opened = await vault();
   const database = postgresDouble(false);
   const repository = new PostgresInstallationWorkspaceRepository(database);
@@ -799,18 +876,23 @@ test('postgres without the access origins column keeps a multi-part save as one 
     const stored = await repository.get(id);
     const plain = JSON.parse(opened.vault.decrypt(stored!.envelope, workspaceContext(id, stored!.revision)));
     const savedRows = plain.sections.find((section: { id: string }) => section.id === 'access').rows;
-    assert.equal(savedRows.length, 1);
-    assert.equal(Object.hasOwn(savedRows[0], 'origin'), false);
+    assert.equal(savedRows.length, 2);
+    assert.ok(savedRows.every((row: { origin?: unknown }) => !Object.hasOwn(row, 'origin')));
     assert.equal(stored!.accessOrigins, undefined);
     const details = await service.details(id, { protected: false, raw: true });
     const visible = details.sections.find((section) => section.id === 'access')!.rows;
-    assert.equal(visible.length, 1);
-    assert.equal(visible[0]?.origin, undefined);
+    assert.equal(visible.length, 2);
+    assert.equal(visible.filter((row) => row.id === 'access-common').length, 1);
+    assert.ok(visible.every((row) => row.origin === undefined));
     assert.equal(repository.persistsAccessOrigins, false);
     const workspaceSql = database.statements.filter(
-      (text) => text.includes('yeta_crm_private.installation_workspace') && !text.includes('information_schema'),
+      (text) =>
+        text.includes('yeta_crm_private.installation_workspace') && !text.includes('information_schema'),
     );
-    assert.equal(workspaceSql.some((text) => text.includes('access_origins')), false);
+    assert.equal(
+      workspaceSql.some((text) => text.includes('access_origins')),
+      false,
+    );
     assert.ok(workspaceSql.length > 0);
   } finally {
     await repository.close();
@@ -836,7 +918,13 @@ test('postgres column detection failure does not read or write the workspace', a
   await assert.rejects(() => repository.get('inst-probe'), rejected);
   await assert.rejects(
     () =>
-      repository.save('inst-probe', 0, { ciphertext: '', nonce: '', tag: '', keyId: '', sha256: '' }, 'actor', 'row-create'),
+      repository.save(
+        'inst-probe',
+        0,
+        { ciphertext: '', nonce: '', tag: '', keyId: '', sha256: '' },
+        'actor',
+        'row-create',
+      ),
     rejected,
   );
   assert.equal(repository.persistsAccessOrigins, false);
@@ -847,7 +935,7 @@ test('postgres column detection failure does not read or write the workspace', a
   assert.ok(sql.length >= 2);
 });
 
-test('a repository that cannot persist the sidecar keeps a multi-part save as one row', async () => {
+test('a repository that cannot persist the sidecar still stores one server row and the common slot', async () => {
   const opened = await vault();
   const id = 'inst-no-sidecar';
   class DroppingRepository implements InstallationWorkspaceRepository {
@@ -865,11 +953,7 @@ test('a repository that cannot persist the sidecar keeps a multi-part save as on
   const repository = new DroppingRepository();
   const empty = accessState();
   for (const section of empty.sections) section.rows = [];
-  await repository.save(
-    id,
-    0,
-    opened.vault.encrypt(JSON.stringify(empty), workspaceContext(id, 1)),
-  );
+  await repository.save(id, 0, opened.vault.encrypt(JSON.stringify(empty), workspaceContext(id, 1)));
   const service = new InstallationWorkspaceService(
     {
       async details() {
@@ -901,12 +985,13 @@ test('a repository that cannot persist the sidecar keeps a multi-part save as on
     const stored = await repository.get();
     const plain = JSON.parse(opened.vault.decrypt(stored!.envelope, workspaceContext(id, stored!.revision)));
     const savedRows = plain.sections.find((section: { id: string }) => section.id === 'access').rows;
-    assert.equal(savedRows.length, 1);
-    assert.equal(Object.hasOwn(savedRows[0], 'origin'), false);
+    assert.equal(savedRows.length, 2);
+    assert.ok(savedRows.every((row: { origin?: unknown }) => !Object.hasOwn(row, 'origin')));
     const details = await service.details(id, { protected: false, raw: true });
     const rows = details.sections.find((section) => section.id === 'access')!.rows;
-    assert.equal(rows.length, 1);
-    assert.equal(rows[0]?.origin, undefined);
+    assert.equal(rows.length, 2);
+    assert.equal(rows.filter((row) => row.id === 'access-common').length, 1);
+    assert.ok(rows.every((row) => row.origin === undefined));
   } finally {
     await rm(opened.root, { recursive: true, force: true });
   }

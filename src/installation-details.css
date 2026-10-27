@@ -555,6 +555,33 @@
   flex-direction: column;
   gap: 22px;
 }
+.installation-access-common {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.installation-access-common-form {
+  display: grid;
+  gap: 12px;
+}
+.installation-access-common-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.installation-access-common-form input,
+.installation-access-common-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+.installation-access-hold {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--theme-surface-soft, #f7faff);
+  color: var(--theme-text, #4c6687);
+  font-size: 13px;
+}
 .installation-access-list tbody tr {
   cursor: pointer;
 }
@@ -2139,7 +2166,10 @@
 }
 .installation-option-b .installation-option-rows {
   display: grid;
-  grid-template-columns: var(--kv-label) minmax(0, 1fr) var(--kv-label) minmax(0, 1fr) var(--kv-label) minmax(0, 1fr);
+  grid-template-columns: var(--kv-label) minmax(0, 1fr) var(--kv-label) minmax(0, 1fr) var(--kv-label) minmax(
+      0,
+      1fr
+    );
   column-gap: 1px;
   row-gap: 1px;
   margin: 0;
@@ -2164,14 +2194,24 @@
 .installation-option-b .installation-option-row.is-wide > dd {
   grid-column: 2 / -1;
 }
-.installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(3n + 2) {
+.installation-option-b
+  .installation-option-rows:not(.is-span)
+  > .installation-option-row:last-child:nth-child(3n + 2) {
   grid-column: span 4;
 }
-.installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(3n + 1) {
+.installation-option-b
+  .installation-option-rows:not(.is-span)
+  > .installation-option-row:last-child:nth-child(3n + 1) {
   grid-column: 1 / -1;
 }
-.installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(3n + 2) > dd,
-.installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(3n + 1) > dd {
+.installation-option-b
+  .installation-option-rows:not(.is-span)
+  > .installation-option-row:last-child:nth-child(3n + 2)
+  > dd,
+.installation-option-b
+  .installation-option-rows:not(.is-span)
+  > .installation-option-row:last-child:nth-child(3n + 1)
+  > dd {
   grid-column: 2 / -1;
 }
 .installation-option-b .installation-option-row dt {
@@ -2289,18 +2329,33 @@
   .installation-option-b .installation-option-rows:not(.is-span) {
     grid-template-columns: var(--kv-label) minmax(0, 1fr) var(--kv-label) minmax(0, 1fr);
   }
-  .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(3n + 2),
-  .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(3n + 1) {
+  .installation-option-b
+    .installation-option-rows:not(.is-span)
+    > .installation-option-row:last-child:nth-child(3n + 2),
+  .installation-option-b
+    .installation-option-rows:not(.is-span)
+    > .installation-option-row:last-child:nth-child(3n + 1) {
     grid-column: span 2;
   }
-  .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(3n + 2) > dd,
-  .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(3n + 1) > dd {
+  .installation-option-b
+    .installation-option-rows:not(.is-span)
+    > .installation-option-row:last-child:nth-child(3n + 2)
+    > dd,
+  .installation-option-b
+    .installation-option-rows:not(.is-span)
+    > .installation-option-row:last-child:nth-child(3n + 1)
+    > dd {
     grid-column: auto;
   }
-  .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(2n + 1) {
+  .installation-option-b
+    .installation-option-rows:not(.is-span)
+    > .installation-option-row:last-child:nth-child(2n + 1) {
     grid-column: 1 / -1;
   }
-  .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(2n + 1) > dd {
+  .installation-option-b
+    .installation-option-rows:not(.is-span)
+    > .installation-option-row:last-child:nth-child(2n + 1)
+    > dd {
     grid-column: 2 / -1;
   }
 }
@@ -2308,9 +2363,15 @@
   .installation-option-b .installation-option-rows:not(.is-span) {
     grid-template-columns: var(--kv-label) minmax(0, 1fr);
   }
-  .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(3n + 2),
-  .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(3n + 1),
-  .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row:last-child:nth-child(2n + 1),
+  .installation-option-b
+    .installation-option-rows:not(.is-span)
+    > .installation-option-row:last-child:nth-child(3n + 2),
+  .installation-option-b
+    .installation-option-rows:not(.is-span)
+    > .installation-option-row:last-child:nth-child(3n + 1),
+  .installation-option-b
+    .installation-option-rows:not(.is-span)
+    > .installation-option-row:last-child:nth-child(2n + 1),
   .installation-option-b .installation-option-rows:not(.is-span) > .installation-option-row {
     grid-column: 1 / -1;
   }

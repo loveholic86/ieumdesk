@@ -17,6 +17,12 @@ export interface InstallationDetailField {
 /** Address, VPN, and access rows that came from one migrated source. */
 export type InstallationAccessOriginPart = 'address' | 'vpn' | 'access';
 
+/** One installation-wide slot. New saves put VPN and access remarks here, not on a server row. */
+export const accessCommonRowId = 'access-common';
+export const accessVpnKeys = ['vpnsv_ip', 'vpnsv_id', 'vpnsv_pwd'] as const;
+export const accessEtcKey = 'access_etc';
+export const accessCommonFieldKeys = new Set<string>([...accessVpnKeys, accessEtcKey]);
+
 export interface InstallationAccessOrigin {
   /** Opaque id shared by those rows. Not a stored source key. */
   group: string;

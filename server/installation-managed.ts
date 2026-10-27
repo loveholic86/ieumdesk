@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { ApiError } from './errors.ts';
 import { installationWorkspaceField } from './installation-details.ts';
@@ -117,54 +117,7 @@ export type ManagedInstallationState = z.infer<typeof managedInstallationSchema>
 export type ManagedInstallationRow = ManagedInstallationState['sections'][number]['rows'][number];
 export type InstallationAccessOrigin = z.infer<typeof accessOriginSchema>;
 
-const savedAccessPartKeys = {
-  address: [
-    'domainurl',
-    'ssh_port',
-    'external_ip',
-    'internal_ip',
-    'netmask',
-    'gateway',
-    'dns1',
-    'dns2',
-    'ssl_apply_yn',
-    'ssl_manage_type',
-    'ssl_applydate',
-    'ssl_pwd',
-  ],
-  vpn: ['vpnsv_ip', 'vpnsv_id', 'vpnsv_pwd'],
-  access: [
-    'access_type',
-    'rootpath',
-    'os_root_id',
-    'os_root_pwd',
-    'os_user_id',
-    'os_user_pwd',
-    'os_login_etc',
-    'access_etc',
-    'access_reqst_date',
-    'access_reqst_enddate',
-    'access_url',
-    'access_id',
-    'access_pwd',
-  ],
-} as const;
-
-/** Origin exists only when a new save itself spans more than one access part. */
-export function newSavedAccessGroups<T extends { key: string }>(fields: readonly T[]) {
-  const known = new Set<string>(Object.values(savedAccessPartKeys).flat());
-  if (fields.some((field) => !known.has(field.key))) return undefined;
-  const parts = (['address', 'vpn', 'access'] as const)
-    .map((part) => ({
-      part,
-      fields: fields.filter((field) => (savedAccessPartKeys[part] as readonly string[]).includes(field.key)),
-    }))
-    .filter((part) => part.fields.length > 0);
-  if (parts.length < 2) return undefined;
-  return { group: createHash('sha256').update(randomUUID()).digest('hex'), parts };
-}
-
-/** Drop origin from the encrypted document. main's strict row schema rejects that key. */
+/** Drop a leftover origin off the sealed document. New saves do not create origin groups. */
 export function sealManagedInstallation(state: ManagedInstallationState) {
   const document = structuredClone(state);
   const accessOrigins: Record<string, InstallationAccessOrigin> = {};

@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  accessInstallationCommon,
   accessRecordItems,
+  accessServerFields,
+  accessServerTitle,
   installationAccessEditingDetails,
   installationDetailsForAccessEdit,
   prepareInstallationSectionOperations,
@@ -131,7 +134,7 @@ test('selected access edit keeps one normal record or one migrated group', () =>
   const migrated = installationDetailsForAccessEdit(full, group);
   assert.deepEqual(
     migrated.sections[0].rows.map((row) => row.origin?.part),
-    ['address', 'vpn', 'access'],
+    ['address', 'access'],
   );
   const otherGroup = 'cd'.repeat(32);
   const otherVpn = originRow('vpn', [field('other-vpn', 'vpnsv_ip', '198.51.100.8')]);
@@ -140,10 +143,13 @@ test('selected access edit keeps one normal record or one migrated group', () =>
   const twoGroups = installationDetailsForAccessEdit(details([address, vpn, access, otherVpn]), group);
   assert.deepEqual(
     twoGroups.sections[0].rows.map((row) => row.id),
-    [address.id, vpn.id, access.id],
+    [address.id, access.id],
   );
   const alone = details([address, vpn, access]);
-  assert.equal(installationDetailsForAccessEdit(alone, group), alone);
+  assert.deepEqual(
+    installationDetailsForAccessEdit(alone, group).sections[0].rows.map((row) => row.id),
+    [address.id, access.id],
+  );
   const installation = {
     id: 'install-row',
     title: '설치',
@@ -194,7 +200,7 @@ test('saving a selection patches only that selection changed rows', () => {
     installationDetailsForAccessEdit(full, group),
     'access',
     {
-      values: { 'vpn-user': 'next-user', end: '2026-12-31', 'current-url': 'https://ignored.example' },
+      values: { 'vpn-user': 'next-user', end: '2027-01-31', 'current-url': 'https://ignored.example' },
       titles: { [vpn.id]: '읽기 전용', [address.id]: '읽기 전용' },
       notes: {},
     },
@@ -202,9 +208,9 @@ test('saving a selection patches only that selection changed rows', () => {
   assert.equal(migrated.length, 1);
   assert.equal(migrated[0].kind, 'row-update');
   if (migrated[0].kind !== 'row-update') return;
-  assert.equal(migrated[0].id, vpn.id);
+  assert.equal(migrated[0].id, access.id);
   assert.equal('title' in migrated[0].body, false);
-  assert.deepEqual(migrated[0].body.values, { vpnsv_id: 'next-user' });
+  assert.deepEqual(migrated[0].body.values, { access_reqst_enddate: '2027-01-31' });
 
   const bothParts = prepareInstallationSectionOperations(
     installationDetailsForAccessEdit(full, group),
@@ -217,7 +223,7 @@ test('saving a selection patches only that selection changed rows', () => {
   );
   assert.deepEqual(
     bothParts.map((operation) => (operation.kind === 'row-update' ? operation.id : operation.kind)),
-    [address.id, vpn.id],
+    [address.id],
   );
   assert.equal(
     bothParts.every((operation) => operation.kind === 'row-update' && !('title' in operation.body)),
@@ -259,7 +265,11 @@ test('installation detail keeps one footer edit entry and no per-record edit mod
   );
   assert.equal(source.includes('installationDetailsForAccessEdit'), true);
   const editor = readFileSync(new URL('../src/InstallationSectionEditor.tsx', import.meta.url), 'utf8');
-  assert.equal(editor.includes('accessOriginGroupLabel(row)'), true);
+  assert.equal(editor.includes('accessOriginGroupLabel(row)'), false);
+  assert.equal(editor.includes('기존 접근 정보'), false);
+  assert.equal(source.includes('기존 접근 정보'), false);
+  assert.equal(source.includes('서버 추가'), true);
+  assert.equal(source.includes('accessInstallationCommon'), true);
   assert.equal(editor.includes("t('{0} 수정', [t(label)])"), false);
   assert.equal(editor.includes('matches(field, Boolean(row.origin))'), false);
   assert.equal(editor.includes('installationEditorGroupVisible'), true);
@@ -290,7 +300,10 @@ test('retired access controls stay stored and leave the visible section', () => 
     ['domainurl', 'access_url'],
   );
   const listed = accessRecordItems(section.rows);
-  assert.deepEqual(listed[0]?.rows[0]?.fields.map((item) => item.key), ['domainurl', 'access_url']);
+  assert.deepEqual(
+    listed[0]?.rows[0]?.fields.map((item) => item.key),
+    ['domainurl', 'access_url'],
+  );
   const view = readFileSync(new URL('../src/InstallationDetails.tsx', import.meta.url), 'utf8');
   assert.match(view, /access_type access_url domainurl access_id access_pwd/);
   assert.match(view, /access_reqst_date access_reqst_enddate/);
@@ -303,7 +316,9 @@ test('retired access controls stay stored and leave the visible section', () => 
     rows: [
       {
         ...section.rows[0],
-        fields: section.rows[0].fields.filter((item) => item.key !== 'domainurl' && item.key !== 'access_url'),
+        fields: section.rows[0].fields.filter(
+          (item) => item.key !== 'domainurl' && item.key !== 'access_url',
+        ),
       },
     ],
   });
@@ -312,11 +327,128 @@ test('retired access controls stay stored and leave the visible section', () => 
     accessRecordItems([
       {
         ...section.rows[0],
-        fields: section.rows[0].fields.filter((item) => item.key !== 'domainurl' && item.key !== 'access_url'),
+        fields: section.rows[0].fields.filter(
+          (item) => item.key !== 'domainurl' && item.key !== 'access_url',
+        ),
       },
     ]),
     [],
   );
   const server = { id: 'server' as const, title: '서버', imported: false, rows: section.rows };
   assert.equal(visibleInstallationSection(server), server);
+});
+
+test('an origin group reads as one server and lifts VPN without rewriting rows', () => {
+  const rows = [address, vpn, access];
+  const items = accessRecordItems(rows);
+  assert.equal(items.length, 1);
+  assert.equal(items[0]?.id, group);
+  assert.equal(items[0]?.index, 1);
+  assert.equal(accessServerTitle(items[0]?.rows ?? []), '');
+  assert.deepEqual(
+    accessServerFields(items[0]?.rows ?? []).map((item) => item.key),
+    ['access_url', 'access_reqst_enddate'],
+  );
+  const common = accessInstallationCommon(rows);
+  assert.deepEqual(
+    common.vpn.map((item) => item.key),
+    ['vpnsv_ip', 'vpnsv_id', 'vpnsv_pwd'],
+  );
+  assert.equal(common.held.length, 0);
+  assert.equal(common.etc, undefined);
+  assert.deepEqual(
+    rows.map((row) => row.origin?.part),
+    ['address', 'vpn', 'access'],
+  );
+});
+
+test('adjacent address and access rows without an origin stay separate servers', () => {
+  const addressOnly = {
+    id: 'near-address',
+    title: '접속 주소',
+    fields: [field('domain', 'domainurl', 'https://a.example')],
+  } satisfies InstallationDetailRow;
+  const accessOnly = {
+    id: 'near-access',
+    title: '접근 정보',
+    fields: [field('kind', 'access_type', '원격'), field('note', 'access_etc', '첫째 비고')],
+  } satisfies InstallationDetailRow;
+  const items = accessRecordItems([addressOnly, accessOnly]);
+  assert.deepEqual(
+    items.map((item) => item.id),
+    ['near-address', 'near-access'],
+  );
+  assert.deepEqual(
+    accessServerFields(items[1]?.rows ?? []).map((item) => item.key),
+    ['access_type'],
+  );
+  assert.equal(accessInstallationCommon([addressOnly, accessOnly]).etc?.value, '첫째 비고');
+  assert.equal(
+    accessOnly.fields.some((item) => item.key === 'access_etc'),
+    true,
+  );
+});
+
+test('conflicting VPN rows are held and the first access remark is the shared candidate', () => {
+  const first = {
+    id: 'vpn-a',
+    title: 'VPN A',
+    fields: [field('ip-a', 'vpnsv_ip', '203.0.113.10')],
+  } satisfies InstallationDetailRow;
+  const second = {
+    id: 'vpn-b',
+    title: 'VPN B',
+    fields: [field('ip-b', 'vpnsv_ip', '203.0.113.11')],
+  } satisfies InstallationDetailRow;
+  const etcA = {
+    id: 'etc-a',
+    title: '운영',
+    fields: [field('etc-a', 'access_etc', '첫째'), field('domain', 'domainurl', 'https://a.example')],
+  } satisfies InstallationDetailRow;
+  const etcB = {
+    id: 'etc-b',
+    title: '검증',
+    fields: [field('etc-b', 'access_etc', '둘째'), field('domain-b', 'domainurl', 'https://b.example')],
+  } satisfies InstallationDetailRow;
+  const rows = [first, second, etcA, etcB];
+  assert.deepEqual(
+    accessRecordItems(rows).map((item) => item.id),
+    ['etc-a', 'etc-b'],
+  );
+  const common = accessInstallationCommon(rows);
+  assert.equal(common.vpn.length, 0);
+  assert.deepEqual(
+    common.held.map((item) => item.id),
+    ['vpn-a', 'vpn-b'],
+  );
+  assert.equal(common.etc?.value, '첫째');
+  assert.equal(
+    etcB.fields.some((item) => item.key === 'access_etc'),
+    true,
+  );
+});
+
+test('matching VPN rows keep the first value and an explicit common slot wins', () => {
+  const first = {
+    id: 'vpn-a',
+    title: 'VPN A',
+    fields: [field('ip-a', 'vpnsv_ip', '203.0.113.10'), field('user-a', 'vpnsv_id', 'ops')],
+  } satisfies InstallationDetailRow;
+  const second = {
+    id: 'vpn-b',
+    title: 'VPN B',
+    fields: [field('ip-b', 'vpnsv_ip', '203.0.113.10'), field('user-b', 'vpnsv_id', 'ops')],
+  } satisfies InstallationDetailRow;
+  const agreed = accessInstallationCommon([first, second]);
+  assert.equal(agreed.vpn.find((item) => item.key === 'vpnsv_ip')?.id, 'ip-a');
+  assert.equal(agreed.held.length, 0);
+  const slot = {
+    id: 'access-common',
+    title: '설치 공통',
+    fields: [field('slot-ip', 'vpnsv_ip', '198.51.100.8')],
+  } satisfies InstallationDetailRow;
+  const explicit = accessInstallationCommon([first, slot]);
+  assert.equal(explicit.vpn.find((item) => item.key === 'vpnsv_ip')?.value, '198.51.100.8');
+  assert.equal(explicit.held.length, 0);
+  assert.equal(accessRecordItems([first, second, slot]).length, 0);
 });
