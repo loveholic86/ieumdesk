@@ -68,6 +68,9 @@ id_ed25519*
 !/tests/installation-origin-save.test.ts
 !/tests/installation-option-rows.test.ts
 !/tests/installation-current-read.test.ts
+!/tests/materialize-installations.test.ts
+!/tests/installation-access-notes.test.ts
+!/tests/installation-client.test.ts
 !/tests/css-stub.mjs
 /server/*.test.ts
 /deploy/
