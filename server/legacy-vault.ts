@@ -176,19 +176,22 @@ function isExisting(error: unknown) {
 async function privateDirectory(directory: string, create: boolean) {
   try {
     let metadata;
+    let createdHere = false;
     try {
       metadata = await lstat(directory);
     } catch (error) {
       if (!isMissing(error)) throw error;
       if (!create) throw failure('LEGACY_VAULT_KEY_MISSING');
       await mkdir(directory, { recursive: true, mode: 0o700 });
+      createdHere = true;
       metadata = await lstat(directory);
     }
     if (!metadata.isDirectory() || metadata.isSymbolicLink() || metadata.uid !== process.getuid!())
       throw failure('LEGACY_VAULT_KEY_DIRECTORY_UNSAFE');
     if ((metadata.mode & 0o7777) !== 0o700) {
-      // mkdir honors umask, so a clean directory can be 0755. Tighten only when creating a key.
-      if (!create) throw failure('LEGACY_VAULT_KEY_DIRECTORY_UNSAFE');
+      // An existing directory keeps its mode. Only a directory this call just created may be tightened
+      // when umask turned the requested 0700 into 0755.
+      if (!createdHere) throw failure('LEGACY_VAULT_KEY_DIRECTORY_UNSAFE');
       const handle = await open(directory, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
       try {
         await handle.chmod(0o700);

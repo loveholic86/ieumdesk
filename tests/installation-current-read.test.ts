@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { chmod, mkdtemp, mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -10,6 +11,8 @@ import { managedField, type ManagedInstallationState } from '../server/installat
 import {
   InstallationWorkspaceService,
   MemoryInstallationWorkspaceRepository,
+  PostgresInstallationWorkspaceRepository,
+  type InstallationWorkspaceRepository,
 } from '../server/installation-workspace.ts';
 import { LegacyReader } from '../server/legacy-reader.ts';
 import { openLegacyVault, type LegacyVault, type LegacyVaultEnvelope } from '../server/legacy-vault.ts';
@@ -585,33 +588,225 @@ test('a new multi-part access save groups outside the ciphertext', async () => {
   }
 });
 
-test('legacy vault env override creates a private key in a clean directory', async () => {
+test('legacy vault creates a private key directory and rejects an existing unsafe one', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'ieum-vault-env-'));
   const loose = path.join(root, 'loose');
   const sealed = path.join(root, 'sealed');
+  const absent = path.join(root, 'absent');
   await mkdir(loose);
-  await mkdir(sealed);
+  await mkdir(sealed, { mode: 0o700 });
   await chmod(loose, 0o755);
-  await chmod(sealed, 0o755);
-  const keyFile = path.join(loose, 'vault.key');
+  await chmod(sealed, 0o700);
   const previous = process.env.LEGACY_VAULT_KEY_FILE;
-  process.env.LEGACY_VAULT_KEY_FILE = keyFile;
+  const previousUmask = process.umask(0o022);
+  delete process.env.LEGACY_VAULT_KEY_FILE;
   try {
+    await assert.rejects(
+      () => openLegacyVault({ keyFile: path.join(loose, 'vault.key'), createIfMissing: true }),
+      (error: Error) => error.message === 'LEGACY_VAULT_KEY_DIRECTORY_UNSAFE',
+    );
     assert.equal((await stat(loose)).mode & 0o777, 0o755);
+    await assert.rejects(
+      () => openLegacyVault({ keyFile: path.join(loose, 'other.key'), createIfMissing: false }),
+      (error: Error) => error.message === 'LEGACY_VAULT_KEY_DIRECTORY_UNSAFE',
+    );
+    assert.equal((await stat(loose)).mode & 0o777, 0o755);
+    await assert.rejects(
+      () => openLegacyVault({ keyFile: path.join(sealed, 'missing.key'), createIfMissing: false }),
+      (error: Error) => error.message === 'LEGACY_VAULT_KEY_MISSING',
+    );
+    assert.equal(await stat(path.join(sealed, 'missing.key')).then(() => true, () => false), false);
+    assert.equal((await stat(sealed)).mode & 0o777, 0o700);
+    await assert.rejects(
+      () => openLegacyVault({ keyFile: path.join(absent, 'vault.key'), createIfMissing: false }),
+      (error: Error) => error.message === 'LEGACY_VAULT_KEY_MISSING',
+    );
+    assert.equal(await stat(absent).then(() => true, () => false), false);
+    const keyFile = path.join(root, 'fresh', 'vault.key');
+    process.env.LEGACY_VAULT_KEY_FILE = keyFile;
     const opened = await openLegacyVault({ createIfMissing: true });
     const context = workspaceContext('env-override', 1);
     assert.equal(opened.decrypt(opened.encrypt('kept', context), context), 'kept');
-    assert.equal((await stat(loose)).mode & 0o777, 0o700);
+    assert.equal((await stat(path.dirname(keyFile))).mode & 0o777, 0o700);
     assert.equal((await stat(keyFile)).mode & 0o777, 0o600);
-    await assert.rejects(
-      () => openLegacyVault({ keyFile: path.join(sealed, 'missing.key'), createIfMissing: false }),
-      (error: Error) => error.message === 'LEGACY_VAULT_KEY_DIRECTORY_UNSAFE',
-    );
-    assert.equal((await stat(sealed)).mode & 0o777, 0o755);
   } finally {
+    process.umask(previousUmask);
     if (previous === undefined) delete process.env.LEGACY_VAULT_KEY_FILE;
     else process.env.LEGACY_VAULT_KEY_FILE = previous;
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('access origin migration adds a nullable sidecar and does not rewrite rows', () => {
+  const sql = readFileSync(new URL('../db/017_installation_access_origins.sql', import.meta.url), 'utf8');
+  const runner = readFileSync(new URL('../scripts/migrate-features.ts', import.meta.url), 'utf8');
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS access_origins jsonb/);
+  assert.match(sql, /access_origins IS NULL OR jsonb_typeof\(access_origins\) = 'object'/);
+  assert.equal(/\bUPDATE\b/i.test(sql), false);
+  assert.match(runner, /017_installation_access_origins\.sql/);
+});
+
+function postgresDouble() {
+  const rows = new Map<string, { revision: number; envelope: unknown; access_origins: unknown }>();
+  const query = async (sql: string, params: unknown[] = []) => {
+    const text = sql.replace(/\s+/g, ' ').trim();
+    if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [], rowCount: 0 };
+    if (text.startsWith('SELECT pg_advisory_xact_lock')) return { rows: [], rowCount: 1 };
+    if (text.includes('FROM yeta_crm.records')) return { rows: [{ present: 1 }], rowCount: 1 };
+    if (text.includes('FROM yeta_crm.auth_users'))
+      return { rows: [{ role: 'admin', status: 'active' }], rowCount: 1 };
+    if (text.startsWith('SELECT revision FROM yeta_crm_private.installation_workspace')) {
+      const row = rows.get(String(params[0]));
+      return { rows: row ? [{ revision: row.revision }] : [], rowCount: row ? 1 : 0 };
+    }
+    if (text.startsWith('SELECT revision,envelope,access_origins')) {
+      const row = rows.get(String(params[0]));
+      return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
+    }
+    if (text.startsWith('INSERT INTO yeta_crm_private.installation_workspace(')) {
+      const [id, revision, envelope, , accessOrigins] = params;
+      rows.set(String(id), {
+        revision: revision as number,
+        envelope,
+        access_origins: accessOrigins,
+      });
+      return { rows: [], rowCount: 1 };
+    }
+    if (text.startsWith('INSERT INTO yeta_crm_private.installation_workspace_audit'))
+      return { rows: [], rowCount: 1 };
+    throw new Error(`unexpected sql ${text}`);
+  };
+  const client = { query, release() {} };
+  return {
+    rows,
+    query,
+    async connect() {
+      return client;
+    },
+  };
+}
+
+test('postgres save and get round-trip access origins for a new multi-part row', async () => {
+  const opened = await vault();
+  const database = postgresDouble();
+  const repository = new PostgresInstallationWorkspaceRepository(database);
+  const id = 'inst-postgres-group';
+  const empty = accessState();
+  for (const section of empty.sections) section.rows = [];
+  const envelope = opened.vault.encrypt(JSON.stringify(empty), workspaceContext(id, 1));
+  const service = new InstallationWorkspaceService(
+    {
+      async details() {
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async secrets() {
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async audit() {},
+    },
+    repository,
+    { vault: async () => opened.vault },
+  );
+  try {
+    assert.equal(repository.persistsAccessOrigins, true);
+    await repository.save(id, 0, envelope, '00000000-0000-4000-8000-000000000001', 'row-create');
+    assert.equal(database.rows.get(id)?.access_origins, null);
+    await service.createRow(
+      id,
+      {
+        revision: 1,
+        sectionId: 'access',
+        title: '신규 접근',
+        fields: [
+          { key: 'domainurl', label: '도메인 URL', value: 'https://demo.example' },
+          { key: 'vpnsv_ip', label: 'VPN 서버 IP', value: '203.0.113.10' },
+          { key: 'vpnsv_pwd', label: 'VPN 비밀번호', value: 'demo-vpn-secret' },
+          { key: 'access_url', label: '접근 URL', value: 'https://demo.example/gate' },
+        ],
+      },
+      '00000000-0000-4000-8000-000000000001',
+    );
+    const stored = await repository.get(id);
+    const plain = JSON.parse(opened.vault.decrypt(stored!.envelope, workspaceContext(id, stored!.revision)));
+    const savedRows = plain.sections.find((section: { id: string }) => section.id === 'access').rows;
+    assert.equal(savedRows.length, 3);
+    assert.ok(savedRows.every((row: { origin?: unknown }) => !Object.hasOwn(row, 'origin')));
+    assert.equal(Object.keys(stored!.accessOrigins ?? {}).length, 3);
+    const details = await service.details(id, { protected: false, raw: true });
+    const rows = details.sections.find((section) => section.id === 'access')!.rows;
+    assert.deepEqual(
+      rows.map((row) => row.origin?.part),
+      ['address', 'vpn', 'access'],
+    );
+    assert.equal(rows[0].origin?.group, rows[2].origin?.group);
+  } finally {
+    await repository.close();
+    await rm(opened.root, { recursive: true, force: true });
+  }
+});
+
+test('a repository that cannot persist the sidecar keeps a multi-part save as one row', async () => {
+  const opened = await vault();
+  const id = 'inst-no-sidecar';
+  class DroppingRepository implements InstallationWorkspaceRepository {
+    readonly persistsAccessOrigins = false;
+    private record?: { revision: number; envelope: LegacyVaultEnvelope };
+    async get() {
+      return this.record ? structuredClone(this.record) : undefined;
+    }
+    async save(_id: string, expected: number, envelope: LegacyVaultEnvelope) {
+      if ((this.record?.revision ?? 0) !== expected) throw new Error('conflict');
+      this.record = { revision: expected + 1, envelope: structuredClone(envelope) };
+      return this.record.revision;
+    }
+  }
+  const repository = new DroppingRepository();
+  const empty = accessState();
+  for (const section of empty.sections) section.rows = [];
+  await repository.save(
+    id,
+    0,
+    opened.vault.encrypt(JSON.stringify(empty), workspaceContext(id, 1)),
+  );
+  const service = new InstallationWorkspaceService(
+    {
+      async details() {
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async secrets() {
+        throw new Error('ORIGINAL_DETAILS_MUST_NOT_BE_READ');
+      },
+      async audit() {},
+    },
+    repository,
+    { vault: async () => opened.vault },
+  );
+  try {
+    await service.createRow(
+      id,
+      {
+        revision: 1,
+        sectionId: 'access',
+        title: '신규 접근',
+        fields: [
+          { key: 'domainurl', label: '도메인 URL', value: 'https://demo.example' },
+          { key: 'vpnsv_ip', label: 'VPN 서버 IP', value: '203.0.113.10' },
+          { key: 'access_url', label: '접근 URL', value: 'https://demo.example/gate' },
+        ],
+      },
+      'actor',
+    );
+    const stored = await repository.get();
+    const plain = JSON.parse(opened.vault.decrypt(stored!.envelope, workspaceContext(id, stored!.revision)));
+    const savedRows = plain.sections.find((section: { id: string }) => section.id === 'access').rows;
+    assert.equal(savedRows.length, 1);
+    assert.equal(Object.hasOwn(savedRows[0], 'origin'), false);
+    const details = await service.details(id, { protected: false, raw: true });
+    const rows = details.sections.find((section) => section.id === 'access')!.rows;
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.origin, undefined);
+  } finally {
+    await rm(opened.root, { recursive: true, force: true });
   }
 });
 

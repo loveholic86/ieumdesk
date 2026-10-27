@@ -134,9 +134,30 @@ export type InstallationWorkspaceStored = {
   accessOrigins?: Record<string, InstallationAccessOrigin>;
 };
 type Stored = InstallationWorkspaceStored;
+type WorkspaceQuery = {
+  query(sql: string, params?: unknown[]): Promise<{ rows: any[]; rowCount?: number | null }>;
+};
+type WorkspaceDb = WorkspaceQuery & {
+  connect(): Promise<WorkspaceQuery & { release(): void }>;
+  end?(): Promise<void>;
+};
+function columnAccessOrigins(value: unknown): Record<string, InstallationAccessOrigin> | undefined {
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return undefined;
+    }
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const record = value as Record<string, InstallationAccessOrigin>;
+  return Object.keys(record).length ? structuredClone(record) : undefined;
+}
 export type InstallationWorkspaceAction =
   'row-create' | 'row-update' | 'row-delete' | 'materialize' | 'note-create' | 'note-update' | 'note-delete';
 export interface InstallationWorkspaceRepository {
+  /** True only when save/get keep accessOrigins beside the envelope. */
+  readonly persistsAccessOrigins: boolean;
   get(id: string): Promise<Stored | undefined>;
   save(
     id: string,
@@ -471,7 +492,10 @@ export class InstallationWorkspaceService {
       (state) => {
         if (managedInstallationCounts(state).rowCount >= 1_000) throw bad();
         const section = state.sections.find((item) => item.id === data.sectionId)!;
-        const grouped = data.sectionId === 'access' ? newSavedAccessGroups(data.fields) : undefined;
+        const grouped =
+          data.sectionId === 'access' && this.repository.persistsAccessOrigins
+            ? newSavedAccessGroups(data.fields)
+            : undefined;
         if (!grouped) {
           const rowId = `workspace-row-${randomUUID()}`;
           section.rows.push({
@@ -671,6 +695,7 @@ export class InstallationWorkspaceService {
 }
 
 export class MemoryInstallationWorkspaceRepository implements InstallationWorkspaceRepository {
+  readonly persistsAccessOrigins = true;
   readonly records = new Map<string, Stored>();
   async get(id: string) {
     const value = this.records.get(id);
@@ -695,8 +720,11 @@ export class MemoryInstallationWorkspaceRepository implements InstallationWorksp
 }
 
 export class PostgresInstallationWorkspaceRepository implements InstallationWorkspaceRepository {
+  readonly persistsAccessOrigins = true;
   private pool?: Promise<pg.Pool>;
-  private async connection() {
+  constructor(private readonly database?: WorkspaceDb) {}
+  private async connection(): Promise<WorkspaceDb> {
+    if (this.database) return this.database;
     return (this.pool ??= (async () => {
       const pool = new pg.Pool({ ...(await databaseConfig(false)), max: 2, allowExitOnIdle: true });
       pool.on('error', () => {});
@@ -715,14 +743,21 @@ export class PostgresInstallationWorkspaceRepository implements InstallationWork
   }
   async get(id: string): Promise<Stored | undefined> {
     try {
-      return (
+      const row = (
         await (
           await this.connection()
         ).query(
-          'SELECT revision,envelope FROM yeta_crm_private.installation_workspace WHERE installation_id=$1',
+          'SELECT revision,envelope,access_origins FROM yeta_crm_private.installation_workspace WHERE installation_id=$1',
           [id],
         )
       ).rows[0];
+      if (!row) return undefined;
+      const accessOrigins = columnAccessOrigins(row.access_origins);
+      return {
+        revision: row.revision,
+        envelope: row.envelope,
+        ...(accessOrigins ? { accessOrigins } : {}),
+      };
     } catch {
       throw unavailable();
     }
@@ -733,6 +768,7 @@ export class PostgresInstallationWorkspaceRepository implements InstallationWork
     envelope: LegacyVaultEnvelope,
     actor: string,
     action: InstallationWorkspaceAction,
+    accessOrigins?: Record<string, InstallationAccessOrigin>,
   ) {
     const client = await (await this.connection()).connect();
     try {
@@ -760,8 +796,8 @@ export class PostgresInstallationWorkspaceRepository implements InstallationWork
       if (!canManageBusiness(account))
         throw new ApiError(403, 'WRITE_PERMISSION_REQUIRED', '등록·수정 권한이 필요합니다.');
       await client.query(
-        'INSERT INTO yeta_crm_private.installation_workspace(installation_id,revision,envelope,updated_by) VALUES($1,$2,$3,$4) ON CONFLICT(installation_id) DO UPDATE SET revision=EXCLUDED.revision,envelope=EXCLUDED.envelope,updated_by=EXCLUDED.updated_by,updated_at=now()',
-        [id, expected + 1, envelope, actor],
+        'INSERT INTO yeta_crm_private.installation_workspace(installation_id,revision,envelope,updated_by,access_origins) VALUES($1,$2,$3,$4,$5) ON CONFLICT(installation_id) DO UPDATE SET revision=EXCLUDED.revision,envelope=EXCLUDED.envelope,updated_by=EXCLUDED.updated_by,access_origins=EXCLUDED.access_origins,updated_at=now()',
+        [id, expected + 1, envelope, actor, columnAccessOrigins(accessOrigins) ?? null],
       );
       await client.query(
         'INSERT INTO yeta_crm_private.installation_workspace_audit(installation_ref_hash,actor_user_id,action,revision) VALUES($1,$2,$3,$4)',
@@ -778,6 +814,10 @@ export class PostgresInstallationWorkspaceRepository implements InstallationWork
     }
   }
   async close() {
+    if (this.database) {
+      await this.database.end?.();
+      return;
+    }
     await this.pool?.then((pool) => pool.end());
   }
 }

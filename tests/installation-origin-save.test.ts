@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  accessRecordItems,
   installationAccessEditingDetails,
   installationDetailsForAccessEdit,
   prepareInstallationSectionOperations,
@@ -288,6 +289,11 @@ test('retired access controls stay stored and leave the visible section', () => 
     visible.rows[0]?.fields.map((item) => item.key),
     ['domainurl', 'access_url'],
   );
+  const listed = accessRecordItems(section.rows);
+  assert.deepEqual(listed[0]?.rows[0]?.fields.map((item) => item.key), ['domainurl', 'access_url']);
+  const view = readFileSync(new URL('../src/InstallationDetails.tsx', import.meta.url), 'utf8');
+  assert.match(view, /access_type access_url domainurl access_id access_pwd/);
+  assert.match(view, /access_reqst_date access_reqst_enddate/);
   assert.deepEqual(
     section.rows[0]?.fields.map((item) => item.key),
     ['domainurl', 'access_id', 'access_pwd', 'access_reqst_date', 'access_url'],
@@ -302,6 +308,15 @@ test('retired access controls stay stored and leave the visible section', () => 
     ],
   });
   assert.deepEqual(retiredOnly.rows, []);
+  assert.deepEqual(
+    accessRecordItems([
+      {
+        ...section.rows[0],
+        fields: section.rows[0].fields.filter((item) => item.key !== 'domainurl' && item.key !== 'access_url'),
+      },
+    ]),
+    [],
+  );
   const server = { id: 'server' as const, title: '서버', imported: false, rows: section.rows };
   assert.equal(visibleInstallationSection(server), server);
 });

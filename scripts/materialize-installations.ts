@@ -319,6 +319,7 @@ export function createMaterializer(
     audit: forbidden,
   };
   const workspace: InstallationWorkspaceRepository = {
+    persistsAccessOrigins: true,
     async get(id) {
       const row = (await snapshot()).workspaces.get(id);
       return row ? structuredClone(row) : undefined;

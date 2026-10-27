@@ -21,6 +21,7 @@ const missing = (error: unknown) => (error as NodeJS.ErrnoException)?.code === '
 const owner = (uid: number) => typeof process.getuid === 'function' && uid === process.getuid();
 /** Demo persistence keeps only the encrypted envelope and non-secret change metadata. */
 export class FileInstallationWorkspaceRepository implements InstallationWorkspaceRepository {
+  readonly persistsAccessOrigins = true;
   private directory: string;
   constructor(directory = runtimePath('installation-workspaces')) {
     this.directory = path.resolve(directory);

@@ -396,13 +396,13 @@ const cardGroups: Record<InstallationSectionId, readonly CardGroup[]> = {
     cardGroup('notes', '비고', 'note ct_etc setup_etc'),
   ],
   access: [
-    cardGroup('connection', '접속', 'access_type access_url domainurl'),
+    cardGroup('connection', '접속', 'access_type access_url domainurl access_id access_pwd'),
     cardGroup('network', '네트워크', 'ssh_port external_ip internal_ip netmask gateway dns1 dns2'),
     cardGroup('ssl', 'SSL', 'ssl_apply_yn ssl_manage_type ssl_applydate ssl_pwd'),
     cardGroup('vpn', 'VPN', 'vpnsv_ip vpnsv_id vpnsv_pwd'),
     cardGroup('path', '설치 경로', 'rootpath'),
     cardGroup('os', 'OS 계정', 'os_root_id os_root_pwd os_user_id os_user_pwd os_login_etc'),
-    cardGroup('period', '기간', 'access_reqst_enddate'),
+    cardGroup('period', '기간', 'access_reqst_date access_reqst_enddate'),
     cardGroup('notes', '비고', 'access_etc'),
   ],
   server: [
