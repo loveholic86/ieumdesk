@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { installationBasicKeys, installationEditableRows } from '../src/installation-editor.ts';
+import { installationFieldTemplates } from '../src/installation-labels.ts';
 import { installationRemarkField } from '../src/installation-types.ts';
 import { prepareInstallationSectionOperations } from '../src/installation-client.ts';
 import type {
@@ -35,6 +36,41 @@ test('edited reminder rows lose their remark fields and a remark-only row drops 
     installationEditableRows(rows).map((row) => ({ id: row.id, keys: row.fields.map((field) => field.key) })),
     [{ id: 'server', keys: ['hostname'] }],
   );
+});
+
+test('a new record never pre-fills a remark input in any section', () => {
+  // 「기록 추가」 seeds a new row from the templates, so the templates themselves must be clean.
+  for (const [section, templates] of Object.entries(installationFieldTemplates)) {
+    const seeded = templates.filter(([key, label]) => !installationRemarkField({ key, label }));
+    assert.equal(
+      seeded.length,
+      templates.length - templates.filter(([key, label]) => installationRemarkField({ key, label })).length,
+      section,
+    );
+    assert.deepEqual(
+      seeded.filter(([key, label]) => installationRemarkField({ key, label })),
+      [],
+      section,
+    );
+  }
+  // The known remark templates are the ones dropping out, so the filter is doing real work.
+  const installationKeys = installationFieldTemplates.installation.map(([key]) => key);
+  assert.ok(installationKeys.includes('ct_etc') && installationKeys.includes('setup_etc'));
+  const seededInstallation = installationFieldTemplates.installation
+    .filter(([key, label]) => !installationRemarkField({ key, label }))
+    .map(([key]) => key);
+  assert.equal(seededInstallation.includes('ct_etc'), false);
+  assert.equal(seededInstallation.includes('setup_etc'), false);
+  assert.ok(seededInstallation.includes('systemCode') || seededInstallation.includes('sys_cd'));
+  // The access section keeps its ordinary fields but still drops its own OS remark input.
+  assert.equal(seededInstallation.includes('os_login_etc'), false, 'the access OS remark is still a remark');
+  const seededAccess = installationFieldTemplates.access
+    .filter(([key, label]) => !installationRemarkField({ key, label }))
+    .map(([key]) => key);
+  assert.equal(seededAccess.includes('os_login_etc'), false);
+  assert.ok(seededAccess.includes('vpnsv_ip') && seededAccess.includes('domainurl'));
+  // The installation-wide access remark keeps its own panel, so it is never a remark input.
+  assert.equal(installationRemarkField({ key: 'access_etc', label: '접근 비고' }), false);
 });
 
 function details(rows: InstallationDetailRow[]): InstallationDetails {

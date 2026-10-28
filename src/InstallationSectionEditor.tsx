@@ -28,6 +28,7 @@ import {
   accessEtcKey,
   accessPartLabels,
   accessRowPart,
+  installationRemarkField,
 } from './installation-types';
 import type {
   InstallationDetailField,
@@ -355,12 +356,15 @@ export default function InstallationSectionEditor({
       {
         localId: serial,
         title: section.title,
-        fields: installationFieldTemplates[sectionId].map(([key, label]) => ({
-          localId: localId('row-field'),
-          key,
-          label,
-          value: '',
-        })),
+        // A new row starts from the editable templates only; remarks stay read-only.
+        fields: installationFieldTemplates[sectionId]
+          .filter(([key, label]) => !installationRemarkField({ key, label }))
+          .map(([key, label]) => ({
+            localId: localId('row-field'),
+            key,
+            label,
+            value: '',
+          })),
       },
     ]);
     setReview(false);
