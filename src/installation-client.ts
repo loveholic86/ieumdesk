@@ -3,6 +3,7 @@ import {
   accessCommonRowId,
   accessEtcKey,
   accessServerUnits,
+  installationRemarkField,
   type InstallationDetails,
   type InstallationDetailField,
   type InstallationDetailRow,
@@ -76,6 +77,9 @@ export type InstallationSectionOperation =
    */
   | { kind: 'access-common'; draft: Record<string, string> };
 
+/** A remark is read-only, so a stale draft can never rewrite its stored value. */
+const editableFields = (row: InstallationDetailRow) => row.fields.filter((field) => !installationRemarkField(field));
+
 const validLongText = (value: string) =>
   value.trim().length > 0 &&
   value.length <= 16384 &&
@@ -113,7 +117,7 @@ export function prepareInstallationSectionOperations(
     }
     const title = draft.titles[row.id] ?? row.title ?? section.title;
     const values = Object.fromEntries(
-      row.fields
+      editableFields(row)
         .filter((field) => Object.hasOwn(draft.values, field.id))
         .map((field) => [field.key, draft.values[field.id]]),
     );

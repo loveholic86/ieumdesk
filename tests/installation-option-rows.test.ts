@@ -501,7 +501,7 @@ test('the group body can never paint an inset change bar for any field wrapper',
 
 test('a shared-remark-only change is listed in the review pane', async () => {
   const editor = readFileSync(new URL('../src/InstallationSectionEditor.tsx', import.meta.url), 'utf8');
-  assert.match(editor, /\{commonDirty && \(/);
-  assert.match(editor, /t\('설치 공통 비고'\)\}\s*<\/dt>/);
+  assert.match(editor, /\{sectionId === 'access' && commonDirty && \(/);
+  assert.match(editor, /t\('접근 비고'\)\}\s*<\/dt>/);
   assert.match(editor, /t\('변경 예정'\)/);
 });

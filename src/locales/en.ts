@@ -1669,7 +1669,6 @@ export const english: Record<string, string> = {
   '공통 정보 수정': 'Edit shared information',
   '공통 정보 저장': 'Save shared information',
   '정보 수정에서 편집합니다.': 'Edit this in Edit information.',
-  '설치 공통 비고': 'Installation-wide remark',
   '변경 예정': 'Pending change',
   '설치 전역 · 모든 서버에 공통': 'Installation-wide · shared by every server',
   '이 비고는 서버 한 대가 아니라 설치 전체에 적용됩니다. 아래 «변경사항 저장»으로 서버 정보와 함께 저장됩니다.':

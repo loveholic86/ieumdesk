@@ -71,6 +71,8 @@ id_ed25519*
 !/tests/materialize-installations.test.ts
 !/tests/installation-access-notes.test.ts
 !/tests/installation-client.test.ts
+!/tests/installation-sort.test.ts
+!/tests/installation-remark-readonly.test.ts
 !/tests/i18n-keys.test.ts
 !/tests/css-stub.mjs
 /server/*.test.ts

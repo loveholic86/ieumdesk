@@ -45,7 +45,6 @@ export default function InstallationQuickFields({
   );
   const protectedValue = (value: string | null | undefined) =>
     /^(?:[•●*]{3,}|보호됨|\[보호됨\])$/u.test(value || '');
-  const protectedNote = protectedValue(original.note);
   useEffect(() => {
     if (errors.domain) setExtraOpen(true);
   }, [errors]);
@@ -221,7 +220,7 @@ export default function InstallationQuickFields({
       >
         <summary>
           <ChevronRight size={16} aria-hidden="true" />
-          {t('운영 정보 및 비고')}
+          {t('운영 정보')}
           <small>{t('선택 입력')}</small>
         </summary>
         <fieldset disabled={disabled}>
@@ -258,32 +257,6 @@ export default function InstallationQuickFields({
             </label>
             <div className="is-wide">
               {field('domain', '서비스 도메인', 'text', '예: service.example.com', 253)}
-            </div>
-            <div className="installation-quick-field is-wide">
-              <label htmlFor={id + '-note'}>{t('관리 메모')}</label>
-              {protectedNote ? (
-                <InstallationProtectedInput
-                  id={id + '-note'}
-                  fieldKey="note"
-                  value={draft.note === original.note ? '' : draft.note || ''}
-                  touched={draft.note !== original.note}
-                  disabled={disabled}
-                  rows={4}
-                  maxLength={5000}
-                  onChange={(note) => onChange({ note })}
-                  onReset={() => onChange({ note: original.note })}
-                />
-              ) : (
-                <textarea
-                  id={id + '-note'}
-                  name="note"
-                  rows={4}
-                  maxLength={5000}
-                  value={draft.note || ''}
-                  placeholder={t('업무에 필요한 내용을 기록하세요.')}
-                  onChange={(event) => onChange({ note: event.target.value })}
-                />
-              )}
             </div>
           </div>
         </fieldset>

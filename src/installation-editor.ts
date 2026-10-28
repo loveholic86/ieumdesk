@@ -1,5 +1,6 @@
 import { installationBooleanChoice, installationComparableValue } from './installation-client';
 import type { InstallationSectionDraft } from './installation-client';
+import { installationRemarkField } from './installation-types';
 import type {
   InstallationDetailField,
   InstallationDetails,
@@ -53,6 +54,15 @@ const groups: Record<InstallationSectionId, Group[]> = {
 const other: Group = { id: 'other', title: '기타 항목', keys: [] };
 export const installationFieldGroup = (section: InstallationSectionId, key: string) =>
   groups[section].find((item) => item.keys.includes(key)) ?? other;
+
+/** Rows reduced to editable fields, dropping a row that holds remarks only. */
+export function installationEditableRows<T extends { fields: Array<{ key: string; label?: string }> }>(
+  rows: readonly T[],
+): T[] {
+  return rows
+    .map((row) => ({ ...row, fields: row.fields.filter((field) => !installationRemarkField(field)) }))
+    .filter((row) => row.fields.length > 0);
+}
 
 /** Left-menu visibility. A search crosses groups. Origin rows use this same rule. */
 export function installationEditorGroupVisible(
@@ -128,7 +138,9 @@ export function installationSectionChangeCount(
     (section?.rows.reduce(
       (count, row) =>
         count +
-        row.fields.filter((field) => installationFieldChanged(field, draft.values)).length +
+        row.fields
+          .filter((field) => !installationRemarkField(field))
+          .filter((field) => installationFieldChanged(field, draft.values)).length +
         Number(Object.hasOwn(draft.titles, row.id) && draft.titles[row.id] !== (row.title ?? section.title)),
       0,
     ) ?? 0) +
@@ -153,7 +165,6 @@ export const installationBasicKeys = [
   'accessType',
   'autoUpdate',
   'domain',
-  'note',
 ] as const;
 export type InstallationBasicDraft = Partial<
   Record<Exclude<(typeof installationBasicKeys)[number], 'autoUpdate' | 'companyId'>, string>

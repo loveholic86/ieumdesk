@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
 import {
   installationBasicChanges,
   installationBasicErrors,
+  installationBasicKeys,
+  installationEditableRows,
   installationEditorGroupVisible,
   installationEditorGroups,
   installationFieldGroup,
   installationInputDefinition,
+  installationRemarkField,
   installationSectionChangeCount,
 } from '../src/installation-editor.ts';
 import { installationFieldTemplates } from '../src/installation-labels.ts';
@@ -367,6 +370,8 @@ test('quick form dirty tracking clears on revert and preserves false versus an u
   const original = { systemCode: 'TEST', companyId: null, autoUpdate: false, note: '••••••••' };
   assert.deepEqual(installationBasicChanges({ ...original, companyId: '', domain: '' }, original), []);
   assert.deepEqual(installationBasicChanges({ ...original, autoUpdate: true }, original), ['autoUpdate']);
-  assert.deepEqual(installationBasicChanges({ ...original, note: '' }, original), ['note']);
+  // A remark is read-only in the editor, so it is no longer a change the quick form can submit.
+  assert.equal(installationBasicKeys.includes('note' as never), false);
+  assert.deepEqual(installationBasicChanges({ ...original, note: '' }, original), []);
   assert.deepEqual(installationBasicChanges({ ...original }, original), []);
 });

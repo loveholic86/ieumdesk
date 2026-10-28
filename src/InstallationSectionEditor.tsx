@@ -13,21 +13,22 @@ import {
   type InstallationSectionOperation,
   type InstallationSectionDraft,
 } from './installation-client';
-import {
-  commitLatestInstallationDraft,
-  installationNoteReviewEntries,
-  installationReviewValue,
-} from './installation-draft-reconcile';
-import {
+import { commitLatestInstallationDraft, installationReviewValue } from './installation-draft-reconcile';import {
   installationEditorGroupVisible,
   installationEditorGroups,
+  installationEditableRows,
   installationFieldChanged,
   installationFieldGroup,
   installationLongField,
   installationInputDefinition,
   installationSectionChangeCount,
 } from './installation-editor';
-import { accessCommonRowId, accessEtcKey, accessPartLabels, accessRowPart } from './installation-types';
+import {
+  accessCommonRowId,
+  accessEtcKey,
+  accessPartLabels,
+  accessRowPart,
+} from './installation-types';
 import type {
   InstallationDetailField,
   InstallationDetailRow,
@@ -137,7 +138,7 @@ function InstallationAccessCommonSection({
   return (
     <details className="installation-access-common-inline" data-installation-common-section>
       <summary>
-        <span>{t('설치 공통 비고')}</span>
+        <span>{t('접근 비고')}</span>
         <span className="installation-access-common-scope">{t('설치 전역 · 모든 서버에 공통')}</span>
       </summary>
       <div className="installation-access-common-inline-body">
@@ -149,7 +150,7 @@ function InstallationAccessCommonSection({
         {commonEditorKeys.map((key) => (
           <div key={key} className="installation-inline-edit-field">
             <div className="installation-inline-edit-field-heading">
-              <label htmlFor={`${commonId}-common-${key}`}>{t('설치 공통 비고')}</label>
+              <label htmlFor={`${commonId}-common-${key}`}>{t('접근 비고')}</label>
               <span className="installation-inline-edit-value-meta">
                 {t('{0} / 16,384자{1}', [(draft[key] ?? '').length.toLocaleString(), ''])}
               </span>
@@ -227,19 +228,15 @@ export default function InstallationSectionEditor({
   const commonDirty =
     sectionId === 'access' &&
     commonEditorKeys.some((key) => (commonDraft[key] ?? '') !== (accessCommon.current[key] ?? ''));
-  const [notes, setNotes] = useState<Record<string, string>>({});
   const [addedRows, setAddedRows] = useState<NonNullable<InstallationSectionDraft['addedRows']>>([]);
   const [removedRows, setRemovedRows] = useState<string[]>([]);
   const [addedFields, setAddedFields] = useState<NonNullable<InstallationSectionDraft['addedFields']>>({});
   const [removedFields, setRemovedFields] = useState<NonNullable<InstallationSectionDraft['removedFields']>>(
     {},
   );
-  const [addedNotes, setAddedNotes] = useState<NonNullable<InstallationSectionDraft['addedNotes']>>([]);
-  const [removedNotes, setRemovedNotes] = useState<string[]>([]);
   const [query, setQuery] = useState('');
   const [changedOnly, setChangedOnly] = useState(false);
-  const [review, setReview] = useState(false);
-  const [deleteConfirmed, setDeleteConfirmed] = useState(false);
+  const [review, setReview] = useState(false);  const [deleteConfirmed, setDeleteConfirmed] = useState(false);
   const [uncertain, setUncertain] = useState<{
     operation: InstallationSectionOperation;
     confirmedDetails: InstallationDetails;
@@ -247,7 +244,9 @@ export default function InstallationSectionEditor({
   const [refreshedAfterUncertain, setRefreshedAfterUncertain] = useState(false);
   const [expanded, setExpanded] = useState('');
   const [active, setActive] = useState('');
-  const section = visibleInstallationSection(details.sections.find((item) => item.id === sectionId)!);
+  const visible = visibleInstallationSection(details.sections.find((item) => item.id === sectionId)!);
+  // Remarks are read-only: they never appear as inputs, and a row holding only remarks drops out.
+  const section = { ...visible, rows: installationEditableRows(visible.rows) };
   const optionRegistrationForTarget = (target: InstallationOptionRegistrationTarget) => {
     const targetKey = installationOptionTargetKey(target);
     return optionRegistrations.find((attempt) =>
@@ -260,7 +259,6 @@ export default function InstallationSectionEditor({
   const groups = installationEditorGroups(
     sectionId,
     section.rows.flatMap((row) => row.fields.map((field) => field.key)),
-    Boolean(details.accessNotes?.length || addedNotes.length || removedNotes.length),
   );
   const [selectedGroup, setSelectedGroup] = useState(groups[0]?.id || 'other');
   const groupId = groups.some((group) => group.id === selectedGroup) ? selectedGroup : groups[0]?.id;
@@ -270,13 +268,11 @@ export default function InstallationSectionEditor({
     titles,
     displayNames,
     ...(sectionId === 'access' ? { accessCommon: commonDraft } : {}),
-    notes,
+    notes: {},
     addedRows,
     removedRows,
     addedFields,
     removedFields,
-    addedNotes,
-    removedNotes,
   };
   const latestDraft = useRef(draft);
   useEffect(() => {
@@ -286,8 +282,6 @@ export default function InstallationSectionEditor({
     installationSectionChangeCount({ ...details, sections: [section] }, sectionId, draft) +
     addedRows.length +
     removedRows.length +
-    addedNotes.length +
-    removedNotes.length +
     Object.values(addedFields).reduce((sum, fields) => sum + fields.length, 0) +
     Object.values(removedFields).reduce((sum, fields) => sum + fields.length, 0) +
     (sectionId === 'access'
@@ -299,12 +293,9 @@ export default function InstallationSectionEditor({
     (commonDirty ? 1 : 0);
   const hasDeletions =
     removedRows.length +
-      removedNotes.length +
       Object.values(removedFields).reduce((sum, fields) => sum + fields.length, 0) >
     0;
   useInstallationDirty(count > 0 || commonDirty);
-  const noteChanged = (note: NonNullable<InstallationDetails['accessNotes']>[number]) =>
-    Object.hasOwn(notes, note.id) && (note.masked || notes[note.id] !== note.content);
   const titleChanged = (row: (typeof section.rows)[number]) =>
     !row.origin &&
     !row.serverId &&
@@ -330,11 +321,6 @@ export default function InstallationSectionEditor({
         .includes(search)) &&
     installationEditorGroupVisible(sectionId, field.key, groupId || '', search) &&
     (!changedOnly || installationFieldChanged(field, values) || active === field.id);
-  const showNotes =
-    sectionId === 'access' &&
-    (Boolean(search)
-      ? t('참고사항').toLocaleLowerCase().includes(search) || 'note'.includes(search)
-      : groupId === 'notes');
   const groupCount = (group: string) =>
     section.rows
       .flatMap((row) => row.fields)
@@ -342,10 +328,7 @@ export default function InstallationSectionEditor({
         (field) =>
           installationFieldGroup(sectionId, field.key).id === group &&
           installationFieldChanged(field, values),
-      ).length +
-    (group === 'notes' && sectionId === 'access'
-      ? (details.accessNotes ?? []).filter(noteChanged).length
-      : 0);
+      ).length;
   useEffect(() => {
     if (expanded) focusInstallationField(document.getElementById(id + '-field-' + expanded));
   }, [expanded, id]);
@@ -360,13 +343,10 @@ export default function InstallationSectionEditor({
     const next = commitLatestInstallationDraft(latestDraft, change, previous, latest);
     setValues(next.values);
     setTitles(next.titles);
-    setNotes(next.notes);
     setAddedRows(next.addedRows ?? []);
     setRemovedRows(next.removedRows ?? []);
     setAddedFields(next.addedFields ?? {});
     setRemovedFields(next.removedFields ?? {});
-    setAddedNotes(next.addedNotes ?? []);
-    setRemovedNotes(next.removedNotes ?? []);
   };
   const addRecord = () => {
     const serial = localId('new-row');
@@ -402,13 +382,6 @@ export default function InstallationSectionEditor({
       [rowId]: [...(current[rowId] ?? []), { localId: serial, key, label: '', value: '' }],
     }));
     setReview(false);
-  };
-  const addNote = () => {
-    setAddedNotes((current) => [...current, { localId: localId('new-note'), content: '' }]);
-    setSelectedGroup('notes');
-    setReview(false);
-    setChangedOnly(false);
-    setQuery('');
   };
   const updateAddedRow = (
     localId: string,
@@ -860,12 +833,6 @@ export default function InstallationSectionEditor({
               {t('기록 추가')}
             </button>
           )}
-          {sectionId === 'access' && (
-            <button type="button" className="button" disabled={busy || policyPending} onClick={addNote}>
-              <Plus size={14} />
-              {t('참고사항 추가')}
-            </button>
-          )}
         </div>
         {sectionId === 'access' && serverNameTarget && (
           <div className="installation-access-server-name" data-access-server-name>
@@ -1022,54 +989,16 @@ export default function InstallationSectionEditor({
                     </p>
                   </section>
                 ))}
-                {sectionId === 'access' && (
+                {sectionId === 'access' && commonDirty && (
                   <dl>
-                    {commonDirty && (
-                      <div className="installation-change-row">
-                        <dt>{t('설치 공통 비고')}</dt>
-                        <dd>
-                          <span>{t('변경 예정')}</span>
-                          {' · '}
-                          {t('설치 전역 · 모든 서버에 공통')}
-                        </dd>
-                      </div>
-                    )}
-                    {installationNoteReviewEntries(details.accessNotes ?? [], removedNotes).map(
-                      ({ note, index }) => (
-                        <div key={`remove-${note.id}`} className="installation-change-row">
-                          <dt>{t('참고사항 {0}', [index + 1])}</dt>
-                          <dd>{t('삭제 예정')}</dd>
-                        </div>
-                      ),
-                    )}
-                    {(details.accessNotes ?? []).filter(noteChanged).map((note, index) => (
-                      <div key={`edit-${note.id}`}>
-                        {diff(
-                          t('참고사항 {0}', [index + 1]),
-                          note.content,
-                          notes[note.id],
-                          note.masked || policyPending,
-                          () => setNotes((current) => omit(current, [note.id])),
-                        )}
-                      </div>
-                    ))}
-                    {addedNotes.map((note, index) => (
-                      <div key={note.localId} className="installation-change-row">
-                        <dt>{t('새 참고사항 {0}', [index + 1])}</dt>
-                        <dd>
-                          {installationReviewValue(note.content, protectionEnabled) === undefined ? (
-                            <>
-                              <LockKeyhole size={13} aria-hidden="true" />
-                              {t('보호된 값 변경')}
-                            </>
-                          ) : (
-                            installationReviewValue(note.content, false) || t('미등록')
-                          )}
-                          {' · '}
-                          {t('추가 예정')}
-                        </dd>
-                      </div>
-                    ))}
+                    <div className="installation-change-row">
+                      <dt>{t('접근 비고')}</dt>
+                      <dd>
+                        <span>{t('변경 예정')}</span>
+                        {' · '}
+                        {t('설치 전역 · 모든 서버에 공통')}
+                      </dd>
+                    </div>
                   </dl>
                 )}
                 {!count && <p className="installation-editor-empty">{t('변경된 내용이 없습니다.')}</p>}
@@ -1261,183 +1190,15 @@ export default function InstallationSectionEditor({
                     </button>
                   </fieldset>
                 ))}
-                {showNotes &&
-                  (details.accessNotes ?? [])
-                    .filter(
-                      (note) =>
-                        !changedOnly ||
-                        noteChanged(note) ||
-                        removedNotes.includes(note.id) ||
-                        active === note.id,
-                    )
-                    .map((note, index) => (
-                      <fieldset
-                        key={note.id}
-                        className="installation-section-edit-row"
-                        disabled={busy || policyPending}
-                        onFocusCapture={() => setActive(note.id)}
-                        onBlurCapture={(event) => {
-                          if (!event.currentTarget.contains(event.relatedTarget)) setActive('');
-                        }}
-                      >
-                        <legend>
-                          {t('참고사항 {0}', [index + 1])}
-                          {removedNotes.includes(note.id) ? ` · ${t('삭제 예정')}` : ''}
-                        </legend>
-                        <div
-                          className={
-                            'installation-inline-edit-field is-wide' +
-                            (noteChanged(note) ? ' is-changed' : '') +
-                            (removedNotes.includes(note.id) ? ' is-removed' : '')
-                          }
-                        >
-                          <label htmlFor={id + '-field-' + note.id}>{t('참고사항')}</label>
-                          {note.masked ? (
-                            <InstallationProtectedInput
-                              id={id + '-field-' + note.id}
-                              fieldKey="note"
-                              value={policyPending ? '' : (notes[note.id] ?? '')}
-                              touched={Object.hasOwn(notes, note.id)}
-                              allowClear={false}
-                              expanded={expanded === note.id}
-                              disabled={busy || policyPending || removedNotes.includes(note.id)}
-                              onChange={(next) => setNotes((current) => ({ ...current, [note.id]: next }))}
-                              onReset={() => setNotes((current) => omit(current, [note.id]))}
-                            />
-                          ) : (
-                            <InstallationFieldInput
-                              id={id + '-field-' + note.id}
-                              fieldKey="note"
-                              rows={expanded === note.id ? 16 : 5}
-                              value={policyPending ? '' : (notes[note.id] ?? note.content)}
-                              expanded={expanded === note.id}
-                              disabled={busy || policyPending || removedNotes.includes(note.id)}
-                              onChange={(next) => setNotes((current) => ({ ...current, [note.id]: next }))}
-                            />
-                          )}
-                          <div className="installation-field-tools">
-                            <button
-                              type="button"
-                              className="text-button"
-                              aria-expanded={expanded === note.id}
-                              onClick={() => setExpanded(expanded === note.id ? '' : note.id)}
-                            >
-                              {t(expanded === note.id ? '기본 크기로' : '크게 편집')}
-                            </button>
-                            {Object.hasOwn(notes, note.id) && (
-                              <button
-                                type="button"
-                                className="text-button"
-                                onClick={() => setNotes((current) => omit(current, [note.id]))}
-                              >
-                                {t('입력 취소')}
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              className="text-button danger-text"
-                              onClick={() => {
-                                setRemovedNotes((current) =>
-                                  removedNotes.includes(note.id)
-                                    ? current.filter((id) => id !== note.id)
-                                    : [...current, note.id],
-                                );
-                                setDeleteConfirmed(false);
-                                setReview(false);
-                              }}
-                            >
-                              {removedNotes.includes(note.id) ? (
-                                <RotateCcw size={13} />
-                              ) : (
-                                <Trash2 size={13} />
-                              )}
-                              {t(removedNotes.includes(note.id) ? '참고사항 복원' : '참고사항 삭제')}
-                            </button>
-                          </div>
-                        </div>
-                      </fieldset>
-                    ))}
-                {addedNotes.map((note, index) => (
-                  <fieldset
-                    key={note.localId}
-                    className="installation-section-edit-row"
-                    disabled={busy || policyPending}
-                  >
-                    <legend>{t('새 참고사항 {0}', [index + 1])}</legend>
-                    <div className="installation-inline-edit-field is-wide is-changed">
-                      <label htmlFor={`${id}-${note.localId}`}>{t('참고사항')}</label>
-                      {protectionEnabled ? (
-                        <InstallationProtectedInput
-                          id={`${id}-${note.localId}`}
-                          fieldKey="note"
-                          value={note.content}
-                          touched={Boolean(note.content)}
-                          rows={5}
-                          maxLength={16384}
-                          allowClear={false}
-                          disabled={busy || policyPending}
-                          onChange={(value) =>
-                            setAddedNotes((current) =>
-                              current.map((item) =>
-                                item.localId === note.localId ? { ...item, content: value } : item,
-                              ),
-                            )
-                          }
-                          onReset={() =>
-                            setAddedNotes((current) =>
-                              current.map((item) =>
-                                item.localId === note.localId ? { ...item, content: '' } : item,
-                              ),
-                            )
-                          }
-                        />
-                      ) : (
-                        <textarea
-                          id={`${id}-${note.localId}`}
-                          rows={5}
-                          maxLength={16384}
-                          value={note.content}
-                          onChange={(event) =>
-                            setAddedNotes((current) =>
-                              current.map((item) =>
-                                item.localId === note.localId
-                                  ? { ...item, content: event.target.value }
-                                  : item,
-                              ),
-                            )
-                          }
-                        />
-                      )}
-                      <div className="installation-field-tools">
-                        <span>{note.content.length.toLocaleString()} / 16,384</span>
-                        <button
-                          type="button"
-                          className="text-button danger-text"
-                          disabled={busy}
-                          onClick={() =>
-                            setAddedNotes((current) =>
-                              current.filter((item) => item.localId !== note.localId),
-                            )
-                          }
-                        >
-                          <Trash2 size={13} />
-                          {t('참고사항 삭제')}
-                        </button>
-                      </div>
-                    </div>
-                  </fieldset>
-                ))}
                 {!section.rows.some(
                   (row) =>
                     row.fields.some(matches) ||
                     (titleChanged(row) && changedOnly && !search) ||
                     (displayNameChanged(row) && changedOnly && !search),
                 ) &&
-                  !addedRows.length &&
-                  !addedNotes.length &&
-                  !(
-                    showNotes && (details.accessNotes ?? []).some((note) => !changedOnly || noteChanged(note))
-                  ) && <p className="installation-editor-empty">{t('일치하는 항목이 없습니다.')}</p>}
+                  !addedRows.length && (
+                    <p className="installation-editor-empty">{t('일치하는 항목이 없습니다.')}</p>
+                  )}
               </>
             )}
           </div>

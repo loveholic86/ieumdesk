@@ -46,6 +46,7 @@ import {
   installationBasicKeys,
 } from './installation-editor';
 import { refreshedInstallationSelection } from './installation-client';
+import { sortInstallations } from './installation-sort';
 import { ArchiveButton } from './ArchivedPage';
 import { originalSalesWeights, configuredSalesWeights, salesWeight, weightedRevenue } from './sales-policy';
 import './modules.css';
@@ -371,13 +372,16 @@ export default function Modules({
       .then((items) => {
         if (!controller.signal.aborted && currentPolicy.current === requestedPolicy) {
           setLoadedPolicy(requestedPolicy);
-          setRows(
-            items.sort((a, b) =>
-              (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || ''),
-            ),
-          );
+          // Installations sort by system-code year; every other module keeps the updated-first order.
+          const ordered =
+            kind === 'installations'
+              ? sortInstallations(items)
+              : items.sort((a, b) =>
+                  (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || ''),
+                );
+          setRows(ordered);
           if (kind === 'installations')
-            setSelected((current) => refreshedInstallationSelection(current, items));
+            setSelected((current) => refreshedInstallationSelection(current, ordered));
         }
       })
       .catch((e) => {
