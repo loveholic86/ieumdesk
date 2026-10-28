@@ -564,6 +564,112 @@
   width: 12px;
   height: 12px;
 }
+.installation-access-common-hint {
+  margin-left: auto;
+  color: var(--theme-muted, #6d89ac);
+  font-size: 12px;
+}
+/* Server-level name, shown once above the part rows it applies to. */
+.installation-access-server-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--theme-border, #d5e0ee);
+  border-radius: 10px;
+  background: var(--theme-surface, #fff);
+}
+.installation-access-server-name label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 420px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--theme-text, #24344a);
+}
+.installation-access-server-name input {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 520px;
+  height: 38px;
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.installation-access-server-name-scope {
+  margin: 0;
+  color: var(--theme-muted, #6d89ac);
+  font-size: 12px;
+}
+.installation-access-common-inline {
+  margin-top: 18px;
+  border: 1px solid var(--theme-border, #d5e0ee);
+  border-radius: 10px;
+  background: var(--theme-surface-soft, #f7faff);
+}
+.installation-access-common-inline > summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--theme-text, #24344a);
+}
+.installation-access-common-scope {
+  color: var(--theme-muted, #6d89ac);
+  font-size: 12px;
+  font-weight: 500;
+}
+.installation-access-common-inline-body {
+  display: grid;
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+.installation-access-common-note {
+  margin: 0;
+  color: var(--theme-muted, #6d89ac);
+  font-size: 12px;
+  line-height: 18px;
+}
+.installation-access-common-inline-body .installation-inline-edit-field {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+/* Beats `.installation-inline-editor textarea` (min-height 88px, max-height 420px). */
+.installation-inline-editor .installation-access-common-textarea,
+.installation-access-common-inline-body .installation-access-common-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 260px;
+  max-height: none;
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 23px;
+  resize: vertical;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.installation-access-common-inline-body .installation-inline-edit-value-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.installation-access-common-inline-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--theme-muted, #6d89ac);
+}
 .installation-access-common-form {
   display: grid;
   gap: 12px;

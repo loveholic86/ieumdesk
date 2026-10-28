@@ -937,6 +937,7 @@ export const english: Record<string, string> = {
   '서버 설정 비고': 'Server configuration notes',
   '접근 유형': 'Access type',
   '도메인 URL': 'Domain URL',
+  '외부 PORT': 'External port',
   'SSH 포트': 'SSH port',
   '외부 IP': 'External IP',
   '내부 IP': 'Internal IP',
@@ -1012,6 +1013,8 @@ export const english: Record<string, string> = {
   '이 기록의 항목을 수정하세요. 긴 내용도 이 영역에서 크게 펼쳐 편집할 수 있습니다.':
     'Edit the fields in this record. Expand the editor for longer content.',
   구분명: 'Label',
+  표시명: 'Display name',
+  '이 서버의 모든 항목에 함께 적용됩니다.': 'Applies to every part of this server.',
   '예: 운영 1호기, QA 도메인': 'e.g. Prod unit 1, QA domain',
   '수정 항목 검색': 'Search fields',
   '항목 이름·키로 찾기': 'Find by field name or key',
@@ -1514,6 +1517,8 @@ export const english: Record<string, string> = {
     'Basic field names and structure cannot be changed. Edit the field values instead.',
   '구분명을 제어문자 없이 120자 이내로 입력해 주세요.':
     'Use a label of up to 120 characters without control characters.',
+  '표시명은 120자 이내로 입력해 주세요.': 'Use a display name of up to 120 characters.',
+  '표시명에 제어문자를 쓸 수 없습니다.': 'A display name cannot contain control characters.',
   '한 기록에는 항목을 1~80개 등록할 수 있습니다.': 'A record must contain 1–80 fields.',
   '새 항목의 이름과 키를 확인해 주세요. 이름은 120자, 키는 영문자로 시작하는 영문·숫자·밑줄·점·하이픈 80자 이내입니다.':
     'Check new field names and keys. Names allow 120 characters. Keys allow 80 letters, numbers, underscores, dots or hyphens and must start with a letter.',
@@ -1663,6 +1668,12 @@ export const english: Record<string, string> = {
   '설치 공통': 'Shared for this installation',
   '공통 정보 수정': 'Edit shared information',
   '공통 정보 저장': 'Save shared information',
+  '정보 수정에서 편집합니다.': 'Edit this in Edit information.',
+  '설치 공통 비고': 'Installation-wide remark',
+  '변경 예정': 'Pending change',
+  '설치 전역 · 모든 서버에 공통': 'Installation-wide · shared by every server',
+  '이 비고는 서버 한 대가 아니라 설치 전체에 적용됩니다. 아래 «변경사항 저장»으로 서버 정보와 함께 저장됩니다.':
+    'This remark applies to the whole installation, not one server. It is saved together with server information by "Save changes" below.',
   '설치 공통 정보를 저장했습니다.': 'Saved the shared installation information.',
   '등록된 서버가 없습니다.': 'No servers yet.',
   'VPN 값이 서로 달라 설치 공통으로 합치지 않았습니다. 저장된 값은 그대로 두었습니다.':

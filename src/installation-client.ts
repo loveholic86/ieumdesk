@@ -2,7 +2,7 @@ import {
   accessCommonFieldKeys,
   accessCommonRowId,
   accessEtcKey,
-  accessVpnKeys,
+  accessServerUnits,
   type InstallationDetails,
   type InstallationDetailField,
   type InstallationDetailRow,
@@ -34,6 +34,10 @@ export function installationComparableValue(
 export type InstallationSectionDraft = {
   values: Record<string, string>;
   titles: Record<string, string>;
+  /** Server display names, keyed by the row id the editor shows. Never stored as a title. */
+  displayNames?: Record<string, string>;
+  /** Installation-wide access remark. Saved last, after every server row operation. */
+  accessCommon?: Record<string, string>;
   notes: Record<string, string>;
   addedRows?: Array<{
     localId: string;
@@ -65,7 +69,12 @@ export type InstallationSectionOperation =
   | { kind: 'row-delete'; id: string }
   | { kind: 'note-create'; localId: string; content: string }
   | { kind: 'note-update'; id: string; content: string }
-  | { kind: 'note-delete'; id: string };
+  | { kind: 'note-delete'; id: string }
+  /**
+   * Installation-wide remark. Carries the draft only: the target row and the values are derived
+   * from the previous save response, so a row deleted earlier in the same plan cannot go stale.
+   */
+  | { kind: 'access-common'; draft: Record<string, string> };
 
 const validLongText = (value: string) =>
   value.trim().length > 0 &&
@@ -88,6 +97,7 @@ export function prepareInstallationSectionOperations(
     const additions = draft.addedFields?.[row.id] ?? [];
     const removed = draft.removedFields?.[row.id] ?? [];
     const draftedTitle = draft.titles[row.id];
+    const draftedName = draft.displayNames?.[row.id];
     if (
       row.managed === 'metadata' &&
       (removedRows.has(row.id) ||
@@ -125,9 +135,10 @@ export function prepareInstallationSectionOperations(
       });
       continue;
     }
-    const payload = prepareInstallationRow(row, title, values, removed, additions);
+    const payload = prepareInstallationRow(row, title, values, removed, additions, draftedName);
     const changed = Boolean(
       (payload.title !== undefined && payload.title !== row.title) ||
+      payload.displayName !== undefined ||
       (payload.values && Object.keys(payload.values).length) ||
       payload.removeFields?.length ||
       payload.addFields?.length,
@@ -142,12 +153,24 @@ export function prepareInstallationSectionOperations(
       });
   }
   for (const row of draft.addedRows ?? []) {
-    const body = prepareInstallationRow(undefined, row.title, {}, [], row.fields);
+    const body = prepareInstallationRow(
+      undefined,
+      row.title,
+      {},
+      [],
+      row.fields,
+      draft.displayNames?.[row.localId],
+    );
     operations.push({
       kind: 'row-create',
       localId: row.localId,
       fieldLocalIds: row.fields.map((field) => field.localId ?? ''),
-      body: { sectionId, title: body.title!, fields: body.fields! },
+      body: {
+        sectionId,
+        title: body.title!,
+        fields: body.fields!,
+        ...(body.displayName ? { displayName: body.displayName } : {}),
+      },
     });
   }
   if (sectionId === 'access') {
@@ -245,12 +268,6 @@ function accessFilled(field: InstallationDetailField) {
   return field.masked || field.value.trim().length > 0;
 }
 
-function sameAccessValue(left: InstallationDetailField, right: InstallationDetailField) {
-  if (left.masked && right.masked) return true;
-  if (left.masked || right.masked) return false;
-  return left.value === right.value;
-}
-
 function genericAccessTitle(title: string) {
   return genericAccessTitles.has(title) || /^이관 원본\s+(?:address|vpn|access|접근 정보)$/i.test(title);
 }
@@ -264,7 +281,16 @@ export function accessServerTitle(rows: readonly Pick<InstallationDetailRow, 'ti
   return '';
 }
 
-/** Address and access fields for one server card. VPN and access remarks stay installation-wide. */
+/** Server display name set by the user. Kept apart from stored titles. */
+export function accessServerDisplayName(rows: readonly Pick<InstallationDetailRow, 'displayName'>[]) {
+  for (const row of rows) {
+    const name = row.displayName?.trim();
+    if (name) return name;
+  }
+  return '';
+}
+
+/** Address, VPN, and access fields for one server card. Only the access remark is installation-wide. */
 export function accessServerFields(rows: readonly InstallationDetailRow[]) {
   const seen = new Set<string>();
   const fields: InstallationDetailField[] = [];
@@ -277,71 +303,39 @@ export function accessServerFields(rows: readonly InstallationDetailRow[]) {
   return fields;
 }
 
-/** One server per list row. An origin group is one server. Rows without an origin are never merged. */
-export function accessRecordItems(rows: readonly InstallationDetailRow[]) {
-  const visibleRows = visibleAccessRows(rows);
-  const items: { id: string; rows: InstallationDetailRow[] }[] = [];
-  const grouped = new Map<string, { id: string; rows: InstallationDetailRow[] }>();
-  for (const row of visibleRows) {
-    if (row.id === accessCommonRowId || row.origin?.part === 'vpn') continue;
-    if (!row.fields.some((field) => !accessCommonFieldKeys.has(field.key))) continue;
-    const group = row.origin?.group;
-    if (!group) {
-      items.push({ id: row.id, rows: [row] });
-      continue;
-    }
-    const existing = grouped.get(group);
-    if (existing) {
-      existing.rows.push(row);
-      continue;
-    }
-    const item = { id: group, rows: [row] };
-    grouped.set(group, item);
-    items.push(item);
+/** First filled value of a column key across one server's rows. An empty field never wins. */
+export function accessColumnField(rows: readonly InstallationDetailRow[], key: string) {
+  for (const row of rows) {
+    const field = row.fields.find((item) => item.key === key);
+    if (field && accessFilled(field)) return field;
   }
-  return items.map((item, index) => ({ ...item, index: index + 1 }));
+  return undefined;
 }
 
-export type AccessHeldField = { id: string; title: string; keys: string[] };
+/** Server display name, then a stored title that names this server, then the caller's fallback. */
+export function accessRecordLabel(
+  rows: readonly Pick<InstallationDetailRow, 'title' | 'displayName'>[],
+  fallback: string,
+) {
+  return accessServerDisplayName(rows) || accessServerTitle(rows) || fallback;
+}
 
-/** Read-only installation VPN and access remarks. Does not rewrite stored rows. */
+export type AccessRecordItem = { id: string; rows: InstallationDetailRow[]; index: number };
+
+/** One server per list row. A server link is one server; migration parts merge only as one run. */
+export function accessRecordItems(rows: readonly InstallationDetailRow[]): AccessRecordItem[] {
+  return accessServerUnits(visibleAccessRows(rows));
+}
+
+/** Read-only installation access remark. VPN stays on its server. Does not rewrite stored rows. */
 export function accessInstallationCommon(rows: readonly InstallationDetailRow[]) {
   const visibleRows = visibleAccessRows(rows);
   const slot = visibleRows.find((row) => row.id === accessCommonRowId);
-  const vpn: InstallationDetailField[] = [];
-  const held = new Map<string, AccessHeldField>();
-  const hold = (row: InstallationDetailRow, key: string) => {
-    const current = held.get(row.id) ?? {
-      id: row.id,
-      title: row.title?.trim() || '접근 정보',
-      keys: [] as string[],
-    };
-    if (!current.keys.includes(key)) current.keys.push(key);
-    held.set(row.id, current);
-  };
-  for (const key of accessVpnKeys) {
-    const explicit = slot?.fields.find((field) => field.key === key);
-    if (explicit) {
-      if (accessFilled(explicit)) vpn.push(explicit);
-      continue;
-    }
-    const found: { row: InstallationDetailRow; field: InstallationDetailField }[] = [];
-    for (const row of visibleRows) {
-      if (row.id === accessCommonRowId) continue;
-      const field = row.fields.find((item) => item.key === key);
-      if (field && accessFilled(field)) found.push({ row, field });
-    }
-    if (!found.length) continue;
-    const [first] = found;
-    if (found.some((item) => !sameAccessValue(item.field, first.field))) {
-      for (const item of found) hold(item.row, key);
-      continue;
-    }
-    vpn.push(first.field);
-  }
   const explicitEtc = slot?.fields.find((field) => field.key === accessEtcKey);
   let etc: InstallationDetailField | undefined;
-  if (!explicitEtc) {
+  if (explicitEtc) {
+    if (accessFilled(explicitEtc)) etc = explicitEtc;
+  } else {
     for (const row of visibleRows) {
       if (row.id === accessCommonRowId) continue;
       const field = row.fields.find((item) => item.key === accessEtcKey);
@@ -350,8 +344,25 @@ export function accessInstallationCommon(rows: readonly InstallationDetailRow[])
         break;
       }
     }
-  } else if (accessFilled(explicitEtc)) etc = explicitEtc;
-  return { vpn, etc, held: [...held.values()] };
+  }
+  return { etc };
+}
+
+/**
+ * Where a shared remark edit belongs. The explicit slot wins; otherwise the value already stored
+ * on a server row is updated in place, so a legacy install is not given a second shared row.
+ */
+export function accessCommonSaveTarget(
+  rows: readonly InstallationDetailRow[],
+): { kind: 'slot' | 'legacyRow'; rowId: string } | { kind: 'create' } {
+  const visibleRows = visibleAccessRows(rows);
+  if (visibleRows.some((row) => row.id === accessCommonRowId))
+    return { kind: 'slot', rowId: accessCommonRowId };
+  for (const row of visibleRows) {
+    const field = row.fields.find((item) => item.key === accessEtcKey);
+    if (field && accessFilled(field)) return { kind: 'legacyRow', rowId: row.id };
+  }
+  return { kind: 'create' };
 }
 
 /** Keep the selected access rows, plus rows created after editing started. One record, or any other tab, stays whole. */
@@ -383,12 +394,27 @@ export function installationDetailsForAccessEdit<T extends InstallationDetails>(
   const section = details.sections.find((item) => item.id === 'access');
   if (!section) return details;
   const items = accessRecordItems(section.rows);
-  const selected = items.find((item) => item.id === selectedId) ?? items[0];
-  const scoped = installationAccessEditingDetails(
+  const selected =
+    items.find((item) => item.id === selectedId) ??
+    items.find((item) => item.rows.some((row) => row.id === selectedId)) ??
+    items[0];
+  return installationAccessEditScope(
     details,
     selected?.rows.map((row) => row.id) ?? [],
     section.rows.map((row) => row.id),
   );
+}
+
+/**
+ * Rows of the selected server, with the installation-wide fields stripped. This is the server
+ * editing scope only: the shared remark is seeded and saved from the unscoped details.
+ */
+export function installationAccessEditScope<T extends InstallationDetails>(
+  details: T,
+  rowIds: readonly string[] | undefined,
+  baselineIds: readonly string[] | undefined,
+): T {
+  const scoped = installationAccessEditingDetails(details, rowIds, baselineIds);
   return {
     ...scoped,
     sections: scoped.sections.map((item) =>
@@ -559,6 +585,7 @@ export function installationFieldMasked(
 export type NewInstallationField = { key: string; label: string; value: string };
 export type RowDraftPayload = {
   title?: string;
+  displayName?: string;
   values?: Record<string, string>;
   removeFields?: string[];
   addFields?: NewInstallationField[];
@@ -582,8 +609,14 @@ export function prepareInstallationRow(
   values: Record<string, string>,
   removed: string[],
   added: NewInstallationField[],
+  displayName?: string,
 ): RowDraftPayload {
   const normalizedTitle = title.trim();
+  const normalizedDisplayName = displayName?.trim();
+  if (normalizedDisplayName && normalizedDisplayName.length > 120)
+    throw new Error('표시명은 120자 이내로 입력해 주세요.');
+  if (normalizedDisplayName && /[\u0000-\u001f\u007f]/.test(normalizedDisplayName))
+    throw new Error('표시명에 제어문자를 쓸 수 없습니다.');
   if (
     row?.managed === 'metadata' &&
     (normalizedTitle !== row.title || removed.length > 0 || added.length > 0)
@@ -632,10 +665,15 @@ export function prepareInstallationRow(
     return { values: changed };
   }
   const patch = { values: changed, removeFields: [...new Set(removed)], addFields: fields };
-  // Origin titles stay as stored. The editor shows a fixed label and must not PATCH title.
-  return row?.origin
-    ? patch
+  const nameChange =
+    normalizedDisplayName !== undefined && normalizedDisplayName !== (row?.displayName ?? '')
+      ? { displayName: normalizedDisplayName }
+      : {};
+  // The stored title keeps its part meaning. A user-facing name travels as displayName, so
+  // renaming a server never breaks the title-based grouping of a migrated server unit.
+  return row?.origin || row?.serverId
+    ? { ...nameChange, ...patch }
     : row
-      ? { title: normalizedTitle, ...patch }
-      : { title: normalizedTitle, fields };
+      ? { title: normalizedTitle, ...nameChange, ...patch }
+      : { title: normalizedTitle, ...nameChange, fields };
 }

@@ -82,6 +82,13 @@ export function reconcileCommittedInstallationDraft(
       }
       if (operation.body.title !== undefined && next.titles[operation.id] === operation.body.title)
         delete next.titles[operation.id];
+      if (
+        operation.body.displayName !== undefined &&
+        next.displayNames?.[operation.id] === operation.body.displayName
+      ) {
+        delete next.displayNames[operation.id];
+        if (!Object.keys(next.displayNames).length) delete next.displayNames;
+      }
       if (operation.body.removeFields?.length) {
         next.removedFields![operation.id] = (next.removedFields![operation.id] ?? []).filter(
           (key) => !operation.body.removeFields!.includes(key),
@@ -132,6 +139,13 @@ export function reconcileCommittedInstallationDraft(
       return next;
     }
     if (pending.title !== saved.title) next.titles[saved.id] = pending.title;
+    const pendingName = next.displayNames?.[operation.localId];
+    if (pendingName && pendingName !== (saved.displayName ?? ''))
+      next.displayNames = { ...next.displayNames, [saved.id]: pendingName };
+    if (next.displayNames && Object.hasOwn(next.displayNames, operation.localId)) {
+      const { [operation.localId]: _moved, ...rest } = next.displayNames;
+      next.displayNames = Object.keys(rest).length ? rest : undefined;
+    }
     const pendingFields = new Map(pending.fields.map((field) => [field.localId ?? '', field]));
     const submittedByLocal = new Map<string, NewInstallationField>();
     operation.body.fields.forEach((field, index) =>
@@ -184,6 +198,10 @@ export function reconcileCommittedInstallationDraft(
     next.removedRows = next.removedRows!.filter((id) => id !== operation.id);
     for (const field of beforeRow?.fields ?? []) delete next.values[field.id];
     delete next.titles[operation.id];
+    if (next.displayNames && Object.hasOwn(next.displayNames, operation.id)) {
+      const { [operation.id]: _removed, ...rest } = next.displayNames;
+      next.displayNames = Object.keys(rest).length ? rest : undefined;
+    }
     next.addedFields = withoutRecord(next.addedFields!, operation.id);
     next.removedFields = withoutRecord(next.removedFields!, operation.id);
     return next;

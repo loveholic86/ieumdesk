@@ -8,6 +8,7 @@ import {
   installationRowTitle,
 } from './installation-labels';
 import {
+  accessInstallationCommon,
   visibleInstallationSection,
   type InstallationSectionOperation,
   type InstallationSectionDraft,
@@ -26,8 +27,10 @@ import {
   installationInputDefinition,
   installationSectionChangeCount,
 } from './installation-editor';
+import { accessCommonRowId, accessEtcKey, accessPartLabels, accessRowPart } from './installation-types';
 import type {
   InstallationDetailField,
+  InstallationDetailRow,
   InstallationDetails,
   InstallationSectionId,
 } from './installation-types';
@@ -79,13 +82,111 @@ type Props = {
     ) => void,
   ) => Promise<{ uncertain?: InstallationSectionOperation; confirmedDetails?: InstallationDetails } | void>;
   onRefresh: () => Promise<boolean>;
+  /** Unscoped details, so the installation-wide remark seeds from where it is actually stored. */
+  accessCommonDetails?: InstallationDetails;
   recordTitle?: string;
 };
 const omit = (values: Record<string, string>, keys: string[]) =>
   Object.fromEntries(Object.entries(values).filter(([key]) => !keys.includes(key)));
 
+const commonEditorKeys = [accessEtcKey] as const;
+
+/** Shared remark value as shown to the user. A masked value is never edited blindly. */
+export function accessCommonDraftValue(
+  rows: readonly InstallationDetailRow[],
+  policyPending: boolean,
+): Record<string, string> {
+  const slot = rows.find((row) => row.id === accessCommonRowId);
+  const common = accessInstallationCommon(rows);
+  return Object.fromEntries(
+    commonEditorKeys.map((key) => {
+      const explicit = slot?.fields.find((field) => field.key === key);
+      const shown = explicit ?? common.etc;
+      const masked = Boolean(shown?.masked || (policyPending && shown?.secret));
+      return [key, !shown || masked ? '' : shown.value];
+    }),
+  );
+}
+
+/**
+ * Installation-wide access remark. Collapsed by default and edited here, but saved by the one
+ * «변경사항 저장» button as the last step of the plan, after every server row operation.
+ */
+function InstallationAccessCommonSection({
+  rows,
+  draft,
+  busy,
+  policyPending,
+  onChange,
+}: {
+  rows: readonly InstallationDetailRow[];
+  draft: Record<string, string>;
+  busy: boolean;
+  policyPending: boolean;
+  onChange: (key: string, value: string) => void;
+}) {
+  useLocale();
+  const slot = rows.find((row) => row.id === accessCommonRowId);
+  const common = accessInstallationCommon(rows);
+  const commonId = useId();
+  const [expanded, setExpanded] = useState(false);
+  const masked = (key: string) => {
+    const field = slot?.fields.find((item) => item.key === key) ?? common.etc;
+    return Boolean(field?.masked || (policyPending && field?.secret));
+  };
+  return (
+    <details className="installation-access-common-inline" data-installation-common-section>
+      <summary>
+        <span>{t('설치 공통 비고')}</span>
+        <span className="installation-access-common-scope">{t('설치 전역 · 모든 서버에 공통')}</span>
+      </summary>
+      <div className="installation-access-common-inline-body">
+        <p className="installation-access-common-note">
+          {t(
+            '이 비고는 서버 한 대가 아니라 설치 전체에 적용됩니다. 아래 «변경사항 저장»으로 서버 정보와 함께 저장됩니다.',
+          )}
+        </p>
+        {commonEditorKeys.map((key) => (
+          <div key={key} className="installation-inline-edit-field">
+            <div className="installation-inline-edit-field-heading">
+              <label htmlFor={`${commonId}-common-${key}`}>{t('설치 공통 비고')}</label>
+              <span className="installation-inline-edit-value-meta">
+                {t('{0} / 16,384자{1}', [(draft[key] ?? '').length.toLocaleString(), ''])}
+              </span>
+            </div>
+            <textarea
+              id={`${commonId}-common-${key}`}
+              className="installation-access-common-textarea"
+              value={draft[key] ?? ''}
+              maxLength={16384}
+              rows={expanded ? 16 : 6}
+              disabled={busy || policyPending}
+              placeholder={masked(key) ? t('보호된 값') : undefined}
+              onChange={(event) => onChange(key, event.target.value)}
+            />
+            <div className="installation-inline-edit-value-meta">
+              {!expanded && (
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={busy || policyPending}
+                  onClick={() => setExpanded(true)}
+                >
+                  <Maximize2 size={14} />
+                  {t('크게 편집')}
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 export default function InstallationSectionEditor({
   details,
+  accessCommonDetails,
   sectionId,
   busy,
   policyPending,
@@ -114,6 +215,18 @@ export default function InstallationSectionEditor({
   const localId = (prefix: string) => `${prefix}-${Date.now()}-${++localSequence.current}`;
   const [values, setValues] = useState<Record<string, string>>({});
   const [titles, setTitles] = useState<Record<string, string>>({});
+  const [displayNames, setDisplayNames] = useState<Record<string, string>>({});
+  const commonRows =
+    (accessCommonDetails ?? details).sections.find((section) => section.id === 'access')?.rows ?? [];
+  const accessCommonSeed =
+    sectionId === 'access'
+      ? accessCommonDraftValue(commonRows, policyPending)
+      : ({} as Record<string, string>);
+  const [commonDraft, setAccessCommon] = useState(accessCommonSeed);
+  const accessCommon = useRef(accessCommonSeed);
+  const commonDirty =
+    sectionId === 'access' &&
+    commonEditorKeys.some((key) => (commonDraft[key] ?? '') !== (accessCommon.current[key] ?? ''));
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [addedRows, setAddedRows] = useState<NonNullable<InstallationSectionDraft['addedRows']>>([]);
   const [removedRows, setRemovedRows] = useState<string[]>([]);
@@ -155,6 +268,8 @@ export default function InstallationSectionEditor({
   const draft: InstallationSectionDraft = {
     values,
     titles,
+    displayNames,
+    ...(sectionId === 'access' ? { accessCommon: commonDraft } : {}),
     notes,
     addedRows,
     removedRows,
@@ -174,17 +289,39 @@ export default function InstallationSectionEditor({
     addedNotes.length +
     removedNotes.length +
     Object.values(addedFields).reduce((sum, fields) => sum + fields.length, 0) +
-    Object.values(removedFields).reduce((sum, fields) => sum + fields.length, 0);
+    Object.values(removedFields).reduce((sum, fields) => sum + fields.length, 0) +
+    (sectionId === 'access'
+      ? section.rows.filter(
+          (row) =>
+            Object.hasOwn(displayNames, row.id) && displayNames[row.id].trim() !== (row.displayName ?? ''),
+        ).length + addedRows.filter((row) => Boolean(displayNames[row.localId]?.trim())).length
+      : 0) +
+    (commonDirty ? 1 : 0);
   const hasDeletions =
     removedRows.length +
       removedNotes.length +
       Object.values(removedFields).reduce((sum, fields) => sum + fields.length, 0) >
     0;
-  useInstallationDirty(count > 0);
+  useInstallationDirty(count > 0 || commonDirty);
   const noteChanged = (note: NonNullable<InstallationDetails['accessNotes']>[number]) =>
     Object.hasOwn(notes, note.id) && (note.masked || notes[note.id] !== note.content);
   const titleChanged = (row: (typeof section.rows)[number]) =>
-    !row.origin && Object.hasOwn(titles, row.id) && titles[row.id] !== (row.title ?? section.title);
+    !row.origin &&
+    !row.serverId &&
+    Object.hasOwn(titles, row.id) &&
+    titles[row.id] !== (row.title ?? section.title);
+  /** Server display name. It survives a link, unlike the part titles a unit is grouped by. */
+  const displayNameChanged = (row: (typeof section.rows)[number]) =>
+    sectionId === 'access' &&
+    Object.hasOwn(displayNames, row.id) &&
+    displayNames[row.id].trim() !== (row.displayName ?? '');
+  /**
+   * One server unit shares one display name, so it is edited once at the top of the form.
+   * A migrated unit has several part rows, so prefer the row that already carries the name.
+   */
+  const serverNameTarget =
+    sectionId === 'access' ? (section.rows.find((row) => row.displayName) ?? section.rows[0]) : undefined;
+  const displayNameRowDeleting = serverNameTarget ? removedRows.includes(serverNameTarget.id) : false;
   const matches = (field: InstallationDetailField) =>
     (!search ||
       [field.label, field.key, installationFieldLabel(field)]
@@ -730,6 +867,35 @@ export default function InstallationSectionEditor({
             </button>
           )}
         </div>
+        {sectionId === 'access' && serverNameTarget && (
+          <div className="installation-access-server-name" data-access-server-name>
+            <label htmlFor={`${id}-server-name`}>
+              {t('표시명')}
+              <input
+                id={`${id}-server-name`}
+                value={displayNames[serverNameTarget.id] ?? serverNameTarget.displayName ?? ''}
+                maxLength={120}
+                placeholder={t('예: 운영 1호기, QA 도메인')}
+                disabled={busy || policyPending || Boolean(displayNameRowDeleting)}
+                onChange={(event) =>
+                  setDisplayNames((current) => ({ ...current, [serverNameTarget.id]: event.target.value }))
+                }
+              />
+            </label>
+            <p className="installation-access-server-name-scope">
+              {t('이 서버의 모든 항목에 함께 적용됩니다.')}
+            </p>
+            {displayNameChanged(serverNameTarget) && (
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setDisplayNames((current) => omit(current, [serverNameTarget.id]))}
+              >
+                {t('입력 취소')}
+              </button>
+            )}
+          </div>
+        )}
         <div className="installation-group-layout">
           <nav className="installation-group-nav" aria-label={t('수정 항목 그룹')}>
             {groups.map((group) => (
@@ -769,6 +935,7 @@ export default function InstallationSectionEditor({
                   if (
                     !fields.length &&
                     !titleChanged(row) &&
+                    !displayNameChanged(row) &&
                     !removed.length &&
                     !rowDeleting &&
                     !addedFields[row.id]?.length
@@ -776,11 +943,15 @@ export default function InstallationSectionEditor({
                     return null;
                   return (
                     <section key={row.id} className="installation-review-record">
-                      <h5>{installationRowTitle(row)}</h5>
+                      <h5>{displayNames[row.id]?.trim() || row.displayName || installationRowTitle(row)}</h5>
                       {rowDeleting && (
                         <p className="installation-inline-edit-state is-delete">{t('기록 삭제 예정')}</p>
                       )}
                       <dl>
+                        {displayNameChanged(row) &&
+                          diff(t('표시명'), row.displayName ?? '', displayNames[row.id].trim(), false, () =>
+                            setDisplayNames((current) => omit(current, [row.id])),
+                          )}
                         {titleChanged(row) &&
                           diff(t('구분명'), row.title ?? section.title, titles[row.id], false, () =>
                             setTitles((current) => omit(current, [row.id])),
@@ -845,7 +1016,7 @@ export default function InstallationSectionEditor({
                 })}
                 {addedRows.map((row) => (
                   <section key={row.localId} className="installation-review-record">
-                    <h5>{row.title || t('새 기록')}</h5>
+                    <h5>{displayNames[row.localId]?.trim() || row.title || t('새 기록')}</h5>
                     <p>
                       {t('기록 추가 예정')} · {t('{0}개 항목', [row.fields.length])}
                     </p>
@@ -853,6 +1024,16 @@ export default function InstallationSectionEditor({
                 ))}
                 {sectionId === 'access' && (
                   <dl>
+                    {commonDirty && (
+                      <div className="installation-change-row">
+                        <dt>{t('설치 공통 비고')}</dt>
+                        <dd>
+                          <span>{t('변경 예정')}</span>
+                          {' · '}
+                          {t('설치 전역 · 모든 서버에 공통')}
+                        </dd>
+                      </div>
+                    )}
                     {installationNoteReviewEntries(details.accessNotes ?? [], removedNotes).map(
                       ({ note, index }) => (
                         <div key={`remove-${note.id}`} className="installation-change-row">
@@ -913,7 +1094,14 @@ export default function InstallationSectionEditor({
                   const showTitle = titleChanged(row) && changedOnly && !search;
                   const deleting = removedRows.includes(row.id);
                   const createdFields = addedFields[row.id] ?? [];
-                  if (!fields.length && !showTitle && !deleting && !createdFields.length) return null;
+                  if (
+                    !fields.length &&
+                    !showTitle &&
+                    !displayNameChanged(row) &&
+                    !deleting &&
+                    !createdFields.length
+                  )
+                    return null;
                   return (
                     <fieldset
                       key={row.id}
@@ -921,11 +1109,17 @@ export default function InstallationSectionEditor({
                       disabled={busy || policyPending}
                     >
                       <legend>
-                        {row.origin
-                          ? recordTitle || t('서버 {0}', [index + 1])
+                        {sectionId === 'access'
+                          ? [
+                              displayNames[row.id]?.trim() ||
+                                row.displayName ||
+                                recordTitle ||
+                                t('서버 {0}', [index + 1]),
+                              t(accessPartLabels[accessRowPart(row)]),
+                            ].join(' · ')
                           : installationRowTitle(row) || t('{0} 기록', [index + 1])}
                       </legend>
-                      {row.origin
+                      {row.origin || row.serverId
                         ? null
                         : row.managed !== 'metadata' && (
                             <label className="installation-section-edit-title">
@@ -1234,7 +1428,10 @@ export default function InstallationSectionEditor({
                   </fieldset>
                 ))}
                 {!section.rows.some(
-                  (row) => row.fields.some(matches) || (titleChanged(row) && changedOnly && !search),
+                  (row) =>
+                    row.fields.some(matches) ||
+                    (titleChanged(row) && changedOnly && !search) ||
+                    (displayNameChanged(row) && changedOnly && !search),
                 ) &&
                   !addedRows.length &&
                   !addedNotes.length &&
@@ -1245,6 +1442,17 @@ export default function InstallationSectionEditor({
             )}
           </div>
         </div>
+        {sectionId === 'access' && (
+          <InstallationAccessCommonSection
+            rows={
+              (accessCommonDetails ?? details).sections.find((section) => section.id === 'access')?.rows ?? []
+            }
+            draft={commonDraft}
+            busy={busy}
+            policyPending={policyPending}
+            onChange={(key, value) => setAccessCommon((current) => ({ ...current, [key]: value }))}
+          />
+        )}
         {error && (
           <p ref={errorMessage} className="installation-action-error" role="alert" tabIndex={-1}>
             {t(error)}

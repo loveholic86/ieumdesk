@@ -236,7 +236,10 @@
   color: var(--theme-ink, #20344f);
   font-size: 12px;
 }
-.installation-section-reconcile p { flex: 1 1 100%; margin: 0; }
+.installation-section-reconcile p {
+  flex: 1 1 100%;
+  margin: 0;
+}
 .installation-delete-confirm {
   display: flex;
   gap: 9px;
@@ -248,7 +251,9 @@
   color: var(--theme-danger, #a63434);
   font-size: 13px;
 }
-.installation-delete-confirm input { accent-color: var(--theme-danger, #a63434); }
+.installation-delete-confirm input {
+  accent-color: var(--theme-danger, #a63434);
+}
 .installation-group-search {
   display: flex;
   position: relative;
@@ -328,12 +333,26 @@
   padding: 0;
   gap: 18px;
 }
+/* The group body shows a plain field: no card, no inset bar, in every state.
+   Selectors are deliberately stronger than `.installation-inline-editor .installation-inline-edit-field`
+   so the change indicator cannot come back through stylesheet load order. */
+.installation-group-content .installation-inline-edit-fields > .installation-inline-edit-field,
 .installation-group-content .installation-inline-edit-field {
   padding: 0;
   border: 0;
+  border-radius: 0;
   background: transparent;
+  box-shadow: none;
 }
+.installation-group-content .installation-inline-edit-fields > .installation-inline-edit-field.is-changed,
 .installation-group-content .installation-inline-edit-field.is-changed {
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.installation-group-content .installation-inline-edit-field::before,
+.installation-group-content .installation-inline-edit-field::after {
+  box-shadow: none;
   background: transparent;
 }
 .installation-group-content .is-changed input,

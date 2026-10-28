@@ -32,7 +32,6 @@ import type { Company } from './types';
 import {
   accessCommonRowId,
   accessEtcKey,
-  accessVpnKeys,
   type InstallationDetails as InstallationDetailsDto,
   type InstallationDetailField,
   type InstallationDetailRow,
@@ -53,11 +52,16 @@ import {
 } from './installation-code-options';
 import { runInstallationSavePlan } from './installation-save-flow';
 import {
+  accessColumnField,
+  accessCommonSaveTarget,
   accessInstallationCommon,
   accessRecordItems,
+  accessRecordLabel,
   accessServerFields,
+  accessServerDisplayName,
   accessServerTitle,
   installationAccessEditingDetails,
+  installationAccessEditScope,
   installationDetailsForAccessEdit,
   validateInstallationDetails,
   installationFieldMasked,
@@ -199,19 +203,7 @@ function passwordField(field: { key: string; label: string }) {
   return /pwd|password|passwd|비밀번호|비번|패스워드/i.test(`${field.key} ${field.label}`);
 }
 
-const accessAddressKeys = [
-  'access_url',
-  'domainurl',
-  'external_ip',
-  'internal_ip',
-  'gateway',
-  'hostname',
-  'address',
-] as const;
 const accessCommonLabels: Record<string, string> = {
-  vpnsv_ip: 'VPN 서버 IP',
-  vpnsv_id: 'VPN 아이디',
-  vpnsv_pwd: 'VPN 비밀번호',
   access_etc: '접근 비고',
 };
 type AccessRecordItem = ReturnType<typeof accessRecordItems>[number];
@@ -224,17 +216,8 @@ function accessField(rows: readonly InstallationDetailRow[], key: string) {
   return undefined;
 }
 
-function accessListAddress(rows: readonly InstallationDetailRow[]) {
-  for (const key of accessAddressKeys)
-    for (const row of rows) {
-      const field = row.fields.find((item) => item.key === key);
-      if (field && !passwordField(field)) return field;
-    }
-  return undefined;
-}
-
 function accessItemTitle(item: AccessRecordItem) {
-  return accessServerTitle(item.rows) || t('서버 {0}', [item.index]);
+  return accessRecordLabel(item.rows, t('서버 {0}', [item.index]));
 }
 
 function AccessListCell({
@@ -314,26 +297,29 @@ function AccessRecordList({
             <tr>
               <th scope="col">{t('서버')}</th>
               <th scope="col">{t('접근 유형')}</th>
-              <th scope="col">{t('접속 주소')}</th>
-              <th scope="col">{t('접근 종료일')}</th>
+              <th scope="col">{t('도메인 URL')}</th>
+              <th scope="col">{t('외부 IP')}</th>
+              <th scope="col">{t('외부 PORT')}</th>
             </tr>
           </thead>
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td colSpan={4}>{t('등록된 서버가 없습니다.')}</td>
+                <td colSpan={5}>{t('등록된 서버가 없습니다.')}</td>
               </tr>
             ) : null}
             {items.map((item) => {
               const typeField = accessField(item.rows, 'access_type');
-              const addressField = accessListAddress(item.rows);
-              const endField = accessField(item.rows, 'access_reqst_enddate');
+              const domainField = accessColumnField(item.rows, 'domainurl');
+              const externalIpField = accessColumnField(item.rows, 'external_ip');
+              const portField = accessColumnField(item.rows, 'ssh_port');
               const title = accessItemTitle(item);
               const label = [
                 `${t('서버')} ${title}`,
                 `${t('접근 유형')} ${spoken(typeField)}`,
-                `${t('접속 주소')} ${spoken(addressField)}`,
-                `${t('접근 종료일')} ${spoken(endField)}`,
+                `${t('도메인 URL')} ${spoken(domainField)}`,
+                `${t('외부 IP')} ${spoken(externalIpField)}`,
+                `${t('외부 PORT')} ${spoken(portField)}`,
               ].join(', ');
               return (
                 <tr
@@ -360,14 +346,21 @@ function AccessRecordList({
                   </td>
                   <td>
                     <AccessListCell
-                      field={addressField}
+                      field={domainField}
                       policyPending={policyPending}
                       codeOptions={codeOptions}
                     />
                   </td>
                   <td>
                     <AccessListCell
-                      field={endField}
+                      field={externalIpField}
+                      policyPending={policyPending}
+                      codeOptions={codeOptions}
+                    />
+                  </td>
+                  <td>
+                    <AccessListCell
+                      field={portField}
                       policyPending={policyPending}
                       codeOptions={codeOptions}
                     />
@@ -709,118 +702,30 @@ function AccessServerDetail({
     />
   );
 }
-
-const commonEditorKeys = [...accessVpnKeys, accessEtcKey] as const;
+const commonEditorKeys = [accessEtcKey] as const;
 
 function shownCommonValue(field: InstallationDetailField | undefined, policyPending: boolean) {
   if (!field || field.masked || (policyPending && field.secret)) return '';
   return field.value;
 }
 
-function AccessCommonForm({
-  rows,
-  policyPending,
-  busy,
-  onCancel,
-  onSave,
-}: {
-  rows: readonly InstallationDetailRow[];
-  policyPending: boolean;
-  busy: boolean;
-  onCancel: () => void;
-  onSave: (draft: Record<string, string>) => void;
-}) {
-  useLocale();
-  const common = accessInstallationCommon(rows);
-  const slot = rows.find((row) => row.id === accessCommonRowId);
-  const initial = Object.fromEntries(
-    commonEditorKeys.map((key) => {
-      const explicit = slot?.fields.find((field) => field.key === key);
-      const shown =
-        explicit ?? (key === accessEtcKey ? common.etc : common.vpn.find((field) => field.key === key));
-      return [key, shownCommonValue(shown, policyPending)];
-    }),
-  );
-  const [draft, setDraft] = useState(initial);
-  useInstallationDirty(commonEditorKeys.some((key) => (draft[key] ?? '') !== initial[key]));
-  const masked = (key: string) => {
-    const field =
-      slot?.fields.find((item) => item.key === key) ??
-      (key === accessEtcKey ? common.etc : common.vpn.find((item) => item.key === key));
-    return Boolean(field?.masked || (policyPending && field?.secret));
-  };
-  return (
-    <form
-      className="installation-access-common-form"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSave(draft);
-      }}
-    >
-      {commonEditorKeys.map((key) => (
-        <label key={key}>
-          {t(accessCommonLabels[key])}
-          {key === accessEtcKey ? (
-            <textarea
-              value={draft[key] ?? ''}
-              maxLength={16384}
-              disabled={busy || policyPending}
-              onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}
-            />
-          ) : (
-            <input
-              type={key === 'vpnsv_pwd' ? 'password' : 'text'}
-              value={draft[key] ?? ''}
-              maxLength={16384}
-              autoComplete="off"
-              disabled={busy || policyPending}
-              placeholder={masked(key) ? t('보호된 값') : undefined}
-              onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}
-            />
-          )}
-        </label>
-      ))}
-      <InstallationEditorActions>
-        <button type="button" className="button" disabled={busy} onClick={onCancel}>
-          {t('수정 취소')}
-        </button>
-        <button type="submit" className="button primary" disabled={busy || policyPending}>
-          {t('공통 정보 저장')}
-        </button>
-      </InstallationEditorActions>
-    </form>
-  );
-}
-
 function AccessCommonPanel({
   rows,
   notes,
-  editing,
   canEdit,
   busy,
   policyPending,
   codeOptions,
-  onEdit,
-  onCancel,
-  onSave,
 }: {
   rows: readonly InstallationDetailRow[];
   notes?: ReactNode;
-  editing: boolean;
   canEdit: boolean;
   busy: boolean;
   policyPending: boolean;
   codeOptions: readonly InstallationCodeOption[];
-  onEdit: () => void;
-  onCancel: () => void;
-  onSave: (draft: Record<string, string>) => void;
 }) {
   useLocale();
   const common = accessInstallationCommon(rows);
-  const vpnFields = accessVpnKeys.flatMap((key) => {
-    const field = common.vpn.find((item) => item.key === key);
-    return field ? [field] : [];
-  });
   return (
     <section className="installation-data-card installation-option-b installation-access-common">
       <header className="installation-card-heading">
@@ -828,64 +733,23 @@ function AccessCommonPanel({
           <Network size={17} />
         </span>
         <h3>{t('설치 공통')}</h3>
-        {canEdit && !editing && (
-          <div className="installation-row-actions">
-            <button type="button" className="button" disabled={busy || policyPending} onClick={onEdit}>
-              <Pencil size={14} />
-              {t('공통 정보 수정')}
-            </button>
-          </div>
-        )}
+        {canEdit && <span className="installation-access-common-hint">{t('정보 수정에서 편집합니다.')}</span>}
       </header>
-      {common.held.length > 0 && (
-        <p className="installation-access-hold" role="status">
-          {t('VPN 값이 서로 달라 설치 공통으로 합치지 않았습니다. 저장된 값은 그대로 두었습니다.')}{' '}
-          {common.held
-            .map(
-              (item) =>
-                `${item.title} (${item.keys.map((key) => t(accessCommonLabels[key] ?? key)).join(', ')})`,
-            )
-            .join(' · ')}
-        </p>
-      )}
-      {editing ? (
-        <AccessCommonForm
-          rows={rows}
-          policyPending={policyPending}
-          busy={busy}
-          onCancel={onCancel}
-          onSave={onSave}
-        />
-      ) : (
-        <div className="installation-option-groups">
-          <section className="installation-option-group">
-            <h4 className="installation-option-group-title">{t('VPN')}</h4>
-            {vpnFields.length ? (
-              <OptionTable
-                fields={vpnFields}
-                sectionId="access"
-                policyPending={policyPending}
-                codeOptions={codeOptions}
-              />
-            ) : (
-              <p className="installation-missing">{t('미등록')}</p>
-            )}
-          </section>
-          <section className="installation-option-group">
-            <h4 className="installation-option-group-title">{t('비고')}</h4>
-            {common.etc ? (
-              <OptionTable
-                fields={[common.etc]}
-                sectionId="access"
-                policyPending={policyPending}
-                codeOptions={codeOptions}
-              />
-            ) : (
-              <p className="installation-missing">{t('미등록')}</p>
-            )}
-          </section>
-        </div>
-      )}
+      <div className="installation-option-groups">
+        <section className="installation-option-group">
+          <h4 className="installation-option-group-title">{t('비고')}</h4>
+          {common.etc ? (
+            <OptionTable
+              fields={[common.etc]}
+              sectionId="access"
+              policyPending={policyPending}
+              codeOptions={codeOptions}
+            />
+          ) : (
+            <p className="installation-missing">{t('미등록')}</p>
+          )}
+        </section>
+      </div>
       {notes}
     </section>
   );
@@ -1124,13 +988,15 @@ export default function InstallationDetails({
   const [sectionEditing, setSectionEditing] = useState<{
     scopeKey: string;
     sectionId: InstallationSectionId;
+    /** Server editing scope: only the selected server's rows. Never used to seed shared fields. */
     details: VersionedDetails;
+    /** Unscoped details, so installation-wide values (access_etc) are read and saved correctly. */
+    fullDetails?: VersionedDetails;
     recordTitle?: string;
     rowIds?: readonly string[];
     baselineIds?: readonly string[];
   } | null>(null);
   const [accessRecordEdit, setAccessRecordEdit] = useState<{ scopeKey: string; mode: 'create' } | null>(null);
-  const [accessCommonEdit, setAccessCommonEdit] = useState(false);
   const [accessRowId, setAccessRowId] = useState('');
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState('');
@@ -1148,10 +1014,7 @@ export default function InstallationDetails({
   const base = `/records/installations/${encodeURIComponent(record?.id ?? '')}`;
   const accessEdit = accessRecordEdit?.scopeKey === scopeKey && canManage ? accessRecordEdit : null;
   const accessEditActive = accessEdit?.mode === 'create';
-  const accessCommonActive = accessCommonEdit && canManage;
-  const editingActive = Boolean(
-    visibleSectionEditing || basicEditor || accessEditActive || accessCommonActive,
-  );
+  const editingActive = Boolean(visibleSectionEditing || basicEditor || accessEditActive);
   const interactionBusy = busy || basicBusy;
   const previousEditing = useRef('');
   const basicEditButton = useRef<HTMLButtonElement>(null);
@@ -1188,7 +1051,6 @@ export default function InstallationDetails({
     setEditingDirty(false);
     setSectionEditing(null);
     setAccessRecordEdit(null);
-    setAccessCommonEdit(false);
     setActionError('');
     if (basicEditor) onBasicCancel?.();
   };
@@ -1207,7 +1069,6 @@ export default function InstallationDetails({
     operation.current?.abort();
     setSectionEditing(null);
     setAccessRecordEdit(null);
-    setAccessCommonEdit(false);
     setAccessRowId('');
     setActionError('');
     setStatus('');
@@ -1358,7 +1219,6 @@ export default function InstallationDetails({
     setCached(null);
     setSectionEditing(null);
     setAccessRecordEdit(null);
-    setAccessCommonEdit(false);
     setDiscardOpen(false);
     setEditingDirty(false);
     onClose();
@@ -1369,6 +1229,7 @@ export default function InstallationDetails({
     body: Record<string, unknown>,
     success: string,
     revision: number,
+    options: { keepEditingScope?: boolean } = {},
   ): Promise<VersionedDetails | false> => {
     if (
       !canManage ||
@@ -1398,7 +1259,18 @@ export default function InstallationDetails({
       // A settings poll may be in flight; fetch again under the confirmed policy instead of reusing its response.
       if (!identity.current.policyPending) setCached({ scopeKey, details: result });
       else setRetry((value) => value + 1);
-      setSectionEditing(null);
+      if (options.keepEditingScope) {
+        // Keep the editor open on the new revision, so a later server save is not a stale write.
+        setSectionEditing((current) =>
+          current?.scopeKey === scopeKey
+            ? {
+                ...current,
+                details: installationAccessEditScope(result, current.rowIds, current.baselineIds),
+                fullDetails: result,
+              }
+            : current,
+        );
+      } else setSectionEditing(null);
       setStatus(success);
       onChanged?.();
       return result;
@@ -1432,56 +1304,87 @@ export default function InstallationDetails({
     const created = saved.sections
       .find((item) => item.id === 'access')
       ?.rows.find((row) => row.id !== accessCommonRowId && !previousIds.has(row.id));
-    if (created) setAccessRowId(created.id);
+    if (created) setAccessRowId(created.serverId ?? created.id);
   };
-  const saveAccessCommon = async (draft: Record<string, string>) => {
-    if (!visibleDetails) return;
-    const rows = visibleDetails.sections.find((item) => item.id === 'access')?.rows ?? [];
+  /**
+   * Save only the installation-wide remark. Seeded and written from the unscoped details, so a
+   * remark stored on a server row (the SK legacy shape) is updated in place instead of being
+   * missed and re-created as a new shared row. The editor stays open on the returned revision.
+   */
+  /**
+   * Build the installation-wide remark operation from the previous save response, not from the
+   * details captured when editing started: an earlier row delete/create in the same plan can move
+   * where the remark lives. Returns undefined when the draft matches what is already stored.
+   */
+  const prepareAccessCommonOperation = (
+    draft: Record<string, string> | undefined,
+    latest: InstallationDetailsDto,
+  ): InstallationSectionOperation | undefined => {
+    if (!draft) return undefined;
+    const rows = latest.sections.find((item) => item.id === 'access')?.rows ?? [];
     const slot = rows.find((row) => row.id === accessCommonRowId);
     const common = accessInstallationCommon(rows);
     const changed = commonEditorKeys.filter((key) => {
       const explicit = slot?.fields.find((field) => field.key === key);
-      const shown =
-        explicit ?? (key === accessEtcKey ? common.etc : common.vpn.find((field) => field.key === key));
+      const shown = explicit ?? common.etc;
       if ((shown?.masked || (policyPending && shown?.secret)) && !(draft[key] ?? '').length) return false;
       return (draft[key] ?? '') !== shownCommonValue(shown, policyPending);
     });
-    if (!changed.length) {
-      setAccessCommonEdit(false);
-      setEditingDirty(false);
-      return;
-    }
+    return changed.length ? { kind: 'access-common', draft } : undefined;
+  };
+  const sendAccessCommon = async (
+    draft: Record<string, string>,
+    latest: InstallationDetailsDto,
+    signal: AbortSignal,
+  ): Promise<VersionedDetails> => {
+    const rows = latest.sections.find((item) => item.id === 'access')?.rows ?? [];
+    const slot = rows.find((row) => row.id === accessCommonRowId);
+    const common = accessInstallationCommon(rows);
+    const target = accessCommonSaveTarget(rows);
+    const changed = commonEditorKeys.filter((key) => {
+      const explicit = slot?.fields.find((field) => field.key === key);
+      const shown = explicit ?? common.etc;
+      if ((shown?.masked || (policyPending && shown?.secret)) && !(draft[key] ?? '').length) return false;
+      return (draft[key] ?? '') !== shownCommonValue(shown, policyPending);
+    });
+    if (!changed.length) return latest;
     const fields = changed.map((key) => ({
       key,
       label: accessCommonLabels[key],
       value: draft[key] ?? '',
     }));
-    const revision = visibleDetails.revision;
+    const targetRow = target.kind === 'create' ? undefined : rows.find((row) => row.id === target.rowId);
     const values = Object.fromEntries(
       fields
-        .filter((field) => slot?.fields.some((item) => item.key === field.key))
+        .filter((field) => targetRow?.fields.some((item) => item.key === field.key))
         .map((field) => [field.key, field.value]),
     );
-    const addFields = fields.filter((field) => !slot?.fields.some((item) => item.key === field.key));
-    const saved = slot
-      ? await mutate(
-          `${base}/rows/${encodeURIComponent(slot.id)}`,
-          'PATCH',
-          {
-            ...(Object.keys(values).length ? { values } : {}),
-            ...(addFields.length ? { addFields } : {}),
-          },
-          '설치 공통 정보를 저장했습니다.',
-          revision,
-        )
-      : await mutate(
-          `${base}/rows`,
-          'POST',
-          { sectionId: 'access', title: '설치 공통', fields },
-          '설치 공통 정보를 저장했습니다.',
-          revision,
-        );
-    if (saved) setAccessCommonEdit(false);
+    const addFields =
+      target.kind === 'slot'
+        ? fields.filter((field) => !targetRow?.fields.some((item) => item.key === field.key))
+        : [];
+    const result = await installationRequest<VersionedDetails>(
+      target.kind === 'create' ? `${base}/rows` : `${base}/rows/${encodeURIComponent(target.rowId)}`,
+      {
+        method: target.kind === 'create' ? 'POST' : 'PATCH',
+        signal,
+        body: JSON.stringify(
+          target.kind === 'create'
+            ? { sectionId: 'access', title: '설치 공통', fields, revision: latest.revision }
+            : {
+                revision: latest.revision,
+                ...(Object.keys(values).length ? { values } : {}),
+                ...(addFields.length ? { addFields } : {}),
+              },
+        ),
+      },
+    );
+    if (!validateInstallationDetails(result, record?.id ?? ''))
+      throw new InstallationRequestError(
+        '저장 응답을 확인하지 못했습니다. 다시 불러와 확인해 주세요.',
+        'uncertain',
+      );
+    return result;
   };
   const beginAccessRecord = () => {
     if (!canManage || interactionBusy || policyPending || editingActive) return;
@@ -1517,6 +1420,13 @@ export default function InstallationDetails({
         visibleSectionEditing.sectionId,
         draft,
       );
+      // The shared remark is the last step, so a row delete or create earlier in the plan has
+      // already happened and the target row is resolved against the freshest response.
+      const commonOperation = prepareAccessCommonOperation(
+        draft.accessCommon,
+        visibleSectionEditing.fullDetails ?? visibleSectionEditing.details,
+      );
+      if (commonOperation) changes.push(commonOperation);
       if (!changes.length) throw new Error('변경한 항목이 없습니다.');
     } catch (reason) {
       setActionError((reason as Error).message);
@@ -1528,7 +1438,7 @@ export default function InstallationDetails({
     setBusy(true);
     setActionError('');
     setStatus('');
-    let latest = visibleSectionEditing.details;
+    let latest = visibleSectionEditing.fullDetails ?? visibleSectionEditing.details;
     let saved = 0;
     try {
       const flow = await runInstallationSavePlan(
@@ -1577,6 +1487,13 @@ export default function InstallationDetails({
               path = `${base}/access-notes/${encodeURIComponent(change.id)}`;
               method = 'DELETE';
               break;
+            case 'access-common': {
+              // Target row and values come from the latest response, never from the plan start.
+              const result = await sendAccessCommon(change.draft, current, controller.signal);
+              if (token !== generation.current || identity.current.scopeKey !== scopeKey)
+                throw new InstallationRequestError('현재 설치를 확인한 뒤 다시 진행해 주세요.', 'rejected');
+              return result;
+            }
           }
           let result: VersionedDetails;
           try {
@@ -1605,7 +1522,8 @@ export default function InstallationDetails({
             current?.scopeKey === scopeKey
               ? {
                   ...current,
-                  details: installationAccessEditingDetails(latest, current.rowIds, current.baselineIds),
+                  details: installationAccessEditScope(latest, current.rowIds, current.baselineIds),
+                  fullDetails: latest,
                 }
               : current,
           );
@@ -1666,7 +1584,8 @@ export default function InstallationDetails({
         current?.scopeKey === scopeKey
           ? {
               ...current,
-              details: installationAccessEditingDetails(result, current.rowIds, current.baselineIds),
+              details: installationAccessEditScope(result, current.rowIds, current.baselineIds),
+              fullDetails: result,
             }
           : current,
       );
@@ -1829,6 +1748,7 @@ export default function InstallationDetails({
             <InstallationSectionEditor
               key={`${scopeKey}:${config.id}`}
               details={visibleSectionEditing.details}
+              accessCommonDetails={visibleSectionEditing.fullDetails ?? visibleSectionEditing.details}
               recordTitle={visibleSectionEditing.recordTitle}
               sectionId={config.id}
               busy={busy}
@@ -1899,18 +1819,10 @@ export default function InstallationDetails({
                 <AccessCommonPanel
                   rows={sourceSection.rows}
                   notes={accessNotes}
-                  editing={accessCommonActive}
                   canEdit={canManage && !editingActive}
                   busy={busy}
                   policyPending={policyPending}
                   codeOptions={codeOptions}
-                  onEdit={() => {
-                    setActionError('');
-                    setStatus('');
-                    setAccessCommonEdit(true);
-                  }}
-                  onCancel={cancelEditing}
-                  onSave={(draft) => void saveAccessCommon(draft)}
                 />
               )}
             </>
@@ -2142,6 +2054,7 @@ export default function InstallationDetails({
                             scopeKey,
                             sectionId: tab,
                             details: installationDetailsForAccessEdit(visibleDetails, selected?.id ?? ''),
+                            fullDetails: visibleDetails,
                             recordTitle: selected ? accessItemTitle(selected) : undefined,
                             rowIds: selected ? selected.rows.map((row) => row.id) : [],
                             baselineIds: rows.map((row) => row.id),
