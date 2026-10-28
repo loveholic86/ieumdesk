@@ -30,6 +30,7 @@ import {
 import { accessCommonRowId, accessEtcKey, accessPartLabels, accessRowPart } from './installation-types';
 import type {
   InstallationDetailField,
+  InstallationDetailRow,
   InstallationDetails,
   InstallationSectionId,
 } from './installation-types';
@@ -80,12 +81,8 @@ type Props = {
       previous: InstallationDetails,
     ) => void,
   ) => Promise<{ uncertain?: InstallationSectionOperation; confirmedDetails?: InstallationDetails } | void>;
-  /**
-   * Installation-wide access remark. Saved on its own, separate from the server rows, so a
-   * shared note change never rides along with a server save.
-   */
-  onSaveAccessCommon?: (source: InstallationDetails, draft: Record<string, string>) => Promise<boolean>;
   onRefresh: () => Promise<boolean>;
+  /** Unscoped details, so the installation-wide remark seeds from where it is actually stored. */
   accessCommonDetails?: InstallationDetails;
   recordTitle?: string;
 };
@@ -94,26 +91,14 @@ const omit = (values: Record<string, string>, keys: string[]) =>
 
 const commonEditorKeys = [accessEtcKey] as const;
 
-/**
- * Installation-wide access remark. Collapsed by default and saved on its own, so it is never
- * mistaken for a field of the selected server and never rides along with a server save.
- */
-function InstallationAccessCommonSection({
-  details,
-  busy,
-  policyPending,
-  onSave,
-}: {
-  details: InstallationDetails;
-  busy: boolean;
-  policyPending: boolean;
-  onSave: (source: InstallationDetails, draft: Record<string, string>) => Promise<boolean>;
-}) {
-  useLocale();
-  const rows = details.sections.find((item) => item.id === 'access')?.rows ?? [];
+/** Shared remark value as shown to the user. A masked value is never edited blindly. */
+export function accessCommonDraftValue(
+  rows: readonly InstallationDetailRow[],
+  policyPending: boolean,
+): Record<string, string> {
   const slot = rows.find((row) => row.id === accessCommonRowId);
   const common = accessInstallationCommon(rows);
-  const initial = Object.fromEntries(
+  return Object.fromEntries(
     commonEditorKeys.map((key) => {
       const explicit = slot?.fields.find((field) => field.key === key);
       const shown = explicit ?? common.etc;
@@ -121,12 +106,30 @@ function InstallationAccessCommonSection({
       return [key, !shown || masked ? '' : shown.value];
     }),
   );
+}
+
+/**
+ * Installation-wide access remark. Collapsed by default and edited here, but saved by the one
+ * «변경사항 저장» button as the last step of the plan, after every server row operation.
+ */
+function InstallationAccessCommonSection({
+  rows,
+  draft,
+  busy,
+  policyPending,
+  onChange,
+}: {
+  rows: readonly InstallationDetailRow[];
+  draft: Record<string, string>;
+  busy: boolean;
+  policyPending: boolean;
+  onChange: (key: string, value: string) => void;
+}) {
+  useLocale();
+  const slot = rows.find((row) => row.id === accessCommonRowId);
+  const common = accessInstallationCommon(rows);
   const commonId = useId();
-  const [draft, setDraft] = useState(initial);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  useInstallationDirty(commonEditorKeys.some((key) => (draft[key] ?? '') !== initial[key]));
   const masked = (key: string) => {
     const field = slot?.fields.find((item) => item.key === key) ?? common.etc;
     return Boolean(field?.masked || (policyPending && field?.secret));
@@ -139,7 +142,9 @@ function InstallationAccessCommonSection({
       </summary>
       <div className="installation-access-common-inline-body">
         <p className="installation-access-common-note">
-          {t('이 비고는 서버 한 대가 아니라 설치 전체에 적용됩니다. 저장도 서버 정보와 따로 됩니다.')}
+          {t(
+            '이 비고는 서버 한 대가 아니라 설치 전체에 적용됩니다. 아래 «변경사항 저장»으로 서버 정보와 함께 저장됩니다.',
+          )}
         </p>
         {commonEditorKeys.map((key) => (
           <div key={key} className="installation-inline-edit-field">
@@ -155,19 +160,16 @@ function InstallationAccessCommonSection({
               value={draft[key] ?? ''}
               maxLength={16384}
               rows={expanded ? 16 : 6}
-              disabled={busy || policyPending || saving}
+              disabled={busy || policyPending}
               placeholder={masked(key) ? t('보호된 값') : undefined}
-              onChange={(event) => {
-                setSaved(false);
-                setDraft((current) => ({ ...current, [key]: event.target.value }));
-              }}
+              onChange={(event) => onChange(key, event.target.value)}
             />
             <div className="installation-inline-edit-value-meta">
               {!expanded && (
                 <button
                   type="button"
                   className="text-button"
-                  disabled={busy || policyPending || saving}
+                  disabled={busy || policyPending}
                   onClick={() => setExpanded(true)}
                 >
                   <Maximize2 size={14} />
@@ -177,24 +179,6 @@ function InstallationAccessCommonSection({
             </div>
           </div>
         ))}
-        <div className="installation-access-common-inline-actions">
-          <button
-            type="button"
-            className="button primary"
-            disabled={busy || policyPending || saving}
-            onClick={() => {
-              setSaving(true);
-              void onSave(details, draft).then((ok) => {
-                setSaving(false);
-                setSaved(ok);
-              });
-            }}
-          >
-            <Check size={15} />
-            {t(saving ? '저장 중…' : '설치 공통 비고 저장')}
-          </button>
-          {saved && <span role="status">{t('설치 공통 비고를 저장했습니다.')}</span>}
-        </div>
       </div>
     </details>
   );
@@ -220,7 +204,6 @@ export default function InstallationSectionEditor({
   onRetryOptionRegistration,
   onDismissOptionRegistration,
   onSave,
-  onSaveAccessCommon,
   onRefresh,
   recordTitle,
 }: Props) {
@@ -233,6 +216,17 @@ export default function InstallationSectionEditor({
   const [values, setValues] = useState<Record<string, string>>({});
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [displayNames, setDisplayNames] = useState<Record<string, string>>({});
+  const commonRows =
+    (accessCommonDetails ?? details).sections.find((section) => section.id === 'access')?.rows ?? [];
+  const accessCommonSeed =
+    sectionId === 'access'
+      ? accessCommonDraftValue(commonRows, policyPending)
+      : ({} as Record<string, string>);
+  const [commonDraft, setAccessCommon] = useState(accessCommonSeed);
+  const accessCommon = useRef(accessCommonSeed);
+  const commonDirty =
+    sectionId === 'access' &&
+    commonEditorKeys.some((key) => (commonDraft[key] ?? '') !== (accessCommon.current[key] ?? ''));
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [addedRows, setAddedRows] = useState<NonNullable<InstallationSectionDraft['addedRows']>>([]);
   const [removedRows, setRemovedRows] = useState<string[]>([]);
@@ -275,6 +269,7 @@ export default function InstallationSectionEditor({
     values,
     titles,
     displayNames,
+    ...(sectionId === 'access' ? { accessCommon: commonDraft } : {}),
     notes,
     addedRows,
     removedRows,
@@ -300,13 +295,14 @@ export default function InstallationSectionEditor({
           (row) =>
             Object.hasOwn(displayNames, row.id) && displayNames[row.id].trim() !== (row.displayName ?? ''),
         ).length + addedRows.filter((row) => Boolean(displayNames[row.localId]?.trim())).length
-      : 0);
+      : 0) +
+    (commonDirty ? 1 : 0);
   const hasDeletions =
     removedRows.length +
       removedNotes.length +
       Object.values(removedFields).reduce((sum, fields) => sum + fields.length, 0) >
     0;
-  useInstallationDirty(count > 0);
+  useInstallationDirty(count > 0 || commonDirty);
   const noteChanged = (note: NonNullable<InstallationDetails['accessNotes']>[number]) =>
     Object.hasOwn(notes, note.id) && (note.masked || notes[note.id] !== note.content);
   const titleChanged = (row: (typeof section.rows)[number]) =>
@@ -1436,12 +1432,15 @@ export default function InstallationSectionEditor({
             )}
           </div>
         </div>
-        {sectionId === 'access' && onSaveAccessCommon && (
+        {sectionId === 'access' && (
           <InstallationAccessCommonSection
-            details={accessCommonDetails ?? details}
+            rows={
+              (accessCommonDetails ?? details).sections.find((section) => section.id === 'access')?.rows ?? []
+            }
+            draft={commonDraft}
             busy={busy}
             policyPending={policyPending}
-            onSave={onSaveAccessCommon}
+            onChange={(key, value) => setAccessCommon((current) => ({ ...current, [key]: value }))}
           />
         )}
         {error && (

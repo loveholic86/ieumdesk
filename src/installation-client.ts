@@ -36,6 +36,8 @@ export type InstallationSectionDraft = {
   titles: Record<string, string>;
   /** Server display names, keyed by the row id the editor shows. Never stored as a title. */
   displayNames?: Record<string, string>;
+  /** Installation-wide access remark. Saved last, after every server row operation. */
+  accessCommon?: Record<string, string>;
   notes: Record<string, string>;
   addedRows?: Array<{
     localId: string;
@@ -67,7 +69,12 @@ export type InstallationSectionOperation =
   | { kind: 'row-delete'; id: string }
   | { kind: 'note-create'; localId: string; content: string }
   | { kind: 'note-update'; id: string; content: string }
-  | { kind: 'note-delete'; id: string };
+  | { kind: 'note-delete'; id: string }
+  /**
+   * Installation-wide remark. Carries the draft only: the target row and the values are derived
+   * from the previous save response, so a row deleted earlier in the same plan cannot go stale.
+   */
+  | { kind: 'access-common'; draft: Record<string, string> };
 
 const validLongText = (value: string) =>
   value.trim().length > 0 &&

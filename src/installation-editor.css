@@ -236,7 +236,10 @@
   color: var(--theme-ink, #20344f);
   font-size: 12px;
 }
-.installation-section-reconcile p { flex: 1 1 100%; margin: 0; }
+.installation-section-reconcile p {
+  flex: 1 1 100%;
+  margin: 0;
+}
 .installation-delete-confirm {
   display: flex;
   gap: 9px;
@@ -248,7 +251,9 @@
   color: var(--theme-danger, #a63434);
   font-size: 13px;
 }
-.installation-delete-confirm input { accent-color: var(--theme-danger, #a63434); }
+.installation-delete-confirm input {
+  accent-color: var(--theme-danger, #a63434);
+}
 .installation-group-search {
   display: flex;
   position: relative;
@@ -331,10 +336,14 @@
 .installation-group-content .installation-inline-edit-field {
   padding: 0;
   border: 0;
+  border-radius: 0;
   background: transparent;
+  box-shadow: none;
 }
 .installation-group-content .installation-inline-edit-field.is-changed {
+  border-radius: 0;
   background: transparent;
+  box-shadow: none;
 }
 .installation-group-content .is-changed input,
 .installation-group-content .is-changed textarea,

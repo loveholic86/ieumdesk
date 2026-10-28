@@ -1311,11 +1311,33 @@ export default function InstallationDetails({
    * remark stored on a server row (the SK legacy shape) is updated in place instead of being
    * missed and re-created as a new shared row. The editor stays open on the returned revision.
    */
-  const saveAccessCommonDraft = async (
+  /**
+   * Build the installation-wide remark operation from the previous save response, not from the
+   * details captured when editing started: an earlier row delete/create in the same plan can move
+   * where the remark lives. Returns undefined when the draft matches what is already stored.
+   */
+  const prepareAccessCommonOperation = (
+    draft: Record<string, string> | undefined,
+    latest: InstallationDetailsDto,
+  ): InstallationSectionOperation | undefined => {
+    if (!draft) return undefined;
+    const rows = latest.sections.find((item) => item.id === 'access')?.rows ?? [];
+    const slot = rows.find((row) => row.id === accessCommonRowId);
+    const common = accessInstallationCommon(rows);
+    const changed = commonEditorKeys.filter((key) => {
+      const explicit = slot?.fields.find((field) => field.key === key);
+      const shown = explicit ?? common.etc;
+      if ((shown?.masked || (policyPending && shown?.secret)) && !(draft[key] ?? '').length) return false;
+      return (draft[key] ?? '') !== shownCommonValue(shown, policyPending);
+    });
+    return changed.length ? { kind: 'access-common', draft } : undefined;
+  };
+  const sendAccessCommon = async (
     draft: Record<string, string>,
-    source: InstallationDetailsDto,
-  ): Promise<boolean> => {
-    const rows = source.sections.find((item) => item.id === 'access')?.rows ?? [];
+    latest: InstallationDetailsDto,
+    signal: AbortSignal,
+  ): Promise<VersionedDetails> => {
+    const rows = latest.sections.find((item) => item.id === 'access')?.rows ?? [];
     const slot = rows.find((row) => row.id === accessCommonRowId);
     const common = accessInstallationCommon(rows);
     const target = accessCommonSaveTarget(rows);
@@ -1325,13 +1347,12 @@ export default function InstallationDetails({
       if ((shown?.masked || (policyPending && shown?.secret)) && !(draft[key] ?? '').length) return false;
       return (draft[key] ?? '') !== shownCommonValue(shown, policyPending);
     });
-    if (!changed.length) return true;
+    if (!changed.length) return latest;
     const fields = changed.map((key) => ({
       key,
       label: accessCommonLabels[key],
       value: draft[key] ?? '',
     }));
-    const revision = source.revision;
     const targetRow = target.kind === 'create' ? undefined : rows.find((row) => row.id === target.rowId);
     const values = Object.fromEntries(
       fields
@@ -1342,28 +1363,28 @@ export default function InstallationDetails({
       target.kind === 'slot'
         ? fields.filter((field) => !targetRow?.fields.some((item) => item.key === field.key))
         : [];
-    const saved =
-      target.kind === 'create'
-        ? await mutate(
-            `${base}/rows`,
-            'POST',
-            { sectionId: 'access', title: '설치 공통', fields },
-            '설치 공통 정보를 저장했습니다.',
-            revision,
-            { keepEditingScope: true },
-          )
-        : await mutate(
-            `${base}/rows/${encodeURIComponent(target.rowId)}`,
-            'PATCH',
-            {
-              ...(Object.keys(values).length ? { values } : {}),
-              ...(addFields.length ? { addFields } : {}),
-            },
-            '설치 공통 정보를 저장했습니다.',
-            revision,
-            { keepEditingScope: true },
-          );
-    return Boolean(saved);
+    const result = await installationRequest<VersionedDetails>(
+      target.kind === 'create' ? `${base}/rows` : `${base}/rows/${encodeURIComponent(target.rowId)}`,
+      {
+        method: target.kind === 'create' ? 'POST' : 'PATCH',
+        signal,
+        body: JSON.stringify(
+          target.kind === 'create'
+            ? { sectionId: 'access', title: '설치 공통', fields, revision: latest.revision }
+            : {
+                revision: latest.revision,
+                ...(Object.keys(values).length ? { values } : {}),
+                ...(addFields.length ? { addFields } : {}),
+              },
+        ),
+      },
+    );
+    if (!validateInstallationDetails(result, record?.id ?? ''))
+      throw new InstallationRequestError(
+        '저장 응답을 확인하지 못했습니다. 다시 불러와 확인해 주세요.',
+        'uncertain',
+      );
+    return result;
   };
   const beginAccessRecord = () => {
     if (!canManage || interactionBusy || policyPending || editingActive) return;
@@ -1399,6 +1420,13 @@ export default function InstallationDetails({
         visibleSectionEditing.sectionId,
         draft,
       );
+      // The shared remark is the last step, so a row delete or create earlier in the plan has
+      // already happened and the target row is resolved against the freshest response.
+      const commonOperation = prepareAccessCommonOperation(
+        draft.accessCommon,
+        visibleSectionEditing.fullDetails ?? visibleSectionEditing.details,
+      );
+      if (commonOperation) changes.push(commonOperation);
       if (!changes.length) throw new Error('변경한 항목이 없습니다.');
     } catch (reason) {
       setActionError((reason as Error).message);
@@ -1410,7 +1438,7 @@ export default function InstallationDetails({
     setBusy(true);
     setActionError('');
     setStatus('');
-    let latest = visibleSectionEditing.details;
+    let latest = visibleSectionEditing.fullDetails ?? visibleSectionEditing.details;
     let saved = 0;
     try {
       const flow = await runInstallationSavePlan(
@@ -1459,6 +1487,13 @@ export default function InstallationDetails({
               path = `${base}/access-notes/${encodeURIComponent(change.id)}`;
               method = 'DELETE';
               break;
+            case 'access-common': {
+              // Target row and values come from the latest response, never from the plan start.
+              const result = await sendAccessCommon(change.draft, current, controller.signal);
+              if (token !== generation.current || identity.current.scopeKey !== scopeKey)
+                throw new InstallationRequestError('현재 설치를 확인한 뒤 다시 진행해 주세요.', 'rejected');
+              return result;
+            }
           }
           let result: VersionedDetails;
           try {
@@ -1732,15 +1767,6 @@ export default function InstallationDetails({
               onRetryOptionRegistration={retrySharedInstallationOption}
               onDismissOptionRegistration={dismissSharedInstallationOption}
               onSave={saveSection}
-              onSaveAccessCommon={
-                config.id === 'access'
-                  ? async (_source, draft) => {
-                      const source = visibleSectionEditing.fullDetails ?? _source;
-                      const saved = await saveAccessCommonDraft(draft, source);
-                      return saved;
-                    }
-                  : undefined
-              }
               onRefresh={refreshSection}
             />
           ) : (

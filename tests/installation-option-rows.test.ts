@@ -340,11 +340,14 @@ test('the shared access remark is edited inside Edit information and saved on it
   // The collapsible installation-wide remark lives at the bottom of the edit screen.
   assert.match(editor, /<details className="installation-access-common-inline"/);
   assert.match(editor, /t\('설치 전역 · 모든 서버에 공통'\)/);
-  assert.match(editor, /'설치 공통 비고 저장'/);
-  assert.match(editor, /sectionId === 'access' && onSaveAccessCommon/);
-  // Its save is separate from the server-row save plan and uses the unscoped details.
-  assert.match(view, /onSaveAccessCommon=\{[\s\S]{0,260}const source = visibleSectionEditing\.fullDetails/);
-  assert.match(view, /const saveAccessCommonDraft = async \(/);
+  // The separate save button is gone: one «변경사항 저장» saves everything.
+  assert.equal(editor.includes("'설치 공통 비고 저장'"), false);
+  assert.equal(editor.includes('onSaveAccessCommon'), false);
+  // The remark operation is appended last and targets the fresh response.
+  assert.match(view, /changes\.push\(commonOperation\)/);
+  assert.match(view, /prepareAccessCommonOperation\(/);
+  assert.match(view, /case 'access-common':/);
+  assert.match(view, /sendAccessCommon\(change\.draft, current, controller\.signal\)/);
   assert.match(view, /accessCommonDetails=\{visibleSectionEditing\.fullDetails/);
 });
 
@@ -390,18 +393,18 @@ test('the installation-wide remark editor is as large as the other access fields
   );
 });
 
-test('the larger remark editor keeps the shared save wiring intact', async () => {
+test('the merged save keeps the unscoped seed and the legacy in-place target', async () => {
   const view = readFileSync(new URL('../src/InstallationDetails.tsx', import.meta.url), 'utf8');
   const editor = readFileSync(new URL('../src/InstallationSectionEditor.tsx', import.meta.url), 'utf8');
-  // Seed and save still use the unscoped details.
+  // Seeding still reads the unscoped details.
   assert.match(view, /accessCommonDetails=\{visibleSectionEditing\.fullDetails/);
-  assert.match(view, /const source = visibleSectionEditing\.fullDetails/);
-  // The save target still decides slot / legacy row / create.
+  // The target is recomputed from the latest response on every save, for slot / legacy / create.
   assert.match(view, /accessCommonSaveTarget\(rows\)/);
   assert.match(view, /target\.kind === 'create'/);
-  assert.match(view, /keepEditingScope: true/);
-  // Sizing only: the common save still goes through the same callback.
-  assert.match(editor, /onSave\(details, draft\)/);
+  assert.match(view, /const rows = latest\.sections\.find/);
+  // The remark is part of the one save plan, not a second button.
+  assert.match(editor, /commonDirty \? 1 : 0/);
+  assert.match(editor, /accessCommon: commonDraft/);
 });
 
 test('the server display name is edited once at the top of the access edit form', async () => {
@@ -432,4 +435,43 @@ test('moving the display name keeps its save path and the shared-remark regressi
     readFileSync(new URL('../src/installation-details.css', import.meta.url), 'utf8'),
     /min-height: 260px;/,
   );
+});
+
+test('the blue inset bar is gone from changed fields but their change state stays', () => {
+  const css = readFileSync(new URL('../src/installation-editor.css', import.meta.url), 'utf8');
+  const wrapper = css.slice(
+    css.indexOf('.installation-group-content .installation-inline-edit-field {'),
+    css.indexOf('.installation-group-content .installation-section-edit-title'),
+  );
+  // The wrapper resets both the bar and the rounded card in the base and changed states.
+  assert.match(wrapper, /box-shadow: none;/);
+  assert.match(wrapper, /border-radius: 0;/);
+  assert.equal(wrapper.includes('inset 3px 0'), false);
+  const changed = wrapper.slice(wrapper.indexOf('.is-changed'));
+  assert.match(changed, /box-shadow: none;/);
+  assert.match(changed, /border-radius: 0;/);
+  assert.equal(changed.includes('inset 3px 0'), false);
+  // The change is still visible through the input border and the badge.
+  assert.match(wrapper, /\.is-changed input,[\s\S]*border-color:/);
+  const editor = readFileSync(new URL('../src/InstallationSectionEditor.tsx', import.meta.url), 'utf8');
+  assert.match(editor, /t\(changed \? '변경됨' : '변경 예정'\)|'변경됨'/);
+});
+
+test('the shared remark joins the one save plan as its last operation', async () => {
+  const client = readFileSync(new URL('../src/installation-client.ts', import.meta.url), 'utf8');
+  const editor = readFileSync(new URL('../src/InstallationSectionEditor.tsx', import.meta.url), 'utf8');
+  const view = readFileSync(new URL('../src/InstallationDetails.tsx', import.meta.url), 'utf8');
+  // The draft type carries the shared remark, so the save plan can pick it up.
+  assert.match(client, /accessCommon\?: Record<string, string>/);
+  assert.match(client, /kind: 'access-common'; draft: Record<string, string>/);
+  // Appended after every row and note operation.
+  const pushAt = view.indexOf('changes.push(commonOperation)');
+  const prepareAt = view.indexOf('prepareInstallationSectionOperations(');
+  assert.ok(prepareAt > 0 && pushAt > prepareAt);
+  // A remark-only edit still enables the one save button and counts as a change.
+  assert.match(editor, /\(commonDirty \? 1 : 0\)/);
+  assert.match(editor, /useInstallationDirty\(count > 0 \|\| commonDirty\)/);
+  // Partial failure and uncertain retry reuse the same plan path.
+  assert.match(view, /일부 기록은 저장되었습니다/);
+  assert.match(view, /return \{ uncertain: flow\.failure\.operation, confirmedDetails: flow\.latest \}/);
 });
