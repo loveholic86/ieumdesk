@@ -4,8 +4,9 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 /**
- * Every literal Korean string passed to t() must have an English entry. The reviewer found a
- * missing key only on a machine that had tests/i18n.test.ts, so this repo keeps its own guard.
+ * Every literal Korean string passed to t() must have an English entry. This lived only in a
+ * machine-local suite called tests/i18n.test.ts, which is ignored by git, so the repository
+ * keeps its own guard here under a distinct name.
  */
 function sourceFiles(directory: string): string[] {
   return readdirSync(directory).flatMap((name) => {
