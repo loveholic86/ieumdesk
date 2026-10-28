@@ -475,3 +475,33 @@ test('the shared remark joins the one save plan as its last operation', async ()
   assert.match(view, /일부 기록은 저장되었습니다/);
   assert.match(view, /return \{ uncertain: flow\.failure\.operation, confirmedDetails: flow\.latest \}/);
 });
+
+test('the group body can never paint an inset change bar for any field wrapper', () => {
+  const css = readFileSync(new URL('../src/installation-editor.css', import.meta.url), 'utf8');
+  const base = css.slice(
+    css.indexOf(
+      '.installation-group-content .installation-inline-edit-fields > .installation-inline-edit-field',
+    ),
+    css.indexOf('.installation-group-content .is-changed input'),
+  );
+  // Both the base and the changed state reset every bar source on the wrapper.
+  assert.match(base, /box-shadow: none;/);
+  assert.match(base, /border-radius: 0;/);
+  assert.equal(/inset\s+\d/.test(base), false);
+  assert.equal(base.includes('border-left:'), false);
+  // The selector is stronger than the card rule in installation-record-editor.css, so load order
+  // alone cannot bring the bar back.
+  assert.match(base, /\.installation-inline-edit-fields > \.installation-inline-edit-field/);
+  // Pseudo elements of the wrapper are neutralised too.
+  assert.match(base, /::before[\s\S]*box-shadow: none;/);
+  assert.match(base, /::after[\s\S]*box-shadow: none;/);
+  // The change is still shown by the input border and the badge.
+  assert.match(css, /\.installation-group-content \.is-changed input,[\s\S]*border-color:/);
+});
+
+test('a shared-remark-only change is listed in the review pane', async () => {
+  const editor = readFileSync(new URL('../src/InstallationSectionEditor.tsx', import.meta.url), 'utf8');
+  assert.match(editor, /\{commonDirty && \(/);
+  assert.match(editor, /t\('설치 공통 비고'\)\}\s*<\/dt>/);
+  assert.match(editor, /t\('변경 예정'\)/);
+});

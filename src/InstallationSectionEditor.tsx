@@ -1024,6 +1024,16 @@ export default function InstallationSectionEditor({
                 ))}
                 {sectionId === 'access' && (
                   <dl>
+                    {commonDirty && (
+                      <div className="installation-change-row">
+                        <dt>{t('설치 공통 비고')}</dt>
+                        <dd>
+                          <span>{t('변경 예정')}</span>
+                          {' · '}
+                          {t('설치 전역 · 모든 서버에 공통')}
+                        </dd>
+                      </div>
+                    )}
                     {installationNoteReviewEntries(details.accessNotes ?? [], removedNotes).map(
                       ({ note, index }) => (
                         <div key={`remove-${note.id}`} className="installation-change-row">

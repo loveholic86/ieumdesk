@@ -333,6 +333,10 @@
   padding: 0;
   gap: 18px;
 }
+/* The group body shows a plain field: no card, no inset bar, in every state.
+   Selectors are deliberately stronger than `.installation-inline-editor .installation-inline-edit-field`
+   so the change indicator cannot come back through stylesheet load order. */
+.installation-group-content .installation-inline-edit-fields > .installation-inline-edit-field,
 .installation-group-content .installation-inline-edit-field {
   padding: 0;
   border: 0;
@@ -340,10 +344,16 @@
   background: transparent;
   box-shadow: none;
 }
+.installation-group-content .installation-inline-edit-fields > .installation-inline-edit-field.is-changed,
 .installation-group-content .installation-inline-edit-field.is-changed {
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+}
+.installation-group-content .installation-inline-edit-field::before,
+.installation-group-content .installation-inline-edit-field::after {
+  box-shadow: none;
+  background: transparent;
 }
 .installation-group-content .is-changed input,
 .installation-group-content .is-changed textarea,
