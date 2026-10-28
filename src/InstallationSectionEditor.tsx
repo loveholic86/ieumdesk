@@ -111,10 +111,10 @@ export function accessCommonDraftValue(
 }
 
 /**
- * Installation-wide access remark. Collapsed by default and edited here, but saved by the one
+ * Installation-wide access remark. Starts expanded and is edited here, but saved by the one
  * «변경사항 저장» button as the last step of the plan, after every server row operation.
  */
-function InstallationAccessCommonSection({
+export function InstallationAccessCommonSection({
   rows,
   draft,
   busy,
@@ -131,13 +131,20 @@ function InstallationAccessCommonSection({
   const slot = rows.find((row) => row.id === accessCommonRowId);
   const common = accessInstallationCommon(rows);
   const commonId = useId();
+  // The remark is the main reason to open the access edit screen, so it starts expanded.
+  const [open, setOpen] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const masked = (key: string) => {
     const field = slot?.fields.find((item) => item.key === key) ?? common.etc;
     return Boolean(field?.masked || (policyPending && field?.secret));
   };
   return (
-    <details className="installation-access-common-inline" data-installation-common-section>
+    <details
+      className="installation-access-common-inline"
+      data-installation-common-section
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
       <summary>
         <span>{t('접근 비고')}</span>
         <span className="installation-access-common-scope">{t('설치 전역 · 모든 서버에 공통')}</span>
