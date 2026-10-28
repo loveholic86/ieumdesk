@@ -23,6 +23,19 @@ export const accessVpnKeys = ['vpnsv_ip', 'vpnsv_id', 'vpnsv_pwd'] as const;
 export const accessEtcKey = 'access_etc';
 export const accessCommonFieldKeys = new Set<string>([accessEtcKey]);
 
+const remarkKey = /^(?:note|etc)$|_etc$|_note$/;
+const remarkLabel = /비고|참고사항/;
+
+/**
+ * Free-text remarks (비고/참고사항) are read-only. Their stored value is never rewritten, so they
+ * stay visible in the detail view but are no longer offered as inputs. The installation-wide access
+ * remark is the exception: it keeps its own panel and only its label changed.
+ */
+export function installationRemarkField(field: { key: string; label?: string }) {
+  if (field.key === accessEtcKey) return false;
+  return remarkKey.test(field.key) || remarkLabel.test(field.label ?? '');
+}
+
 /** List columns of the access table, in order. Only the access remark is installation-wide. */
 export const accessListColumns = [
   { key: 'server', label: '서버' },

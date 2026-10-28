@@ -338,7 +338,8 @@ test('the shared access remark is edited inside Edit information and saved on it
   assert.match(view, /<h3>\{t\('설치 공통'\)\}<\/h3>/);
   assert.match(view, /t\('정보 수정에서 편집합니다\.'\)/);
   // The collapsible installation-wide remark lives at the bottom of the edit screen.
-  assert.match(editor, /<details className="installation-access-common-inline"/);
+  assert.match(editor, /<details\s+className="installation-access-common-inline"/);
+  assert.match(editor, /data-installation-common-section/);
   assert.match(editor, /t\('설치 전역 · 모든 서버에 공통'\)/);
   // The separate save button is gone: one «변경사항 저장» saves everything.
   assert.equal(editor.includes("'설치 공통 비고 저장'"), false);
@@ -349,6 +350,42 @@ test('the shared access remark is edited inside Edit information and saved on it
   assert.match(view, /case 'access-common':/);
   assert.match(view, /sendAccessCommon\(change\.draft, current, controller\.signal\)/);
   assert.match(view, /accessCommonDetails=\{visibleSectionEditing\.fullDetails/);
+});
+
+test('the access remark panel is already expanded when the edit screen mounts', async () => {
+  const { InstallationAccessCommonSection } = await import('../src/InstallationSectionEditor.tsx');
+  const rows: InstallationDetailRow[] = [
+    {
+      id: 'access-common',
+      title: '설치 공통',
+      fields: [{ ...field('common-etc', 'access_etc', '저장된 비고'), label: '접근 비고' }],
+    },
+  ];
+  const markup = renderToStaticMarkup(
+    createElement(InstallationAccessCommonSection, {
+      rows,
+      draft: { access_etc: '저장된 비고' },
+      busy: false,
+      policyPending: false,
+      onChange: () => {},
+    }),
+  );
+  // A collapsed <details> renders only its summary, which is what hid the remark on entry.
+  const detailsTag = markup.slice(0, markup.indexOf('>') + 1);
+  assert.match(detailsTag, /<details[^>]*\bopen\b/);
+  assert.equal(markup.includes('설치 전역 · 모든 서버에 공통'), true);
+  // The editor is usable straight away: the textarea and its value are rendered, not hidden.
+  assert.match(markup, /<textarea/);
+  assert.match(markup, /저장된 비고/);
+  assert.match(markup, /설치 전체에 적용됩니다/);
+});
+
+test('the access remark panel can still be collapsed and reopened by the user', () => {
+  const editor = readFileSync(new URL('../src/InstallationSectionEditor.tsx', import.meta.url), 'utf8');
+  // The open state is bound, not forced, so the native summary still toggles it.
+  assert.match(editor, /const \[open, setOpen\] = useState\(true\)/);
+  assert.match(editor, /open=\{open\}/);
+  assert.match(editor, /setOpen\(event\.currentTarget\.open\)/);
 });
 
 test('the end date stays editable in the detail and the editor, only the list column left', async () => {
@@ -501,7 +538,7 @@ test('the group body can never paint an inset change bar for any field wrapper',
 
 test('a shared-remark-only change is listed in the review pane', async () => {
   const editor = readFileSync(new URL('../src/InstallationSectionEditor.tsx', import.meta.url), 'utf8');
-  assert.match(editor, /\{commonDirty && \(/);
-  assert.match(editor, /t\('설치 공통 비고'\)\}\s*<\/dt>/);
+  assert.match(editor, /\{sectionId === 'access' && commonDirty && \(/);
+  assert.match(editor, /t\('접근 비고'\)\}\s*<\/dt>/);
   assert.match(editor, /t\('변경 예정'\)/);
 });

@@ -737,7 +737,7 @@ function AccessCommonPanel({
       </header>
       <div className="installation-option-groups">
         <section className="installation-option-group">
-          <h4 className="installation-option-group-title">{t('비고')}</h4>
+          <h4 className="installation-option-group-title">{t('접근 비고')}</h4>
           {common.etc ? (
             <OptionTable
               fields={[common.etc]}
