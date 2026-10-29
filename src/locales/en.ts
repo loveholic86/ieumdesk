@@ -935,6 +935,9 @@ export const english: Record<string, string> = {
   '회사 코드 수': 'Number of company codes',
   '고객사 비고': 'Company notes',
   '서버 설정 비고': 'Server configuration notes',
+  '설치 정보 비고': 'Installation notes',
+  '설치 정보의 비고입니다. 서버별 「접근 비고」와는 별도로 저장됩니다.':
+    'These are the installation notes. They are saved separately from each server\'s "Access notes".',
   '접근 유형': 'Access type',
   '도메인 URL': 'Domain URL',
   '외부 PORT': 'External port',

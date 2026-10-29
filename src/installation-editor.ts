@@ -22,7 +22,9 @@ const groups: Record<InstallationSectionId, Group[]> = {
       '운영 정보',
       'accessType autoUpdate domain autoupdate_yn bonding_yn sys_member sys_com_count',
     ),
-    group('notes', '비고', 'note ct_etc setup_etc'),
+    // The installation tab keeps its own remarks editable here. Every other tab's remarks stay
+    // read-only, so this group exists only for this section and is labelled with its scope.
+    group('notes', '설치 정보 비고', 'note ct_etc setup_etc'),
   ],
   access: [
     group(
@@ -58,9 +60,13 @@ export const installationFieldGroup = (section: InstallationSectionId, key: stri
 /** Rows reduced to editable fields, dropping a row that holds remarks only. */
 export function installationEditableRows<T extends { fields: Array<{ key: string; label?: string }> }>(
   rows: readonly T[],
+  section?: InstallationSectionId,
 ): T[] {
   return rows
-    .map((row) => ({ ...row, fields: row.fields.filter((field) => !installationRemarkField(field)) }))
+    .map((row) => ({
+      ...row,
+      fields: row.fields.filter((field) => !installationRemarkField(field, section)),
+    }))
     .filter((row) => row.fields.length > 0);
 }
 
@@ -139,7 +145,7 @@ export function installationSectionChangeCount(
       (count, row) =>
         count +
         row.fields
-          .filter((field) => !installationRemarkField(field))
+          .filter((field) => !installationRemarkField(field, sectionId))
           .filter((field) => installationFieldChanged(field, draft.values)).length +
         Number(Object.hasOwn(draft.titles, row.id) && draft.titles[row.id] !== (row.title ?? section.title)),
       0,
