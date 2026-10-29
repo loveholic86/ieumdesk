@@ -35,7 +35,7 @@ const groups: Record<InstallationSectionId, Group[]> = {
     group('ssl', 'SSL 설정', 'ssl_apply_yn ssl_manage_type ssl_applydate ssl_pwd'),
     group('vpn', 'VPN 계정', 'vpnsv_ip vpnsv_id vpnsv_pwd'),
     group('os', 'OS 계정', 'rootpath os_root_id os_root_pwd os_user_id os_user_pwd os_login_etc'),
-    group('notes', '비고·참고사항', 'access_etc'),
+    group('notes', '접근 비고', 'access_etc'),
   ],
   server: [
     group('device', '서버 장비', 'hostname servicetag express_service_code model'),

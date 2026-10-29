@@ -72,7 +72,6 @@ export const english: Record<string, string> = {
   'SSL 설정': 'SSL settings',
   'VPN 계정': 'VPN account',
   'OS 계정': 'OS account',
-  '비고·참고사항': 'Notes and references',
   '서버 장비': 'Server equipment',
   '설치 장소 및 이력': 'Location and history',
   '시스템 정보': 'System information',

@@ -153,9 +153,9 @@ const metadataLabels: Record<InstallationMetadataKey, string> = {
   installedAt: '설치일',
   patchedAt: '최종 패치일',
   engineer: '담당 엔지니어',
-  accessType: '접근 유형',
+  accessType: '접근 방식',
   autoUpdate: '자동 업데이트',
-  domain: '도메인',
+  domain: '서비스 도메인',
   note: '비고',
 };
 export const managedMetadataRowId = (id: string) =>
