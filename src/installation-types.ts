@@ -27,13 +27,57 @@ const remarkKey = /^(?:note|etc)$|_etc$|_note$/;
 const remarkLabel = /비고|참고사항/;
 
 /**
- * Free-text remarks (비고/참고사항) are read-only. Their stored value is never rewritten, so they
- * stay visible in the detail view but are no longer offered as inputs. The installation-wide access
- * remark is the exception: it keeps its own panel and only its label changed.
+ * Remark keys the installation tab keeps editable: its own 「비고」 group holds the installation-wide
+ * remarks, not one server's. Every other remark (OS login, SAP, settings…) stays read-only.
  */
-export function installationRemarkField(field: { key: string; label?: string }) {
+export const installationEditableRemarkKeys = new Set(['note', 'ct_etc', 'setup_etc']);
+
+export function installationEditableRemark(field: { key: string }) {
+  return installationEditableRemarkKeys.has(field.key);
+}
+
+/**
+ * Free-text remarks (비고/참고사항) are read-only. Their stored value is never rewritten, so they
+ * stay visible in the detail view but are no longer offered as inputs. Two exceptions keep their own
+ * input: the installation-wide access remark (its panel) and the installation tab's own remarks.
+ * Pass the section so the same field stays read-only in every other tab.
+ */
+export function installationRemarkField(
+  field: { key: string; label?: string },
+  section?: InstallationSectionId,
+) {
   if (field.key === accessEtcKey) return false;
+  if (section === 'installation' && installationEditableRemark(field)) return false;
   return remarkKey.test(field.key) || remarkLabel.test(field.label ?? '');
+}
+
+/** Installation-tab keys hidden in reading and editing. Stored values are never rewritten. */
+export const hiddenInstallationKeys = new Set(['mng_cd', 'setup_cd', 'bonding_yn']);
+
+/** Keys a customer-link row repeats from the installation basics shown above it. */
+export const hiddenCustomerLinkKeys = new Set(['ct_cd', 'sys_cd']);
+
+const customerLinkTitle = /^(?:이관 원본\s*)?고객사 연결\s*\d+$/;
+const customerLinkKeys = new Set(['ct_cd', 'sys_cd', 'sys_member', 'sys_com_count']);
+
+/** One 「고객사 연결 N」 row: named like one, or holding only the four customer-link keys. */
+export function installationCustomerLinkRow(row: { title?: string; fields: readonly { key: string }[] }) {
+  if (customerLinkTitle.test((row.title ?? '').trim())) return true;
+  const keys = row.fields.map((field) => field.key);
+  return keys.includes('ct_cd') && keys.includes('sys_cd') && keys.every((key) => customerLinkKeys.has(key));
+}
+
+/** Hide a redundant installation field in both the tab and its editor without deleting it. */
+export function installationHiddenField(
+  section: InstallationSectionId,
+  row: { title?: string; fields: readonly { key: string }[] },
+  field: { key: string },
+) {
+  if (section !== 'installation') return false;
+  return (
+    hiddenInstallationKeys.has(field.key) ||
+    (hiddenCustomerLinkKeys.has(field.key) && installationCustomerLinkRow(row))
+  );
 }
 
 /** List columns of the access table, in order. Only the access remark is installation-wide. */

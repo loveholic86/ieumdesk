@@ -393,10 +393,10 @@ test('the end date stays editable in the detail and the editor, only the list co
   const labels = readFileSync(new URL('../src/installation-labels.ts', import.meta.url), 'utf8');
   // Detail card still groups the end date with the request dates.
   assert.match(view, /cardGroup\('period', '기간', 'access_reqst_date access_reqst_enddate'\)/);
-  // The editor menu still lets the field be reached.
+  // The editor menu still lets the field be reached, under the renamed access remark group.
   assert.match(
     readFileSync(new URL('../src/installation-editor.ts', import.meta.url), 'utf8'),
-    /group\('notes', '비고·참고사항', 'access_etc'\)/,
+    /group\('notes', '접근 비고', 'access_etc'\)/,
   );
   // The list column definition is the only place the end date was dropped.
   const { accessListColumns } = await import('../src/installation-types.ts');

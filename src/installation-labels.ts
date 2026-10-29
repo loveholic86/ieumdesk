@@ -107,13 +107,27 @@ const builtInLabels: Record<string, string> = {
   installedAt: '설치일',
   patchedAt: '최종 패치일',
   engineer: '담당 엔지니어',
-  accessType: '접근 유형',
+  accessType: '접근 방식',
   autoUpdate: '자동 업데이트',
-  domain: '도메인',
+  domain: '서비스 도메인',
   note: '비고',
 };
+/** Labels a built-in field used before it was renamed. Display only; stored labels stay as written. */
+const retiredLabels: Record<string, readonly string[]> = {
+  accessType: ['접근 유형'],
+  domain: ['도메인'],
+};
+
+/** The current built-in label for a key, or undefined when the stored label is a custom one. */
+function builtInLabel(key: string, label: string) {
+  const current = builtInLabels[key];
+  if (current === label) return current;
+  return retiredLabels[key]?.includes(label) ? current : undefined;
+}
+
 export function installationFieldLabel(field: { key: string; label: string }) {
-  return builtInLabels[field.key] === field.label ? t(field.label) : field.label;
+  const label = builtInLabel(field.key, field.label);
+  return label ? t(label) : field.label;
 }
 
 const builtInChoices: Record<string, readonly string[]> = {
@@ -130,7 +144,7 @@ const builtInChoices: Record<string, readonly string[]> = {
 export function installationFieldValue(field: InstallationDetailField) {
   return !field.secret &&
     !field.masked &&
-    builtInLabels[field.key] === field.label &&
+    Boolean(builtInLabel(field.key, field.label)) &&
     builtInChoices[field.key]?.includes(field.value)
     ? t(field.value)
     : field.value;

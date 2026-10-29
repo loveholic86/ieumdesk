@@ -133,11 +133,11 @@ const CURRENT = [
   field('patchedAt', '최종 패치일', date),
   field('engineer', '담당 엔지니어'),
   field('autoUpdate', '자동 업데이트', flag),
-  field('domain', '도메인'),
+  field('domain', '서비스 도메인'),
   field('note', '비고'),
   field(
     'accessType',
-    '접근 유형',
+    '접근 방식',
     choice({
       '알 수 없음': '알 수 없음',
       '바로 접근': '바로 접근',

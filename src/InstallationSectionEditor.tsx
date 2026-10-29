@@ -28,6 +28,7 @@ import {
   accessEtcKey,
   accessPartLabels,
   accessRowPart,
+  installationHiddenField,
   installationRemarkField,
 } from './installation-types';
 import type {
@@ -253,8 +254,8 @@ export default function InstallationSectionEditor({
   const [expanded, setExpanded] = useState('');
   const [active, setActive] = useState('');
   const visible = visibleInstallationSection(details.sections.find((item) => item.id === sectionId)!);
-  // Remarks are read-only: they never appear as inputs, and a row holding only remarks drops out.
-  const section = { ...visible, rows: installationEditableRows(visible.rows) };
+  // Remarks stay read-only in every tab except the installation tab's own remark group.
+  const section = { ...visible, rows: installationEditableRows(visible.rows, sectionId) };
   const optionRegistrationForTarget = (target: InstallationOptionRegistrationTarget) => {
     const targetKey = installationOptionTargetKey(target);
     return optionRegistrations.find((attempt) =>
@@ -363,9 +364,12 @@ export default function InstallationSectionEditor({
       {
         localId: serial,
         title: section.title,
-        // A new row starts from the editable templates only; remarks stay read-only.
+        // A new row never pre-fills a remark input, not even the installation tab's editable ones,
+        // and never a blank input for a key the tab hides. The section is deliberately not passed to
+        // the remark check, so every remark key stays out of the seed.
         fields: installationFieldTemplates[sectionId]
           .filter(([key, label]) => !installationRemarkField({ key, label }))
+          .filter(([key]) => !installationHiddenField(sectionId, { fields: [] }, { key }))
           .map(([key, label]) => ({
             localId: localId('row-field'),
             key,
@@ -904,6 +908,11 @@ export default function InstallationSectionEditor({
                   ? t('검색 결과')
                   : t(groups.find((group) => group.id === groupId)?.title || '기타 항목')}
             </h4>
+            {!review && !search && sectionId === 'installation' && groupId === 'notes' && (
+              <p className="installation-group-scope" data-installation-note-scope>
+                {t('설치 정보의 비고입니다. 서버별 「접근 비고」와는 별도로 저장됩니다.')}
+              </p>
+            )}
             {review ? (
               <>
                 {section.rows.map((row) => {

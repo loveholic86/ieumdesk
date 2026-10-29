@@ -22,7 +22,9 @@ const groups: Record<InstallationSectionId, Group[]> = {
       '운영 정보',
       'accessType autoUpdate domain autoupdate_yn bonding_yn sys_member sys_com_count',
     ),
-    group('notes', '비고', 'note ct_etc setup_etc'),
+    // The installation tab keeps its own remarks editable here. Every other tab's remarks stay
+    // read-only, so this group exists only for this section and is labelled with its scope.
+    group('notes', '설치 정보 비고', 'note ct_etc setup_etc'),
   ],
   access: [
     group(
@@ -33,7 +35,7 @@ const groups: Record<InstallationSectionId, Group[]> = {
     group('ssl', 'SSL 설정', 'ssl_apply_yn ssl_manage_type ssl_applydate ssl_pwd'),
     group('vpn', 'VPN 계정', 'vpnsv_ip vpnsv_id vpnsv_pwd'),
     group('os', 'OS 계정', 'rootpath os_root_id os_root_pwd os_user_id os_user_pwd os_login_etc'),
-    group('notes', '비고·참고사항', 'access_etc'),
+    group('notes', '접근 비고', 'access_etc'),
   ],
   server: [
     group('device', '서버 장비', 'hostname servicetag express_service_code model'),
@@ -58,9 +60,13 @@ export const installationFieldGroup = (section: InstallationSectionId, key: stri
 /** Rows reduced to editable fields, dropping a row that holds remarks only. */
 export function installationEditableRows<T extends { fields: Array<{ key: string; label?: string }> }>(
   rows: readonly T[],
+  section?: InstallationSectionId,
 ): T[] {
   return rows
-    .map((row) => ({ ...row, fields: row.fields.filter((field) => !installationRemarkField(field)) }))
+    .map((row) => ({
+      ...row,
+      fields: row.fields.filter((field) => !installationRemarkField(field, section)),
+    }))
     .filter((row) => row.fields.length > 0);
 }
 
@@ -139,7 +145,7 @@ export function installationSectionChangeCount(
       (count, row) =>
         count +
         row.fields
-          .filter((field) => !installationRemarkField(field))
+          .filter((field) => !installationRemarkField(field, sectionId))
           .filter((field) => installationFieldChanged(field, draft.values)).length +
         Number(Object.hasOwn(draft.titles, row.id) && draft.titles[row.id] !== (row.title ?? section.title)),
       0,

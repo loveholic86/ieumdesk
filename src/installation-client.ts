@@ -3,6 +3,7 @@ import {
   accessCommonRowId,
   accessEtcKey,
   accessServerUnits,
+  installationHiddenField,
   installationRemarkField,
   type InstallationDetails,
   type InstallationDetailField,
@@ -77,8 +78,8 @@ export type InstallationSectionOperation =
    */
   | { kind: 'access-common'; draft: Record<string, string> };
 
-/** A remark is read-only, so a stale draft can never rewrite its stored value. */
-const editableFields = (row: InstallationDetailRow) => row.fields.filter((field) => !installationRemarkField(field));
+const editableFields = (row: InstallationDetailRow, section: InstallationSectionId) =>
+  row.fields.filter((field) => !installationRemarkField(field, section));
 
 const validLongText = (value: string) =>
   value.trim().length > 0 &&
@@ -99,7 +100,11 @@ export function prepareInstallationSectionOperations(
   const operations: InstallationSectionOperation[] = [];
   for (const row of visible.rows) {
     const additions = draft.addedFields?.[row.id] ?? [];
-    const removed = draft.removedFields?.[row.id] ?? [];
+    const draftRemoved = draft.removedFields?.[row.id] ?? [];
+    // A field the tab hides is not on screen, so a draft can never remove one either.
+    const removed = draftRemoved.filter((key) => !installationHiddenField(sectionId, row, { key }));
+    if (removed.length !== draftRemoved.length)
+      throw new Error('화면에 표시되지 않는 항목은 삭제할 수 없습니다. 최신 정보를 다시 불러와 주세요.');
     const draftedTitle = draft.titles[row.id];
     const draftedName = draft.displayNames?.[row.id];
     if (
@@ -117,7 +122,7 @@ export function prepareInstallationSectionOperations(
     }
     const title = draft.titles[row.id] ?? row.title ?? section.title;
     const values = Object.fromEntries(
-      editableFields(row)
+      editableFields(row, sectionId)
         .filter((field) => Object.hasOwn(draft.values, field.id))
         .map((field) => [field.key, draft.values[field.id]]),
     );
@@ -439,8 +444,21 @@ export function installationAccessEditScope<T extends InstallationDetails>(
 
 const unusedAccessFields = new Set(['access_reqst_date', 'access_id', 'access_pwd']);
 
-/** Hide retired controls in both reading and editing without deleting stored values. */
+/**
+ * Hide redundant controls in both reading and editing without deleting stored values. The tab and
+ * its editor both render this, so they can never disagree about which fields exist.
+ */
 export function visibleInstallationSection(section: InstallationDetailSection): InstallationDetailSection {
+  if (section.id === 'installation')
+    return {
+      ...section,
+      rows: section.rows
+        .map((row) => ({
+          ...row,
+          fields: row.fields.filter((field) => !installationHiddenField(section.id, row, field)),
+        }))
+        .filter((row) => row.fields.length > 0),
+    };
   if (section.id !== 'access') return section;
   return {
     ...section,

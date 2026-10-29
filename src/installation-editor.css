@@ -318,6 +318,12 @@
   font-size: 15px;
   color: var(--theme-ink, #20344f);
 }
+.installation-group-scope {
+  margin: -6px 0 16px;
+  color: var(--theme-muted, #65768c);
+  font-size: 12px;
+  line-height: 18px;
+}
 .installation-group-content .installation-section-edit-row {
   margin: 0 0 20px;
   border: 0;
