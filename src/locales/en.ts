@@ -1671,6 +1671,16 @@ export const english: Record<string, string> = {
   '공통 정보 수정': 'Edit shared information',
   '공통 정보 저장': 'Save shared information',
   '정보 수정에서 편집합니다.': 'Edit this in Edit information.',
+  '비고를 클릭하면 바로 고칠 수 있습니다.': 'Click a remark to edit it in place.',
+  '비고를 저장했습니다.': 'Saved the remark.',
+  '비고를 저장하지 못했습니다. 다시 확인해 주세요.': 'Could not save the remark. Please check again.',
+  '다른 작업에서 설치 정보가 변경되어 최신 내용을 다시 불러왔습니다.':
+    'Another change updated this installation, so the latest version was reloaded.',
+  '새 값을 입력하면 기존 값이 교체됩니다.': 'Enter a new value to replace the stored one.',
+  '비워 두면 기존 값을 유지합니다.': 'Leave blank to keep the stored value.',
+  'Ctrl+Enter로 저장하고 Enter는 줄바꿈입니다.': 'Ctrl+Enter saves; Enter adds a line break.',
+  'Enter로 저장하고 Esc로 취소합니다.': 'Enter saves, Escape cancels.',
+  '{0} 편집': 'Edit {0}',
   '변경 예정': 'Pending change',
   '설치 전역 · 모든 서버에 공통': 'Installation-wide · shared by every server',
   '이 비고는 서버 한 대가 아니라 설치 전체에 적용됩니다. 아래 «변경사항 저장»으로 서버 정보와 함께 저장됩니다.':

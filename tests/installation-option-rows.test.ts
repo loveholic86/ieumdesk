@@ -336,7 +336,9 @@ test('the shared access remark is edited inside Edit information and saved on it
   assert.equal(view.includes("t('공통 정보 수정')"), false);
   assert.equal(view.includes('onEdit={() =>'), false);
   assert.match(view, /<h3>\{t\('설치 공통'\)\}<\/h3>/);
-  assert.match(view, /t\('정보 수정에서 편집합니다\.'\)/);
+  // Inline editing replaced the hint that sent the user to the full form.
+  assert.equal(view.includes("t('정보 수정에서 편집합니다.')"), false);
+  assert.match(view, /t\('비고를 클릭하면 바로 고칠 수 있습니다\.'\)/);
   // The collapsible installation-wide remark lives at the bottom of the edit screen.
   assert.match(editor, /<details\s+className="installation-access-common-inline"/);
   assert.match(editor, /data-installation-common-section/);

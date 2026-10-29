@@ -81,6 +81,16 @@ import {
   useInstallationDirty,
 } from './InstallationEditorLayout';
 import InstallationAccessNotes from './InstallationAccessNotes';
+import InstallationEditable, {
+  InstallationInlineRemarkProvider,
+  useInstallationInlineRemark,
+  type InstallationInlineRemarkControls,
+} from './InstallationEditable';
+import {
+  installationInlineRemarkField,
+  installationInlineRemarkPlan,
+  inlineRemarkMasked,
+} from './installation-inline-remark';
 import { scrollInstallationContent } from './installation-scroll';
 import { ArchiveButton } from './ArchivedPage';
 import './installation-details.css';
@@ -176,6 +186,17 @@ function DataValue({
   codeOptions: readonly InstallationCodeOption[];
 }) {
   useLocale();
+  const inline = useInstallationInlineRemark();
+  // A remark is editable in place even when it is still empty: adding one is the same action.
+  if (inline && installationInlineRemarkField(sectionId, field))
+    return (
+      <InstallationEditable
+        field={field}
+        sectionId={sectionId}
+        label={installationFieldLabel(field)}
+        masked={field.present && inlineRemarkMasked(field, policyPending)}
+      />
+    );
   if (!field.present) return <span className="installation-missing">{t('미등록')}</span>;
   if (installationFieldMasked(field, policyPending))
     return (
@@ -727,6 +748,16 @@ function AccessCommonPanel({
 }) {
   useLocale();
   const common = accessInstallationCommon(rows);
+  // No stored remark yet: an empty field is still offered, because adding one is the same action.
+  const field: InstallationDetailField = common.etc ?? {
+    id: `${accessCommonRowId}:${accessEtcKey}`,
+    key: accessEtcKey,
+    label: '접근 비고',
+    value: '',
+    secret: false,
+    masked: false,
+    present: false,
+  };
   return (
     <section className="installation-data-card installation-option-b installation-access-common">
       <header className="installation-card-heading">
@@ -734,21 +765,21 @@ function AccessCommonPanel({
           <Network size={17} />
         </span>
         <h3>{t('설치 공통')}</h3>
-        {canEdit && <span className="installation-access-common-hint">{t('정보 수정에서 편집합니다.')}</span>}
+        {canEdit && (
+          <span className="installation-access-common-hint">
+            {t('비고를 클릭하면 바로 고칠 수 있습니다.')}
+          </span>
+        )}
       </header>
       <div className="installation-option-groups">
         <section className="installation-option-group">
           <h4 className="installation-option-group-title">{t('접근 비고')}</h4>
-          {common.etc ? (
-            <OptionTable
-              fields={[common.etc]}
-              sectionId="access"
-              policyPending={policyPending}
-              codeOptions={codeOptions}
-            />
-          ) : (
-            <p className="installation-missing">{t('미등록')}</p>
-          )}
+          <OptionTable
+            fields={[field]}
+            sectionId="access"
+            policyPending={policyPending}
+            codeOptions={codeOptions}
+          />
         </section>
       </div>
       {notes}
@@ -998,6 +1029,8 @@ export default function InstallationDetails({
     baselineIds?: readonly string[];
   } | null>(null);
   const [accessRecordEdit, setAccessRecordEdit] = useState<{ scopeKey: string; mode: 'create' } | null>(null);
+  /** The one inline remark the read cards may have open. Exactly one id, cleared on scope changes. */
+  const [inlineFieldId, setInlineFieldId] = useState('');
   const [accessRowId, setAccessRowId] = useState('');
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState('');
@@ -1006,6 +1039,8 @@ export default function InstallationDetails({
   const [discardOpen, setDiscardOpen] = useState(false);
   const [editorFooter, setEditorFooter] = useState<HTMLDivElement | null>(null);
   const operation = useRef<AbortController | null>(null);
+  /** The inline remark request in flight, kept apart so a row-editor save never aborts it. */
+  const inlineSave = useRef<AbortController | null>(null);
   const generation = useRef(0);
   const identity = useRef({ scopeKey, policyPending });
   identity.current = { scopeKey, policyPending };
@@ -1068,9 +1103,11 @@ export default function InstallationDetails({
   useEffect(() => {
     ++generation.current;
     operation.current?.abort();
+    inlineSave.current?.abort();
     setSectionEditing(null);
     setAccessRecordEdit(null);
     setAccessRowId('');
+    setInlineFieldId('');
     setActionError('');
     setStatus('');
     setBusy(false);
@@ -1394,6 +1431,96 @@ export default function InstallationDetails({
     setAccessRecordEdit({ scopeKey, mode: 'create' });
   };
 
+  /**
+   * Inline remark save: one field, one revision, through the existing row PATCH/POST.
+   * Saves are queued rather than blocked, so clicking a second remark while the first is saving
+   * hands the session over instead of swallowing the click. A conflict is never retried silently:
+   * the card re-reads and the typed draft is dropped.
+   */
+  const inlineQueue = useRef<{ tail: Promise<void>; details: VersionedDetails | null }>({
+    tail: Promise.resolve(),
+    details: null,
+  });
+  /** The newest details this screen has seen, so a queued save never sends a revision already used. */
+  if (
+    visibleDetails &&
+    (!inlineQueue.current.details ||
+      inlineQueue.current.details.id !== visibleDetails.id ||
+      inlineQueue.current.details.revision <= visibleDetails.revision)
+  )
+    inlineQueue.current.details = visibleDetails;
+  const saveInlineRemark = (
+    sectionId: InstallationSectionId,
+    field: InstallationDetailField,
+    draft: string,
+  ): Promise<boolean> => {
+    const send = async (): Promise<boolean> => {
+      const latest = inlineQueue.current.details;
+      if (!latest || !record || !canManage || policyPending || editingActive) return false;
+      const plan = installationInlineRemarkPlan(latest, sectionId, field, draft, policyPending);
+      if (!plan) return false;
+      const controller = new AbortController();
+      inlineSave.current = controller;
+      setActionError('');
+      setStatus('');
+      try {
+        const result =
+          plan.kind === 'access-common-create'
+            ? await installationRequest<VersionedDetails>(`${base}/rows`, {
+                method: 'POST',
+                signal: controller.signal,
+                body: JSON.stringify({
+                  sectionId: 'access',
+                  title: plan.title,
+                  fields: plan.fields,
+                  revision: latest.revision,
+                }),
+                preserveDraftOnPermissionDenied: true,
+              })
+            : await installationRequest<VersionedDetails>(`${base}/rows/${encodeURIComponent(plan.rowId)}`, {
+                method: 'PATCH',
+                signal: controller.signal,
+                body: JSON.stringify({
+                  revision: latest.revision,
+                  values: plan.values,
+                  // A managed metadata row also pins the basic-info fingerprint it was read against.
+                  ...(plan.kind === 'metadata' ? { metadataRevision: latest.metadataRevision } : {}),
+                }),
+                preserveDraftOnPermissionDenied: true,
+              });
+        if (!validateInstallationDetails(result, record.id))
+          throw new InstallationRequestError(
+            '저장 응답을 확인하지 못했습니다. 다시 불러온 뒤 확인해 주세요.',
+            'uncertain',
+          );
+        inlineQueue.current.details = result;
+        setCached({ scopeKey, details: result });
+        setStatus('비고를 저장했습니다.');
+        onChanged?.();
+        return true;
+      } catch (reason) {
+        if (controller.signal.aborted) return false;
+        const message =
+          reason instanceof Error ? reason.message : '비고를 저장하지 못했습니다. 다시 확인해 주세요.';
+        setActionError(message);
+        // A stale revision means this card is out of date: tell the user and re-read, never re-send.
+        if (reason instanceof InstallationRequestError && reason.staleRevision) {
+          notify?.(t('다른 작업에서 설치 정보가 변경되어 최신 내용을 다시 불러왔습니다.'), true);
+          setRetry((value) => value + 1);
+        } else notify?.(message, true);
+        return false;
+      } finally {
+        if (inlineSave.current === controller) inlineSave.current = null;
+      }
+    };
+    const queued = inlineQueue.current.tail.then(send, send);
+    inlineQueue.current.tail = queued.then(
+      () => undefined,
+      () => undefined,
+    );
+    return queued;
+  };
+
   const saveSection = async (
     draft: InstallationSectionDraft,
     committed: (
@@ -1600,6 +1727,15 @@ export default function InstallationDetails({
     } finally {
       if (token === generation.current) setBusy(false);
     }
+  };
+
+  const inlineRemarks: InstallationInlineRemarkControls = {
+    // An open 「정보 수정」 form owns the whole tab; a second editing surface would fight its draft.
+    canEdit: canManage && !editingActive && !policyPending && Boolean(visibleDetails),
+    openFieldId: editingActive || policyPending ? '' : inlineFieldId,
+    open: (field) => setInlineFieldId(field.id),
+    close: (fieldId) => setInlineFieldId((current) => (current === fieldId ? '' : current)),
+    save: saveInlineRemark,
   };
 
   if (!record) return null;
@@ -1844,7 +1980,8 @@ export default function InstallationDetails({
         <Dialog.Content
           className={'installation-dialog' + (editingActive ? ' is-editing' : '')}
           onEscapeKeyDown={(event) => {
-            if (interactionBusy || editingActive) {
+            // An open inline remark owns Escape; it cancels itself and the card must stay open.
+            if (interactionBusy || editingActive || inlineFieldId) {
               event.preventDefault();
             }
           }}
@@ -1856,7 +1993,7 @@ export default function InstallationDetails({
             }
           }}
           onInteractOutside={(event) => {
-            if (editingActive || interactionBusy) event.preventDefault();
+            if (editingActive || interactionBusy || inlineFieldId) event.preventDefault();
           }}
           onCloseAutoFocus={(event) => {
             event.preventDefault();
@@ -1985,7 +2122,13 @@ export default function InstallationDetails({
                     </button>
                   </p>
                 )}
-                {basicEditor ? <div className="installation-tab-panel">{basicEditor}</div> : content}
+                {basicEditor ? (
+                  <div className="installation-tab-panel">{basicEditor}</div>
+                ) : (
+                  <InstallationInlineRemarkProvider value={inlineRemarks}>
+                    {content}
+                  </InstallationInlineRemarkProvider>
+                )}
               </div>
             </Tabs.Root>
             <footer className="installation-footer">
