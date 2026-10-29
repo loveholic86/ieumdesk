@@ -2544,3 +2544,89 @@
   margin-top: 12px;
   min-width: 0;
 }
+
+/* Inline Editable: one preview that turns into the field itself, no extra dependency. */
+.installation-editable {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+}
+.installation-editable.is-readonly {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.installation-editable-preview {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: text;
+}
+.installation-option-b .installation-editable-preview {
+  font-size: 14px;
+  line-height: 1.65;
+  font-weight: 400;
+  color: #374151;
+}
+.installation-editable-preview:hover {
+  border-color: var(--theme-border, #d5e0ee);
+  background: #f8fafc;
+}
+.installation-editable-preview:focus-visible {
+  outline: 2px solid var(--theme-accent, #427bc6);
+  outline-offset: 1px;
+  border-color: var(--theme-accent, #427bc6);
+}
+.installation-editable.is-editing {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.installation-editable-input {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--theme-accent, #427bc6);
+  border-radius: 6px;
+  background: var(--theme-surface, #fff);
+  color: var(--theme-text, #3e5a7c);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.65;
+  resize: vertical;
+}
+.installation-editable-input:focus-visible {
+  outline: 2px solid var(--theme-accent, #427bc6);
+  outline-offset: 1px;
+}
+.installation-editable-hint {
+  color: var(--theme-muted, #a8b5c8);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.installation-editable.is-saving .installation-editable-input {
+  opacity: 0.75;
+}
+@media screen {
+  :root[data-theme='dark'] .installation-editable-preview:hover {
+    background: #1f2c3c;
+  }
+  :root[data-theme='dark'] .installation-option-b .installation-editable-preview,
+  :root[data-theme='dark'] .installation-editable-input {
+    color: #e7edf6;
+  }
+  :root[data-theme='dark'] .installation-editable-input {
+    background: #192331;
+  }
+}

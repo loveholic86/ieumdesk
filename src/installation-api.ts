@@ -4,9 +4,16 @@ export class InstallationRequestError extends Error {
   constructor(
     message: string,
     readonly outcome: 'rejected' | 'uncertain',
+    /** Server error code, so a caller can tell a revision conflict from a plain rejection. */
+    readonly code?: string,
   ) {
     super(message);
     this.name = 'InstallationRequestError';
+  }
+
+  /** Another session changed the installation: the caller must re-read before trying again. */
+  get staleRevision() {
+    return this.code === 'INSTALLATION_REVISION_CONFLICT';
   }
 }
 
@@ -41,13 +48,16 @@ async function assertInstallationResponse(
   )
     window.dispatchEvent(new Event(response.status === 401 ? 'crm:unauthorized' : 'crm:permissions-changed'));
   let message = '요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+  let code: string | undefined;
   try {
     const body = await response.json();
     message = publicErrorMessage(body, response.status, message);
+    const value = (body as { error?: { code?: unknown } } | null)?.error?.code;
+    if (typeof value === 'string') code = value;
   } catch {
     /* Keep the local error for non-JSON failures. */
   }
-  throw new InstallationRequestError(message, response.status >= 500 ? 'uncertain' : 'rejected');
+  throw new InstallationRequestError(message, response.status >= 500 ? 'uncertain' : 'rejected', code);
 }
 
 export async function downloadInstallationFile(
